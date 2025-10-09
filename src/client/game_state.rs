@@ -6,7 +6,7 @@ use std::{
     cell::{Ref, RefCell},
     rc::Rc,
     ops::ControlFlow,
-    collections::{BTreeMap, btree_map::Entry},
+    collections::{VecDeque, BTreeMap, btree_map::Entry},
     sync::{
         Arc,
         mpsc::{self, TryRecvError, Receiver}
@@ -39,6 +39,7 @@ use crate::{
     debug_config::*,
     app::{ProgramShaders, TimestampQuery},
     common::{
+        some_or_value,
         some_or_return,
         sender_loop,
         receiver_loop,
@@ -796,6 +797,7 @@ pub struct GameState
     dt: Option<f32>,
     debug_visibility: <DebugVisibility as DebugVisibilityTrait>::State,
     connections_handler: Arc<Mutex<ConnectionsHandler>>,
+    delayed_messages: VecDeque<Message>,
     receiver_handle: Option<JoinHandle<()>>,
     receiver: Receiver<Message>
 }
@@ -964,6 +966,7 @@ impl GameState
             user_receiver,
             debug_visibility,
             connections_handler,
+            delayed_messages: VecDeque::new(),
             receiver_handle,
             receiver
         };
@@ -1092,18 +1095,20 @@ impl GameState
 
     pub fn process_messages(&mut self, create_info: &mut UpdateBuffersInfo)
     {
+        if let Some(message) = self.delayed_messages.pop_front()
+        {
+            self.process_message_inner(create_info, message);
+
+            return;
+        }
+
         loop
         {
             match self.receiver.try_recv()
             {
                 Ok(message) =>
                 {
-                    let is_chunk_sync = matches!(message, Message::ChunkSync{..});
-
-                    self.process_message_inner(create_info, message);
-
-                    // multiple chunk syncs in a single frame would cause stutters, i dont like those >:(
-                    if is_chunk_sync
+                    if !self.process_message_inner(create_info, message)
                     {
                         return;
                     }
@@ -1177,8 +1182,10 @@ impl GameState
         }
     }
 
-    fn process_message_inner(&mut self, create_info: &mut UpdateBuffersInfo, message: Message)
+    fn process_message_inner(&mut self, create_info: &mut UpdateBuffersInfo, message: Message) -> bool
     {
+        let is_chunk_sync = matches!(message, Message::ChunkSync{..});
+
         if DebugConfig::is_enabled(DebugTool::ClientMessages)
         {
             if DebugConfig::is_enabled(DebugTool::ClientMessagesFull)
@@ -1190,11 +1197,11 @@ impl GameState
             }
         }
 
-        let message = some_or_return!{self.world.handle_message(message)};
+        let message = some_or_value!{self.world.handle_message(&mut self.delayed_messages, message), true};
 
         let message = {
             let mut passer = self.connections_handler.lock();
-            some_or_return!{self.entities.handle_message(&mut passer, create_info, message, self.is_trusted)}
+            some_or_value!{self.entities.handle_message(&mut passer, create_info, message, self.is_trusted), true}
         };
 
         match message
@@ -1211,6 +1218,9 @@ impl GameState
             Message::DebugMessage(_) => (),
             x => panic!("unhandled message: {x:?}")
         }
+
+        // multiple chunk syncs in a single frame would cause stutters, i dont like those >:(
+        !is_chunk_sync
     }
 
     fn set_loading(&mut self, value: Option<f32>)

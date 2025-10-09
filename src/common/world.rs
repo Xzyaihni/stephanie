@@ -1,6 +1,7 @@
 use std::{
     borrow::Borrow,
-    sync::Arc
+    sync::Arc,
+    collections::VecDeque
 };
 
 use nalgebra::{Vector2, Vector3};
@@ -24,6 +25,7 @@ use crate::{
         TileMap,
         TileInfo,
         Entity,
+        EntityInfo,
         OccludingCaster,
         SpatialGrid,
         entity::ClientEntities,
@@ -81,6 +83,8 @@ pub const CLIENT_OVERMAP_SIZE_Z: usize = 3;
 pub const DAY_LENGTH: f64 = 60.0 * 6.0;
 pub const BETWEEN_LENGTH: f64 = 60.0 * 2.0;
 pub const NIGHT_LENGTH: f64 = 60.0 * 5.0;
+
+const ENTITY_SETS_MAX: usize = 25;
 
 #[derive(BufferContents, Vertex, Debug, Clone, Copy)]
 #[repr(C)]
@@ -420,7 +424,27 @@ impl World
         self.overmap.camera_moved(pos, on_change);
     }
 
-    pub fn handle_message(&mut self, message: Message) -> Option<Message>
+    fn chunked_entity_sets(delayed_messages: &mut VecDeque<Message>, entities: Vec<(Entity, EntityInfo)>)
+    {
+        if entities.len() <= ENTITY_SETS_MAX
+        {
+            delayed_messages.push_back(Message::EntitySetMany{entities});
+        } else
+        {
+            let mut head = entities;
+            let tail = head.split_off(ENTITY_SETS_MAX);
+
+            delayed_messages.push_back(Message::EntitySetMany{entities: head});
+
+            Self::chunked_entity_sets(delayed_messages, tail)
+        }
+    }
+
+    pub fn handle_message(
+        &mut self,
+        delayed_messages: &mut VecDeque<Message>,
+        message: Message
+    ) -> Option<Message>
     {
         match message
         {
@@ -433,13 +457,12 @@ impl World
             {
                 self.overmap.set(pos, chunk);
 
-                if entities.is_empty()
+                if !entities.is_empty()
                 {
-                    None
-                } else
-                {
-                    Some(Message::EntitySetMany{entities})
+                    Self::chunked_entity_sets(delayed_messages, entities);
                 }
+
+                None
             },
             _ => Some(message)
         }
