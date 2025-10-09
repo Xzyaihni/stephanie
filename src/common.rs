@@ -6,9 +6,9 @@ use std::{
 };
 
 #[allow(unused_imports)]
-use std::sync::{LazyLock, Mutex};
+use std::sync::LazyLock;
 
-use parking_lot::RwLock;
+use parking_lot::Mutex;
 
 use message::Message;
 
@@ -342,7 +342,6 @@ define_timings!
             spatial_grid_build,
             sleeping_update,
             enemy_system_update,
-            children_visibility_update,
             lazy_mix_update,
             outlineable_update,
             physical_update,
@@ -404,7 +403,7 @@ macro_rules! frame_timed
         #[cfg(debug_assertions)]
         {
             let time = $time_ms;
-            let mut timings = $crate::common::THIS_FRAME_TIMINGS.lock().unwrap();
+            let mut timings = $crate::common::THIS_FRAME_TIMINGS.lock();
 
             $(
                 let timings = &mut timings.$parent.1;
@@ -472,7 +471,7 @@ pub trait EntitiesController
 
     fn container_ref(&self) -> &Self::Container;
     fn container_mut(&mut self) -> &mut Self::Container;
-    fn passer(&self) -> Arc<RwLock<Self::Passer>>;
+    fn passer(&self) -> Arc<Mutex<Self::Passer>>;
 }
 
 #[derive(Debug)]

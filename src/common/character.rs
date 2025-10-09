@@ -6,7 +6,7 @@ use std::{
     sync::Arc
 };
 
-use parking_lot::{RwLock, Mutex};
+use parking_lot::Mutex;
 
 use serde::{Serialize, Deserialize};
 
@@ -166,7 +166,7 @@ pub const HAND_SCALE: f32 = 0.3;
 pub struct PartialCombinedInfo<'a>
 {
     pub world: &'a World,
-    pub passer: &'a Arc<RwLock<ConnectionsHandler>>,
+    pub passer: &'a Arc<Mutex<ConnectionsHandler>>,
     pub assets: &'a Arc<Mutex<Assets>>,
     pub common_textures: &'a CommonTextures,
     pub items_info: &'a ItemsInfo,
@@ -195,7 +195,7 @@ impl<'a> PartialCombinedInfo<'a>
 #[derive(Clone, Copy)]
 pub struct CombinedInfo<'a>
 {
-    pub passer: &'a Arc<RwLock<ConnectionsHandler>>,
+    pub passer: &'a Arc<Mutex<ConnectionsHandler>>,
     pub entities: &'a ClientEntities,
     pub world: &'a World,
     pub assets: &'a Arc<Mutex<Assets>>,
@@ -1751,6 +1751,23 @@ impl Character
         }
     }
 
+    pub fn try_initialize(&mut self, entities: &ClientEntities, entity: Entity) -> Option<bool>
+    {
+        if self.info.is_none()
+        {
+            self.initialize(entities, entity);
+            if self.info.is_none()
+            {
+                return None;
+            }
+
+            Some(true)
+        } else
+        {
+            Some(false)
+        }
+    }
+
     pub fn update(
         &mut self,
         combined_info: CombinedInfo,
@@ -1760,15 +1777,6 @@ impl Character
     )
     {
         let entities = combined_info.entities;
-
-        if self.info.is_none()
-        {
-            self.initialize(entities, entity);
-            if self.info.is_none()
-            {
-                return;
-            }
-        }
 
         self.handle_actions(combined_info);
 

@@ -15,7 +15,7 @@ use std::{
     }
 };
 
-use parking_lot::RwLock;
+use parking_lot::Mutex;
 
 use nalgebra::Vector3;
 
@@ -162,7 +162,7 @@ pub struct GameServer
     sender: Sender<(ConnectionId, Message, Entity)>,
     receiver: Receiver<(ConnectionId, Message, Entity)>,
     connection_receiver: Receiver<TcpStream>,
-    connection_handler: Arc<RwLock<ConnectionsHandler>>,
+    connection_handler: Arc<Mutex<ConnectionsHandler>>,
     receiver_handles: Vec<JoinHandle<()>>,
     exited: bool,
     rare_timer: f32
@@ -210,7 +210,7 @@ impl GameServer
     {
         let tilemap = Rc::new(tilemap);
         let entities = Entities::new(data_infos.clone());
-        let connection_handler = Arc::new(RwLock::new(ConnectionsHandler::new(limit)));
+        let connection_handler = Arc::new(Mutex::new(ConnectionsHandler::new(limit)));
 
         let world_name = "default".to_owned();
 
@@ -285,7 +285,7 @@ impl GameServer
         crate::frame_time_this!{
             [server_update] -> create_queued,
             {
-                let mut writer = self.connection_handler.write();
+                let mut writer = self.connection_handler.lock();
                 self.entities.create_queued(&mut writer);
             }
         };
@@ -370,7 +370,7 @@ impl GameServer
 
     pub fn connect(&mut self, stream: TcpStream) -> Result<(), ConnectionError>
     {
-        if self.connection_handler.read().under_limit()
+        if self.connection_handler.lock().under_limit()
         {
             self.player_connect(stream)
         } else
@@ -523,7 +523,7 @@ impl GameServer
 
         messager.send_one(&Message::PlayerFullyConnected)?;
 
-        self.connection_handler.write().send_message_without(connection, Message::EntitySet{
+        self.connection_handler.lock().send_message_without(connection, Message::EntitySet{
             entity: player_entity,
             info: Box::new(self.entities.info(player_entity))
         });
@@ -568,7 +568,7 @@ impl GameServer
         player_info.send_blocking(Message::PlayerOnConnect(on_connect_info))?;
 
         let is_host = player_info.host;
-        let connection_id = self.connection_handler.write().connect(player_info);
+        let connection_id = self.connection_handler.lock().connect(player_info);
 
         if DebugConfig::is_enabled(DebugTool::LoadPosition)
         {
@@ -588,7 +588,7 @@ impl GameServer
             self.world.as_mut().unwrap().send_all(&mut self.entities, connection_id)
         };
 
-        let mut writer = self.connection_handler.write();
+        let mut writer = self.connection_handler.lock();
         writer.flush()?;
 
         let messager = writer.get_mut(connection_id);
@@ -618,7 +618,7 @@ impl GameServer
 
     fn connection_close(&mut self, restart: bool, host: bool, id: ConnectionId, entity: Entity)
     {
-        let removed = self.connection_handler.write().remove_connection(id);
+        let removed = self.connection_handler.lock().remove_connection(id);
 
         self.world.as_mut().unwrap().remove_player(&mut self.entities, id);
 
@@ -662,7 +662,7 @@ impl GameServer
             }
 
             {
-                let mut writer = self.connection_handler.write();
+                let mut writer = self.connection_handler.lock();
                 writer.send_message(Message::EntityRemove(self.entities.send_remove(entity)));
             }
         }
@@ -737,7 +737,7 @@ impl GameServer
 
         if message.forward()
         {
-            self.connection_handler.write().send_message_without(id, message.clone());
+            self.connection_handler.lock().send_message_without(id, message.clone());
         }
 
         let message = some_or_return!{self.world.as_mut().unwrap().handle_message(
@@ -777,7 +777,7 @@ impl GameServer
 
     fn send_message(&mut self, message: Message)
     {
-        self.connection_handler.write().send_message(message);
+        self.connection_handler.lock().send_message(message);
     }
 }
 
@@ -796,7 +796,7 @@ impl EntitiesController for GameServer
         &mut self.entities
     }
 
-    fn passer(&self) -> Arc<RwLock<Self::Passer>>
+    fn passer(&self) -> Arc<Mutex<Self::Passer>>
     {
         self.connection_handler.clone()
     }

@@ -215,11 +215,6 @@ impl ClientEntitiesContainer
         }
 
         crate::frame_time_this!{
-            [update, update_pre] -> children_visibility_update,
-            self.entities.update_children_visibility()
-        };
-
-        crate::frame_time_this!{
             [update, update_pre] -> lazy_mix_update,
             self.entities.update_lazy_mix(dt)
         };
@@ -344,6 +339,18 @@ impl ClientEntitiesContainer
 
                 let mut render = render_cell.borrow_mut();
 
+                {
+                    if let Some(parent) = self.entities.parent(entity)
+                    {
+                        let parent_visible = self.entities.render(parent.entity()).map(|parent_render|
+                        {
+                            parent_render.visible
+                        }).unwrap_or(true);
+
+                        render.visible = parent.visible && parent_visible;
+                    }
+                }
+
                 render.set_transform(transform.clone());
 
                 let is_render_above = render.above_world;
@@ -367,22 +374,24 @@ impl ClientEntitiesContainer
 
                     let sky_occluded = below_player && world.sky_occluded(render_transform);
 
-                    let occluder_mut = self.entities.occluder_mut_no_change(entity);
-                    let is_render_visible = occluder_mut.is_none() && !world.wall_occluded(render_transform) && !sky_occluded;
-
-                    let is_render_shadow = render.shadow_visible && !sky_occluded;
-
-                    if !sky_occluded
+                    if sky_occluded
                     {
-                        if let Some(mut occluder) = occluder_mut
-                        {
-                            occluder.set_transform(transform.clone());
-                            occluder.update_buffers(info, caster);
+                        return;
+                    }
 
-                            if occluder.visible(visibility)
-                            {
-                                self.occluders.push(entity);
-                            }
+                    let occluder_mut = self.entities.occluder_mut_no_change(entity);
+                    let is_render_visible = occluder_mut.is_none() && !world.wall_occluded(render_transform);
+
+                    let is_render_shadow = render.shadow_visible;
+
+                    if let Some(mut occluder) = occluder_mut
+                    {
+                        occluder.set_transform(transform.clone());
+                        occluder.update_buffers(info, caster);
+
+                        if occluder.visible(visibility)
+                        {
+                            self.occluders.push(entity);
                         }
                     }
 
@@ -774,7 +783,7 @@ pub struct GameState
     rare_timer: f32,
     dt: Option<f32>,
     debug_visibility: <DebugVisibility as DebugVisibilityTrait>::State,
-    connections_handler: Arc<RwLock<ConnectionsHandler>>,
+    connections_handler: Arc<Mutex<ConnectionsHandler>>,
     receiver_handle: Option<JoinHandle<()>>,
     receiver: Receiver<Message>
 }
@@ -783,7 +792,7 @@ impl Drop for GameState
 {
     fn drop(&mut self)
     {
-        let mut writer = self.connections_handler.write();
+        let mut writer = self.connections_handler.lock();
         if let Err(err) = writer.send_blocking(&Message::PlayerDisconnect{
             time: Some(self.world.time()),
             restart: self.is_restart,
@@ -822,7 +831,7 @@ impl GameState
         let controls = ControlsController::new();
 
         let handler = ConnectionsHandler::new(message_passer);
-        let connections_handler = Arc::new(RwLock::new(handler));
+        let connections_handler = Arc::new(Mutex::new(handler));
 
         let tilemap = info.tiles_factory.tilemap().clone();
 
@@ -851,7 +860,7 @@ impl GameState
 
         let _sender_handle = sender_loop(connections_handler.clone());
 
-        let handler = connections_handler.read().passer_clone();
+        let handler = connections_handler.lock().passer_clone();
 
         let (sender, receiver) = mpsc::channel();
 
@@ -1034,12 +1043,12 @@ impl GameState
     }
 
     fn connect_to_server(
-        handler: Arc<RwLock<ConnectionsHandler>>,
+        handler: Arc<Mutex<ConnectionsHandler>>,
         name: &str,
         host: bool
     ) -> OnConnectInfo
     {
-        let mut handler = handler.write();
+        let mut handler = handler.lock();
 
         let message = Message::PlayerConnect{name: name.to_owned(), host};
         if let Err(x) = handler.send_blocking(&message)
@@ -1172,7 +1181,7 @@ impl GameState
         let message = some_or_return!{self.world.handle_message(message)};
 
         let message = {
-            let mut passer = self.connections_handler.write();
+            let mut passer = self.connections_handler.lock();
             some_or_return!{self.entities.handle_message(&mut passer, create_info, message, self.is_trusted)}
         };
 
@@ -1261,7 +1270,7 @@ impl GameState
 
     pub fn send_message(&self, message: Message)
     {
-        self.connections_handler.write().send_message(message);
+        self.connections_handler.lock().send_message(message);
     }
 
     pub fn tile(&self, index: TilePos) -> Option<&Tile>
@@ -1549,7 +1558,7 @@ impl GameState
 
             if self.is_trusted
             {
-                let mut passer = self.connections_handler.write();
+                let mut passer = self.connections_handler.lock();
                 crate::frame_time_this!{
                     [update, game_state_update] -> sync_changed,
                     self.entities.entities.sync_changed(&mut passer)
@@ -1650,7 +1659,7 @@ impl GameState
         {
             self.world.camera_moved(position, ||
             {
-                self.connections_handler.write().send_message(Message::SyncCamera{position});
+                self.connections_handler.lock().send_message(Message::SyncCamera{position});
             });
         }
     }
@@ -1688,7 +1697,7 @@ impl EntitiesController for GameState
         &mut self.entities
     }
 
-    fn passer(&self) -> Arc<RwLock<Self::Passer>>
+    fn passer(&self) -> Arc<Mutex<Self::Passer>>
     {
         self.connections_handler.clone()
     }

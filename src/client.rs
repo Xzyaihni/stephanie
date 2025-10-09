@@ -305,7 +305,7 @@ impl Client
         {
             use crate::common::TimingsTrait;
 
-            let timings = crate::common::THIS_FRAME_TIMINGS.lock().unwrap();
+            let timings = crate::common::THIS_FRAME_TIMINGS.lock();
 
             let frame_time = timings.update.0.unwrap() + timings.update_buffers.0.unwrap() + timings.draw.0.unwrap();
 

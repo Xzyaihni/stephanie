@@ -7,7 +7,7 @@ use std::{
     collections::{hash_map::Entry, HashMap}
 };
 
-use parking_lot::RwLock;
+use parking_lot::Mutex;
 
 use crate::{
     server::{DataInfos, ConnectionsHandler, game_server::{load_world_file, LoadWorldFileError}},
@@ -140,7 +140,7 @@ impl Overmap<bool> for EntitiesTracker
 
 pub struct World
 {
-    message_handler: Arc<RwLock<ConnectionsHandler>>,
+    message_handler: Arc<Mutex<ConnectionsHandler>>,
     world_name: String,
     world_generator: Rc<RefCell<WorldGenerator<WorldChunkSaver>>>,
     chunk_saver: ChunkSaver,
@@ -156,7 +156,7 @@ pub struct World
 impl World
 {
     pub fn new(
-        message_handler: Arc<RwLock<ConnectionsHandler>>,
+        message_handler: Arc<Mutex<ConnectionsHandler>>,
         tilemap: Rc<TileMap>,
         data_infos: DataInfos,
         world_name: String
@@ -309,7 +309,7 @@ impl World
         container: &mut ServerEntities
     )
     {
-        let mut writer = self.message_handler.write();
+        let mut writer = self.message_handler.lock();
 
         Self::unload_entities_inner(container, &mut writer, |global|
         {
@@ -332,7 +332,7 @@ impl World
             eprintln!("error trying to save world info: {err}");
         }
 
-        let mut writer = self.message_handler.write();
+        let mut writer = self.message_handler.lock();
         Self::unload_entities_inner(container, &mut writer, |_global|
         {
             false
@@ -364,7 +364,7 @@ impl World
     {
         let message = self.load_chunk(container, id, pos);
 
-        self.message_handler.write().send_single(id, message);
+        self.message_handler.lock().send_single(id, message);
     }
 
     fn create_entities_full(
@@ -637,11 +637,11 @@ mod tests
             f: impl FnOnce(&mut ServerEntities, &mut World, ConnectionId)
         )
         {
-            let passer = Arc::new(RwLock::new(ConnectionsHandler::new(3)));
+            let passer = Arc::new(Mutex::new(ConnectionsHandler::new(3)));
 
             let mut entities = ServerEntities::new(None);
 
-            let player = passer.write().connect(PlayerInfo{
+            let player = passer.lock().connect(PlayerInfo{
                 message_buffer: MessageBuffer::new(),
                 message_passer: MessagePasser::new(stream),
                 entity: Some(entities.push_eager(false, EntityInfo{..Default::default()})),
@@ -669,12 +669,12 @@ mod tests
 
             f(&mut entities, &mut world, player);
 
-            passer.write().send_buffered().unwrap();
+            passer.lock().send_buffered().unwrap();
 
             world.remove_player(&mut entities, player);
 
-            passer.write().remove_connection(player).unwrap();
-            passer.write().send_buffered().unwrap();
+            passer.lock().remove_connection(player).unwrap();
+            passer.lock().send_buffered().unwrap();
         }
 
         let listener = TcpListener::bind("localhost:12345").unwrap();

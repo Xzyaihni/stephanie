@@ -3,7 +3,7 @@ use std::{
     collections::VecDeque
 };
 
-use parking_lot::RwLock;
+use parking_lot::Mutex;
 
 use crate::{
     client::ConnectionsHandler,
@@ -70,11 +70,11 @@ impl ChunkWorldReceiver
 }
 
 #[derive(Debug, Clone)]
-pub struct WorldReceiver(Arc<RwLock<ConnectionsHandler>>);
+pub struct WorldReceiver(Arc<Mutex<ConnectionsHandler>>);
 
 impl WorldReceiver
 {
-    pub fn new(message_handler: Arc<RwLock<ConnectionsHandler>>) -> Self
+    pub fn new(message_handler: Arc<Mutex<ConnectionsHandler>>) -> Self
     {
         Self(message_handler)
     }
@@ -86,6 +86,6 @@ impl WorldReceiver
 
     fn send_message(&self, message: Message)
     {
-        self.0.write().send_message(message);
+        self.0.lock().send_message(message);
     }
 }

@@ -4,7 +4,7 @@ use std::{
     time::{Duration, Instant}
 };
 
-use parking_lot::RwLock;
+use parking_lot::Mutex;
 
 use crate::common::MessageSerError;
 
@@ -35,7 +35,7 @@ pub fn waiting_loop<F: FnMut() -> bool>(mut f: F)
 }
 
 pub fn sender_loop<B: BufferSender + Send + Sync + 'static>(
-    sender: Arc<RwLock<B>>
+    sender: Arc<Mutex<B>>
 ) -> JoinHandle<()>
 {
     thread::spawn(move ||
@@ -43,7 +43,7 @@ pub fn sender_loop<B: BufferSender + Send + Sync + 'static>(
         waiting_loop(||
         {
             // error only happens if receiver hung up
-            sender.write().send_buffered().is_err()
+            sender.lock().send_buffered().is_err()
         });
     })
 }

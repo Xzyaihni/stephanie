@@ -2,7 +2,7 @@ use std::{
     f32,
     mem,
     rc::Rc,
-    ops::Range,
+    ops::{ControlFlow, Range},
     fmt::{self, Debug},
     cell::{Ref, RefMut, RefCell}
 };
@@ -52,6 +52,9 @@ use crate::{
 
 pub use crate::{iterate_components_with, iterate_components_many_with, for_each_component};
 
+
+// max amount of character initializations per frame
+const CHARACTERS_INITIALIZATIONS_MAX: usize = 10;
 
 // too many macros, the syntax is horrible, why r they so limiting? wuts up with that?
 
@@ -2104,24 +2107,6 @@ macro_rules! define_entities_both
                 };
             }
 
-            pub fn update_children_visibility(&mut self)
-            {
-                for_each_component!(self, parent, |entity, parent: &RefCell<Parent>|
-                {
-                    let parent = parent.borrow();
-
-                    if let Some(mut render) = self.render_mut_no_change(entity)
-                    {
-                        let parent_visible = self.render(parent.entity).map(|parent_render|
-                        {
-                            parent_render.visible
-                        }).unwrap_or(true);
-
-                        render.visible = parent.visible && parent_visible;
-                    }
-                });
-            }
-
             pub fn is_lootable(&self, entity: Entity) -> bool
             {
                 let is_player = self.player_exists(entity);
@@ -2224,22 +2209,44 @@ macro_rules! define_entities_both
                 dt: f32
             )
             {
-                for_each_component!(self, character, |entity, character: &RefCell<Character>|
+                let mut initialized_count = 0;
+
+                let combined_info = partial.to_full(self);
+
+                let _ = iterate_components_with!(self, character, try_for_each, |entity, character: &RefCell<Character>|
                 {
-                    let combined_info = partial.to_full(self);
+                    let mut character = character.borrow_mut();
 
-                    character.borrow_mut().update(
-                        combined_info,
-                        entity,
-                        dt,
-                        |texture|
+                    let initialized = character.try_initialize(self, entity);
+
+                    if let Some(true) = initialized
+                    {
+                        if initialized_count > CHARACTERS_INITIALIZATIONS_MAX
                         {
-                            let mut render = self.render_mut(entity).unwrap();
-                            let transform = self.target_ref(entity).unwrap();
-
-                            render.set_sprite(create_info, Some(&transform), texture);
+                            return ControlFlow::Break(());
+                        } else
+                        {
+                            initialized_count += 1;
                         }
-                    )
+                    }
+
+                    if initialized.is_some()
+                    {
+                        character.update(
+                            combined_info,
+                            entity,
+                            dt,
+                            |texture|
+                            {
+                                let mut render = self.render_mut(entity).unwrap();
+                                let transform = self.target_ref(entity).unwrap();
+
+                                render.set_sprite(create_info, Some(&transform), texture);
+                            }
+                        );
+                    }
+
+                    ControlFlow::Continue(())
                 });
             }
         }
