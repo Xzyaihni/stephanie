@@ -380,7 +380,7 @@ define_timings!
         }
     },
     update_buffers is TimingsUpdateBuffers -> {
-        world_update_buffers_shadows_normal,
+        world_update_buffers_normal,
         world_update_buffers_shadows,
         entities_update_buffers is TimingsEntitiesUpdateBuffers -> {
             normal,

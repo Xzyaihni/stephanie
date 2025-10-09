@@ -77,7 +77,8 @@ use crate::{
             World,
             Pos3,
             Tile,
-            TilePos
+            TilePos,
+            chunk::{rounded_single, to_tile_single}
         }
     }
 };
@@ -355,7 +356,12 @@ impl ClientEntitiesContainer
                 {
                     let real_z = (transform.position.z / TILE_SIZE).floor() as i32;
 
-                    let below_player = !visibility.world_position.is_same_height(&TilePos::from(transform.position));
+                    let below_player = {
+                        let z = transform.position.z;
+
+                        (visibility.world_position.chunk.0.z != rounded_single(z))
+                            || (visibility.world_position.local.pos().z != to_tile_single(z))
+                    };
 
                     let render_transform = some_or_return!(some_or_return!(render.object.as_ref()).transform());
 
@@ -1297,7 +1303,7 @@ impl GameState
         let visibility = self.visibility_checker();
 
         crate::frame_time_this!{
-            [update_buffers] -> world_update_buffers_shadows_normal,
+            [update_buffers] -> world_update_buffers_normal,
             self.world.update_buffers(info)
         };
 
