@@ -78,6 +78,7 @@ use crate::{
             Pos3,
             Tile,
             TilePos,
+            OccludedCheckerInfo,
             chunk::{rounded_single, to_tile_single}
         }
     }
@@ -292,7 +293,8 @@ impl ClientEntitiesContainer
         visibility: &VisibilityChecker,
         info: &mut UpdateBuffersInfo,
         caster: &OccludingCaster,
-        world: &mut World
+        world: &mut World,
+        occluded_checker_info: &OccludedCheckerInfo
     )
     {
         fn insert_render<V>(renders: &mut BTreeMap<i32, (Vec<V>, Vec<ZLevel>)>, value: V, z: ZLevel, key: i32)
@@ -372,7 +374,10 @@ impl ClientEntitiesContainer
 
                     let render_transform = some_or_return!(some_or_return!(render.object.as_ref()).transform());
 
-                    let sky_occluded = below_player && world.sky_occluded(render_transform);
+                    let occluded_checker = world.occluded_checker(render_transform);
+
+                    let sky_occluded = below_player
+                        && occluded_checker.sky_occluded(world.visual_chunks(), occluded_checker_info);
 
                     if sky_occluded
                     {
@@ -380,7 +385,9 @@ impl ClientEntitiesContainer
                     }
 
                     let occluder_mut = self.entities.occluder_mut_no_change(entity);
-                    let is_render_visible = occluder_mut.is_none() && !world.wall_occluded(render_transform);
+
+                    let is_render_visible = occluder_mut.is_none()
+                        && !occluded_checker.wall_occluded(world.visual_occluded(), occluded_checker_info);
 
                     let is_render_shadow = render.shadow_visible;
 
@@ -427,7 +434,8 @@ impl ClientEntitiesContainer
         &mut self,
         visibility: &VisibilityChecker,
         info: &mut UpdateBuffersInfo,
-        world: &mut World
+        world: &mut World,
+        occluded_checker_info: &OccludedCheckerInfo
     )
     {
         self.light_renders.clear();
@@ -456,15 +464,17 @@ impl ClientEntitiesContainer
                     ..*transform
                 };
 
+                let occluded_checker = world.occluded_checker(&light_transform);
+
                 if below_player
                 {
-                    if world.light_sky_occluded(&light_transform)
+                    if occluded_checker.light_sky_occluded(world.visual_chunks(), occluded_checker_info)
                     {
                         return;
                     }
                 }
 
-                if world.wall_occluded(&light_transform)
+                if occluded_checker.wall_occluded(world.visual_occluded(), occluded_checker_info)
                 {
                     return;
                 }
@@ -497,14 +507,16 @@ impl ClientEntitiesContainer
         world: &mut World
     )
     {
+        let occluded_checker_info = world.occluded_checker_info();
+
         crate::frame_time_this!{
             [update_buffers, entities_update_buffers] -> normal,
-            self.update_buffers_normal(visibility, info, caster, world)
+            self.update_buffers_normal(visibility, info, caster, world, &occluded_checker_info)
         };
 
         crate::frame_time_this!{
             [update_buffers, entities_update_buffers] -> lights,
-            self.update_buffers_lights(visibility, info, world)
+            self.update_buffers_lights(visibility, info, world, &occluded_checker_info)
         };
     }
 }

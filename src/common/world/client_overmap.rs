@@ -20,7 +20,7 @@ use crate::{
 
 use super::{
     Tile,
-    visual_overmap::VisualOvermap,
+    visual_overmap::{VisualOvermap, OccludedChecker, OccludedCheckerInfo, VisualOvermapChunk, OccludedSlice},
     overmap::{
         ChunksContainer,
         Overmap,
@@ -480,19 +480,24 @@ impl ClientOvermap
         self.visual_overmap.update_buffers_shadows(info, visibility, caster);
     }
 
-    pub fn sky_occluded(&self, transform: &Transform) -> bool
+    pub fn visual_chunks(&self) -> &ChunksContainer<VisualOvermapChunk>
     {
-        self.visual_overmap.sky_occluded(transform)
+        self.visual_overmap.visual_chunks()
     }
 
-    pub fn light_sky_occluded(&self, transform: &Transform) -> bool
+    pub fn visual_occluded(&self) -> &ChunksContainer<[OccludedSlice; CHUNK_SIZE]>
     {
-        self.visual_overmap.light_sky_occluded(transform)
+        self.visual_overmap.visual_occluded()
     }
 
-    pub fn wall_occluded(&self, transform: &Transform) -> bool
+    pub fn occluded_checker_info(&self) -> OccludedCheckerInfo
     {
-        self.visual_overmap.wall_occluded(transform)
+        self.visual_overmap.occluded_checker_info()
+    }
+
+    pub fn occluded_checker(&self, transform: &Transform) -> OccludedChecker
+    {
+        self.visual_overmap.occluded_checker(transform)
     }
 
     pub fn update_buffers_light_shadows(

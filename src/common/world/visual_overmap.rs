@@ -263,7 +263,7 @@ fn for_visible_2d_with<'a, M: OvermapIndexing>(
 }
 
 #[derive(Debug, Clone)]
-struct OccludedSlice
+pub struct OccludedSlice
 {
     occlusions: [bool; CHUNK_SIZE * CHUNK_SIZE],
     visible_points: Vec<usize>
@@ -444,6 +444,108 @@ impl ChunkSkyOcclusion
     pub fn occluded(&self) -> &[[bool; CHUNK_SIZE * CHUNK_SIZE]; CHUNK_SIZE]
     {
         &self.occluded
+    }
+}
+
+pub struct OccludedCheckerInfo
+{
+    size_z: usize,
+    player_chunk_height: i32,
+    player_height: usize
+}
+
+pub struct OccludedChecker
+{
+    top_left: Pos3<usize>,
+    bottom_right: Pos3<usize>,
+    size: Pos3<usize>,
+    top_left_tile: Pos3<usize>,
+    bottom_right_tile: Pos3<usize>,
+    z: f32
+}
+
+impl OccludedChecker
+{
+    fn run(&self, f: impl Fn(LocalPos, usize, Vector2<usize>, Vector2<usize>) -> bool) -> bool
+    {
+        (self.top_left.y..=self.bottom_right.y).all(|y|
+        {
+            let f = &f;
+            (self.top_left.x..=self.bottom_right.x).all(move |x|
+            {
+                let pos = LocalPos::new(Pos3{x, y, z: self.top_left.z}, self.size);
+
+                let tile_start = Vector2::new(
+                    if x == self.top_left.x { self.top_left_tile.x } else { 0 },
+                    if y == self.top_left.y { self.top_left_tile.y } else { 0 }
+                );
+
+                let tile_end = Vector2::new(
+                    if x == self.bottom_right.x { self.bottom_right_tile.x } else { CHUNK_SIZE - 1 },
+                    if y == self.bottom_right.y { self.bottom_right_tile.y } else { CHUNK_SIZE - 1 }
+                );
+
+                f(pos, self.top_left_tile.z, tile_start, tile_end)
+            })
+        })
+    }
+
+    pub fn sky_occluded(
+        &self,
+        chunks: &ChunksContainer<VisualOvermapChunk>,
+        info: &OccludedCheckerInfo
+    ) -> bool
+    {
+        let camera_z = info.size_z / 2;
+
+        let z = VisualOvermap::chunk_height_of(info.size_z, self.z, info.player_chunk_height);
+        self.run(|pos, height, top_left, bottom_right|
+        {
+            let (z, height) = if let Some(z) = z { (z, height) } else { (0, 0) };
+
+            let pos = pos.with_z(z);
+
+            let chunk = &chunks[pos].chunk;
+
+            if pos.pos.z == camera_z
+            {
+                chunk.sky_occluded_between(height..=info.player_height, top_left, bottom_right)
+            } else
+            {
+                chunk.sky_occluded(height, top_left, bottom_right)
+            }
+        })
+    }
+
+    pub fn light_sky_occluded(
+        &self,
+        chunks: &ChunksContainer<VisualOvermapChunk>,
+        info: &OccludedCheckerInfo
+    ) -> bool
+    {
+        let z = VisualOvermap::chunk_height_of(info.size_z, self.z - TILE_SIZE, info.player_chunk_height);
+        self.run(|pos, height, top_left, bottom_right|
+        {
+            let (z, height) = if let Some(z) = z { (z, height) } else { (0, 0) };
+
+            let chunk = &chunks[pos.with_z(z)].chunk;
+
+            !chunk.sky_occlusion_changed(height, top_left, bottom_right)
+        })
+    }
+
+    pub fn wall_occluded(
+        &self,
+        occluded: &ChunksContainer<[OccludedSlice; CHUNK_SIZE]>,
+        info: &OccludedCheckerInfo
+    ) -> bool
+    {
+        let z = info.size_z / 2;
+        self.run(|pos, _height, top_left, bottom_right|
+        {
+            let pos = pos.with_z(z);
+            occluded[pos][info.player_height].occluded(top_left, bottom_right)
+        })
     }
 }
 
@@ -1212,65 +1314,31 @@ impl VisualOvermap
         Some((pos, height))
     }
 
-    pub fn sky_occluded(&self, transform: &Transform) -> bool
+    pub fn visual_chunks(&self) -> &ChunksContainer<VisualOvermapChunk>
     {
-        let size_z = self.visibility_checker.size.z;
-        let player_position_z = self.visibility_checker.player_chunk_height();
-        let player_height = self.visibility_checker.player_height();
-
-        let camera_z = size_z / 2;
-
-        let z = Self::chunk_height_of(size_z, transform.position.z, player_position_z);
-        self.occluded_with(transform, |pos, height, top_left, bottom_right|
-        {
-            let (z, height) = if let Some(z) = z { (z, height) } else { (0, 0) };
-
-            let pos = pos.with_z(z);
-
-            let chunk = &self.chunks[pos].chunk;
-
-            if pos.pos.z == camera_z
-            {
-                chunk.sky_occluded_between(height..=player_height, top_left, bottom_right)
-            } else
-            {
-                chunk.sky_occluded(height, top_left, bottom_right)
-            }
-        })
+        &self.chunks
     }
 
-    pub fn light_sky_occluded(&self, transform: &Transform) -> bool
+    pub fn visual_occluded(&self) -> &ChunksContainer<[OccludedSlice; CHUNK_SIZE]>
     {
-        let size_z = self.visibility_checker.size.z;
-        let player_position_z = self.visibility_checker.player_chunk_height();
-
-        let z = Self::chunk_height_of(size_z, transform.position.z - TILE_SIZE, player_position_z);
-        self.occluded_with(transform, |pos, height, top_left, bottom_right|
-        {
-            let (z, height) = if let Some(z) = z { (z, height) } else { (0, 0) };
-
-            let chunk = &self.chunks[pos.with_z(z)].chunk;
-
-            !chunk.sky_occlusion_changed(height, top_left, bottom_right)
-        })
+        &self.occluded
     }
 
-    pub fn wall_occluded(&self, transform: &Transform) -> bool
+    pub fn occluded_checker_info(&self) -> OccludedCheckerInfo
     {
-        let z = self.visibility_checker.top_z();
-        let height = self.visibility_checker.player_height();
-        self.occluded_with(transform, |pos, _height, top_left, bottom_right|
-        {
-            let pos = pos.with_z(z);
-            self.occluded[pos][height].occluded(top_left, bottom_right)
-        })
+        let player_position_z = self.visibility_checker.player_position.read().z;
+
+        OccludedCheckerInfo{
+            size_z: self.visibility_checker.size.z,
+            player_chunk_height: rounded_single(player_position_z),
+            player_height: to_tile_single(player_position_z)
+        }
     }
 
-    fn occluded_with(
+    pub fn occluded_checker(
         &self,
-        transform: &Transform,
-        f: impl Fn(LocalPos, usize, Vector2<usize>, Vector2<usize>) -> bool
-    ) -> bool
+        transform: &Transform
+    ) -> OccludedChecker
     {
         let pos = transform.position;
 
@@ -1306,26 +1374,14 @@ impl VisualOvermap
             (chunk, tile)
         };
 
-        (top_left.pos.y..=bottom_right.pos.y).all(|y|
-        {
-            let f = &f;
-            (top_left.pos.x..=bottom_right.pos.x).all(move |x|
-            {
-                let pos = LocalPos::new(Pos3{x, y, z: top_left.pos.z}, top_left.size);
-
-                let tile_start = Vector2::new(
-                    if x == top_left.pos.x { top_left_tile.x } else { 0 },
-                    if y == top_left.pos.y { top_left_tile.y } else { 0 }
-                );
-
-                let tile_end = Vector2::new(
-                    if x == bottom_right.pos.x { bottom_right_tile.x } else { CHUNK_SIZE - 1 },
-                    if y == bottom_right.pos.y { bottom_right_tile.y } else { CHUNK_SIZE - 1 }
-                );
-
-                f(pos, top_left_tile.z, tile_start, tile_end)
-            })
-        })
+        OccludedChecker{
+            top_left: top_left.pos,
+            bottom_right: bottom_right.pos,
+            size: top_left.size,
+            top_left_tile,
+            bottom_right_tile,
+            z: transform.position.z
+        }
     }
 
     fn light_visibility_checker(

@@ -56,9 +56,10 @@ pub use overmap::{
 };
 
 pub use client_overmap::TilePos;
+pub use visual_overmap::{OccludedChecker, OccludedCheckerInfo};
 
 use client_overmap::ClientOvermap;
-use visual_overmap::VisualOvermap;
+use visual_overmap::{VisualOvermap, VisualOvermapChunk, OccludedSlice};
 
 pub use sky_light::SkyLight;
 
@@ -462,19 +463,24 @@ impl World
         self.overmap.update_buffers_shadows(info, visibility, caster);
     }
 
-    pub fn sky_occluded(&self, transform: &Transform) -> bool
+    pub fn visual_chunks(&self) -> &ChunksContainer<VisualOvermapChunk>
     {
-        self.overmap.sky_occluded(transform)
+        self.overmap.visual_chunks()
     }
 
-    pub fn light_sky_occluded(&self, transform: &Transform) -> bool
+    pub fn visual_occluded(&self) -> &ChunksContainer<[OccludedSlice; CHUNK_SIZE]>
     {
-        self.overmap.light_sky_occluded(transform)
+        self.overmap.visual_occluded()
     }
 
-    pub fn wall_occluded(&self, transform: &Transform) -> bool
+    pub fn occluded_checker_info(&self) -> OccludedCheckerInfo
     {
-        self.overmap.wall_occluded(transform)
+        self.overmap.occluded_checker_info()
+    }
+
+    pub fn occluded_checker(&self, transform: &Transform) -> OccludedChecker
+    {
+        self.overmap.occluded_checker(transform)
     }
 
     pub fn update_buffers_light_shadows(
