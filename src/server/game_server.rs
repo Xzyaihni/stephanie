@@ -795,9 +795,4 @@ impl EntitiesController for GameServer
     {
         &mut self.entities
     }
-
-    fn passer(&self) -> Arc<Mutex<Self::Passer>>
-    {
-        self.connection_handler.clone()
-    }
 }

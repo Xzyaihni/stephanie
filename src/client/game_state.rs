@@ -41,7 +41,6 @@ use crate::{
     common::{
         some_or_value,
         some_or_return,
-        sender_loop,
         receiver_loop,
         render_info::*,
         lazy_transform::*,
@@ -59,6 +58,7 @@ use crate::{
         OccludingCaster,
         OnChangeInfo,
         OnConnectInfo,
+        sender_loop::BufferSender,
         message::Message,
         character::PartialCombinedInfo,
         systems::{
@@ -796,7 +796,7 @@ pub struct GameState
     rare_timer: f32,
     dt: Option<f32>,
     debug_visibility: <DebugVisibility as DebugVisibilityTrait>::State,
-    connections_handler: Arc<Mutex<ConnectionsHandler>>,
+    connections_handler: ConnectionsHandler,
     delayed_messages: VecDeque<Message>,
     receiver_handle: Option<JoinHandle<()>>,
     receiver: Receiver<Message>
@@ -806,8 +806,7 @@ impl Drop for GameState
 {
     fn drop(&mut self)
     {
-        let mut writer = self.connections_handler.lock();
-        if let Err(err) = writer.send_blocking(&Message::PlayerDisconnect{
+        if let Err(err) = self.connections_handler.send_blocking(&Message::PlayerDisconnect{
             time: Some(self.world.time()),
             restart: self.is_restart,
             host: self.host
@@ -844,13 +843,12 @@ impl GameState
         let notifications = Notifications::new();
         let controls = ControlsController::new();
 
-        let handler = ConnectionsHandler::new(message_passer);
-        let connections_handler = Arc::new(Mutex::new(handler));
+        let mut handler = ConnectionsHandler::new(message_passer);
 
         let tilemap = info.tiles_factory.tilemap().clone();
 
         let OnConnectInfo{player_entity, player_position, time} = Self::connect_to_server(
-            connections_handler.clone(),
+            &mut handler,
             &info.player_name,
             info.host
         );
@@ -867,13 +865,9 @@ impl GameState
             time
         );
 
-        let _sender_handle = sender_loop(connections_handler.clone());
-
-        let handler = connections_handler.lock().passer_clone();
-
         let (sender, receiver) = mpsc::channel();
 
-        let receiver_handle = Some(receiver_loop(handler, move |message|
+        let receiver_handle = Some(receiver_loop(handler.passer_clone(), move |message|
         {
             let is_disconnect = match message
             {
@@ -960,7 +954,7 @@ impl GameState
             is_paused: false,
             user_receiver,
             debug_visibility,
-            connections_handler,
+            connections_handler: handler,
             delayed_messages: VecDeque::new(),
             receiver_handle,
             receiver
@@ -1038,11 +1032,11 @@ impl GameState
         }
 
         {
-            let entities = self.entities();
+            let entities = &self.entities.entities;
             let target = some_or_return!(entities.target_ref(entity));
 
             let position = target.position;
-            self.send_message(Message::SyncPositionRotation{
+            self.connections_handler.send_message(Message::SyncPositionRotation{
                 entity,
                 position,
                 rotation: target.rotation
@@ -1053,13 +1047,11 @@ impl GameState
     }
 
     fn connect_to_server(
-        handler: Arc<Mutex<ConnectionsHandler>>,
+        handler: &mut ConnectionsHandler,
         name: &str,
         host: bool
     ) -> OnConnectInfo
     {
-        let mut handler = handler.lock();
-
         let message = Message::PlayerConnect{name: name.to_owned(), host};
         if let Err(x) = handler.send_blocking(&message)
         {
@@ -1090,6 +1082,11 @@ impl GameState
 
     pub fn process_messages(&mut self, create_info: &mut UpdateBuffersInfo)
     {
+        if self.connections_handler.send_buffered().is_err()
+        {
+            self.running = false;
+        }
+
         if let Some(message) = self.delayed_messages.pop_front()
         {
             self.process_message_inner(create_info, message);
@@ -1194,9 +1191,9 @@ impl GameState
 
         let message = some_or_value!{self.world.handle_message(&mut self.delayed_messages, message), true};
 
-        let message = {
-            let mut passer = self.connections_handler.lock();
-            some_or_value!{self.entities.handle_message(&mut passer, create_info, message, self.is_trusted), true}
+        let message = some_or_value!{
+            self.entities.handle_message(&mut self.connections_handler, create_info, message, self.is_trusted),
+            true
         };
 
         match message
@@ -1278,16 +1275,16 @@ impl GameState
         self.entities.update_resize(size);
     }
 
-    pub fn echo_message(&self, message: Message)
+    pub fn echo_message(&mut self, message: Message)
     {
         let message = Message::RepeatMessage{message: Box::new(message)};
 
         self.send_message(message);
     }
 
-    pub fn send_message(&self, message: Message)
+    pub fn send_message(&mut self, message: Message)
     {
-        self.connections_handler.lock().send_message(message);
+        self.connections_handler.send_message(message);
     }
 
     pub fn tile(&self, index: TilePos) -> Option<&Tile>
@@ -1297,7 +1294,7 @@ impl GameState
 
     pub fn destroy_tile(&mut self, tile: TilePos)
     {
-        self.world.set_tile(&mut self.connections_handler.lock(), tile, Tile::none());
+        self.world.set_tile(&mut self.connections_handler, tile, Tile::none());
     }
 
     pub fn player_connected(&mut self) -> bool
@@ -1485,14 +1482,14 @@ impl GameState
 
         crate::frame_time_this!{
             [update, update_pre] -> world_update,
-            self.world.update(&mut self.connections_handler.lock(), dt)
+            self.world.update(&mut self.connections_handler, dt)
         };
 
         if self.connected_and_ready && !self.is_paused
         {
             self.entities.update(
                 &mut self.world,
-                &mut self.connections_handler.lock(),
+                &mut self.connections_handler,
                 &self.common_textures,
                 self.is_trusted,
                 dt
@@ -1576,10 +1573,9 @@ impl GameState
 
             if self.is_trusted
             {
-                let mut passer = self.connections_handler.lock();
                 crate::frame_time_this!{
                     [update, game_state_update] -> sync_changed,
-                    self.entities.entities.sync_changed(&mut passer)
+                    self.entities.entities.sync_changed(&mut self.connections_handler)
                 };
             }
 
@@ -1677,7 +1673,7 @@ impl GameState
         {
             self.world.camera_moved(position, ||
             {
-                self.connections_handler.lock().send_message(Message::SyncCamera{position});
+                self.connections_handler.send_message(Message::SyncCamera{position});
             });
         }
     }
@@ -1713,10 +1709,5 @@ impl EntitiesController for GameState
     fn container_mut(&mut self) -> &mut Self::Container
     {
         &mut self.entities
-    }
-
-    fn passer(&self) -> Arc<Mutex<Self::Passer>>
-    {
-        self.connections_handler.clone()
     }
 }

@@ -471,7 +471,6 @@ pub trait EntitiesController
 
     fn container_ref(&self) -> &Self::Container;
     fn container_mut(&mut self) -> &mut Self::Container;
-    fn passer(&self) -> Arc<Mutex<Self::Passer>>;
 }
 
 #[derive(Debug)]

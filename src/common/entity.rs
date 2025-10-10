@@ -1027,32 +1027,6 @@ macro_rules! common_trait_impl
 
             for_components(&self.components, false);
             for_components(&self.local_components, true);
-
-            let reducer = |(before, before_z), x@(after, after_z)|
-            {
-                if !(before_z <= after_z)
-                {
-                    let body = format!("[{side} Z-ORDER FAILED] ({before_z:?} ({before:?}) <= {after_z:?} ({after:?}))");
-
-                    eprintln!("{body}");
-
-                    write_log(format!(
-                        "{body} before: {}, after: {}",
-                        self.info_ref(before).map(|x| format!("{x:#?}")).unwrap_or_default(),
-                        self.info_ref(after).map(|x| format!("{x:#?}")).unwrap_or_default()
-                    ));
-
-                    if PANIC_ON_FAIL { panic!() }
-                }
-
-                x
-            };
-
-            iterate_components_with!(self, render, map, |entity, _|
-            {
-                (entity, self.z_level(entity).unwrap())
-            }).reduce(reducer);
-
         }
     }
 }

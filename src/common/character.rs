@@ -166,7 +166,7 @@ pub const HAND_SCALE: f32 = 0.3;
 pub struct PartialCombinedInfo<'a>
 {
     pub world: &'a World,
-    pub passer: &'a Arc<Mutex<ConnectionsHandler>>,
+    pub passer: &'a ConnectionsHandler,
     pub assets: &'a Arc<Mutex<Assets>>,
     pub common_textures: &'a CommonTextures,
     pub items_info: &'a ItemsInfo,
@@ -195,7 +195,7 @@ impl<'a> PartialCombinedInfo<'a>
 #[derive(Clone, Copy)]
 pub struct CombinedInfo<'a>
 {
-    pub passer: &'a Arc<Mutex<ConnectionsHandler>>,
+    pub passer: &'a ConnectionsHandler,
     pub entities: &'a ClientEntities,
     pub world: &'a World,
     pub assets: &'a Arc<Mutex<Assets>>,
