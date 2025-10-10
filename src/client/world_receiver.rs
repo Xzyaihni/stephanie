@@ -1,16 +1,11 @@
-use std::{
-    sync::Arc,
-    collections::VecDeque
-};
-
-use parking_lot::Mutex;
+use std::collections::VecDeque;
 
 use crate::{
     client::ConnectionsHandler,
     common::{
         EntityPasser,
         message::Message,
-        world::{TilePos, Tile, GlobalPos, overmap::OvermapIndexing}
+        world::{GlobalPos, overmap::OvermapIndexing}
     }
 };
 
@@ -19,18 +14,17 @@ use crate::{
 pub struct ChunkWorldReceiver
 {
     delay: usize,
-    buffered: VecDeque<GlobalPos>,
-    receiver: WorldReceiver
+    buffered: VecDeque<GlobalPos>
 }
 
 impl ChunkWorldReceiver
 {
-    pub fn new(receiver: WorldReceiver) -> Self
+    pub fn new() -> Self
     {
-        Self{delay: 0, buffered: VecDeque::new(), receiver}
+        Self{delay: 0, buffered: VecDeque::new()}
     }
 
-    pub fn update(&mut self, indexer: &impl OvermapIndexing)
+    pub fn update(&mut self, passer: &mut ConnectionsHandler, indexer: &impl OvermapIndexing)
     {
         if self.delay > 0
         {
@@ -41,7 +35,9 @@ impl ChunkWorldReceiver
             {
                 if indexer.inbounds(pos)
                 {
-                    self.request_chunk_inner(pos);
+                    self.request_chunk_inner(passer, pos);
+
+                    self.delay = 5;
                 }
             }
         }
@@ -49,43 +45,14 @@ impl ChunkWorldReceiver
 
     pub fn request_chunk(&mut self, pos: GlobalPos)
     {
-        if self.delay == 0
+        if !self.buffered.contains(&pos)
         {
-            self.request_chunk_inner(pos);
-
-            self.delay = 5;
-        } else
-        {
-            if !self.buffered.contains(&pos)
-            {
-                self.buffered.push_back(pos);
-            }
+            self.buffered.push_back(pos);
         }
     }
 
-    fn request_chunk_inner(&self, pos: GlobalPos)
+    fn request_chunk_inner(&self, passer: &mut ConnectionsHandler, pos: GlobalPos)
     {
-        self.receiver.send_message(Message::ChunkRequest{pos});
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct WorldReceiver(Arc<Mutex<ConnectionsHandler>>);
-
-impl WorldReceiver
-{
-    pub fn new(message_handler: Arc<Mutex<ConnectionsHandler>>) -> Self
-    {
-        Self(message_handler)
-    }
-
-    pub fn set_tile(&self, pos: TilePos, tile: Tile)
-    {
-        self.send_message(Message::SetTile{pos, tile});
-    }
-
-    fn send_message(&self, message: Message)
-    {
-        self.0.lock().send_message(message);
+        passer.send_message(Message::ChunkRequest{pos});
     }
 }

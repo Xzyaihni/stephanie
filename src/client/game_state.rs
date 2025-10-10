@@ -88,8 +88,7 @@ use crate::{
 use super::{
     ConnectionsHandler,
     TilesFactory,
-    VisibilityChecker,
-    world_receiver::WorldReceiver
+    VisibilityChecker
 };
 
 pub use controls_controller::{ControlsController, UiControls, Control, ControlState, KeyMapping};
@@ -183,6 +182,7 @@ impl ClientEntitiesContainer
     pub fn update(
         &mut self,
         world: &mut World,
+        passer: &mut ConnectionsHandler,
         damage_info: &CommonTextures,
         _is_trusted: bool,
         dt: f32
@@ -258,7 +258,7 @@ impl ClientEntitiesContainer
 
         crate::frame_time_this!{
             [update, update_pre] -> damaging_system_update,
-            damaging_system::update(&mut self.entities, &space, world, damage_info)
+            damaging_system::update(&mut self.entities, &space, world, passer, damage_info)
         };
 
         crate::frame_time_this!{
@@ -860,17 +860,12 @@ impl GameState
             player_entity
         );
 
-        let world = {
-            let world_receiver = WorldReceiver::new(connections_handler.clone());
-
-            World::new(
-                world_receiver,
-                info.tiles_factory,
-                info.camera.read().size(),
-                player_position,
-                time
-            )
-        };
+        let world = World::new(
+            info.tiles_factory,
+            info.camera.read().size(),
+            player_position,
+            time
+        );
 
         let _sender_handle = sender_loop(connections_handler.clone());
 
@@ -1302,7 +1297,7 @@ impl GameState
 
     pub fn destroy_tile(&mut self, tile: TilePos)
     {
-        self.world.set_tile(tile, Tile::none());
+        self.world.set_tile(&mut self.connections_handler.lock(), tile, Tile::none());
     }
 
     pub fn player_connected(&mut self) -> bool
@@ -1490,13 +1485,14 @@ impl GameState
 
         crate::frame_time_this!{
             [update, update_pre] -> world_update,
-            self.world.update(dt)
+            self.world.update(&mut self.connections_handler.lock(), dt)
         };
 
         if self.connected_and_ready && !self.is_paused
         {
             self.entities.update(
                 &mut self.world,
+                &mut self.connections_handler.lock(),
                 &self.common_textures,
                 self.is_trusted,
                 dt

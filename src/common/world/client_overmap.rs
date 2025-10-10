@@ -13,6 +13,7 @@ use yanyaengine::{game_object::*, Transform};
 use crate::{
     client::{
         VisibilityChecker,
+        ConnectionsHandler,
         world_receiver::ChunkWorldReceiver
     },
     common::{OccludingCaster, entity::ClientEntities}
@@ -372,11 +373,11 @@ impl ClientOvermap
         }).unwrap_or_default()
     }
 
-    pub fn update(&mut self, dt: f32)
+    pub fn update(&mut self, passer: &mut ConnectionsHandler, dt: f32)
     {
         crate::frame_time_this!{
             [update, update_pre, world_update] -> world_receiver,
-            self.world_receiver.update(&self.indexer)
+            self.world_receiver.update(passer, &self.indexer)
         };
 
         crate::frame_time_this!{

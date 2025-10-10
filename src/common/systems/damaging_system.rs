@@ -10,7 +10,7 @@ use serde::{Serialize, Deserialize};
 
 use crate::{
     debug_config::*,
-    client::CommonTextures,
+    client::{ConnectionsHandler, CommonTextures},
     common::{
         some_or_value,
         some_or_return,
@@ -168,12 +168,13 @@ pub struct DamagingResult
     pub damage: DamagePartial
 }
 
-pub fn damager<'a, 'b, E: AnyEntities>(
+pub fn damager<'a, 'b, 'c>(
     world: &'b mut World,
     space: &'a SpatialGrid,
-    entities: &'a E,
-    textures: Option<&'a CommonTextures>
-) -> impl FnMut(DamagingResult) + use<'a, 'b, E>
+    entities: &'a ClientEntities,
+    passer: &'c mut ConnectionsHandler,
+    textures: &'a CommonTextures
+) -> impl FnMut(DamagingResult) + use<'a, 'b, 'c>
 {
     move |result|
     {
@@ -257,7 +258,7 @@ pub fn damager<'a, 'b, E: AnyEntities>(
                         ..result
                     };
 
-                    damager(world, space, entities, textures)(result);
+                    damager(world, space, entities, passer, textures)(result);
 
                     return;
                 }
@@ -304,36 +305,33 @@ pub fn damager<'a, 'b, E: AnyEntities>(
 
                 damage_entity(entities, entity, result.other_entity, damage);
 
-                if let Some(textures) = textures.as_ref()
+                create_particles(textures, particle, true, result.damage_entry);
+                if let Some(position) = result.damage_exit
                 {
-                    create_particles(textures, particle, true, result.damage_entry);
-                    if let Some(position) = result.damage_exit
-                    {
-                        create_particles(textures, particle, false, position);
-                    }
+                    create_particles(textures, particle, false, position);
+                }
 
-                    let knockback_direction = angle_to_direction_3d(opposite_angle(result.angle));
-                    let knockback_strength = match result.damage.data
-                    {
-                        DamageType::Sharp{sharpness, ..} => 1.0 - sharpness,
-                        DamageType::Bullet(_) => if result.damage_exit.is_some() { 0.5 } else { 1.0 },
-                        _ => 1.0
-                    };
+                let knockback_direction = angle_to_direction_3d(opposite_angle(result.angle));
+                let knockback_strength = match result.damage.data
+                {
+                    DamageType::Sharp{sharpness, ..} => 1.0 - sharpness,
+                    DamageType::Bullet(_) => if result.damage_exit.is_some() { 0.5 } else { 1.0 },
+                    _ => 1.0
+                };
 
-                    let knockback = *knockback_direction * (knockback_strength * knockback_factor * ENEMY_MASS * 30.0);
-                    knockback_entity(entities, entity, knockback);
+                let knockback = *knockback_direction * (knockback_strength * knockback_factor * ENEMY_MASS * 30.0);
+                knockback_entity(entities, entity, knockback);
 
-                    flash_white(entities, entity);
+                flash_white(entities, entity);
 
-                    if DebugConfig::is_enabled(DebugTool::DamagingPassedResults)
-                    {
-                        eprintln!("passed: {result:#?}");
-                    }
+                if DebugConfig::is_enabled(DebugTool::DamagingPassedResults)
+                {
+                    eprintln!("passed: {result:#?}");
                 }
             },
             DamagingKind::Tile(tile_pos) =>
             {
-                let destroyed = world.modify_tile(tile_pos, |world, tile|
+                let destroyed = world.modify_tile(passer, tile_pos, |world, tile|
                 {
                     tile.damage(world.tilemap(), damage.data)
                 }).unwrap_or(false);
@@ -343,38 +341,35 @@ pub fn damager<'a, 'b, E: AnyEntities>(
                     destroy_tile_dependent(entities, space, tile_pos);
                 }
 
-                if let Some(textures) = textures.as_ref()
+                create_particles(textures, ParticlesKind::Dust, true, result.damage_entry);
+                if let Some(position) = result.damage_exit
                 {
-                    create_particles(textures, ParticlesKind::Dust, true, result.damage_entry);
-                    if let Some(position) = result.damage_exit
-                    {
-                        create_particles(textures, ParticlesKind::Dust, false, position);
-                    }
-
-                    entities.push(true, EntityInfo{
-                        render: Some(RenderInfo{
-                            object: Some(RenderObjectKind::TextureId{
-                                id: textures.solid
-                            }.into()),
-                            above_world: true,
-                            mix: Some(MixColor::color([1.0, 1.0, 1.0, 0.005])),
-                            ..Default::default()
-                        }),
-                        transform: Some(Transform{
-                            position: Vector3::from(tile_pos.position()) + Vector3::repeat(TILE_SIZE / 2.0),
-                            scale: Vector3::repeat(TILE_SIZE),
-                            ..Default::default()
-                        }),
-                        watchers: Some(Watchers::new(vec![
-                            Watcher{
-                                kind: WatcherType::Lifetime(HIGHLIGHT_DURATION.into()),
-                                action: WatcherAction::Remove,
-                                ..Default::default()
-                            }
-                        ])),
-                        ..Default::default()
-                    });
+                    create_particles(textures, ParticlesKind::Dust, false, position);
                 }
+
+                entities.push(true, EntityInfo{
+                    render: Some(RenderInfo{
+                        object: Some(RenderObjectKind::TextureId{
+                            id: textures.solid
+                        }.into()),
+                        above_world: true,
+                        mix: Some(MixColor::color([1.0, 1.0, 1.0, 0.005])),
+                        ..Default::default()
+                    }),
+                    transform: Some(Transform{
+                        position: Vector3::from(tile_pos.position()) + Vector3::repeat(TILE_SIZE / 2.0),
+                        scale: Vector3::repeat(TILE_SIZE),
+                        ..Default::default()
+                    }),
+                    watchers: Some(Watchers::new(vec![
+                        Watcher{
+                            kind: WatcherType::Lifetime(HIGHLIGHT_DURATION.into()),
+                            action: WatcherAction::Remove,
+                            ..Default::default()
+                        }
+                    ])),
+                    ..Default::default()
+                });
             }
         }
     }
@@ -613,6 +608,7 @@ pub fn update(
     entities: &mut ClientEntities,
     space: &SpatialGrid,
     world: &mut World,
+    passer: &mut ConnectionsHandler,
     textures: &CommonTextures
 )
 {
@@ -635,7 +631,7 @@ pub fn update(
         }).collect::<Vec<_>>()
     };
 
-    damage_entities.into_iter().for_each(damager(world, space, entities, Some(textures)));
+    damage_entities.into_iter().for_each(damager(world, space, entities, passer, textures));
 }
 
 fn flash_white_single(entities: &impl AnyEntities, entity: Entity)

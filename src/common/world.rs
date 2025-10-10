@@ -17,7 +17,8 @@ use crate::{
     client::{
         VisibilityChecker,
         TilesFactory,
-        world_receiver::{WorldReceiver, ChunkWorldReceiver}
+        ConnectionsHandler,
+        world_receiver::ChunkWorldReceiver
     },
     common::{
         some_or_return,
@@ -28,6 +29,7 @@ use crate::{
         EntityInfo,
         OccludingCaster,
         SpatialGrid,
+        EntityPasser,
         entity::ClientEntities,
         message::Message
     }
@@ -130,7 +132,6 @@ pub struct ChunkWithEntities
 pub struct World
 {
     tilemap: Arc<TileMap>,
-    world_receiver: WorldReceiver,
     overmap: ClientOvermap,
     time_speed: f64,
     time: f64
@@ -139,7 +140,6 @@ pub struct World
 impl World
 {
     pub fn new(
-        world_receiver: WorldReceiver,
         tiles_factory: TilesFactory,
         camera_size: Vector2<f32>,
         player_position: Pos3<f32>,
@@ -151,13 +151,13 @@ impl World
 
         let visual_overmap = VisualOvermap::new(tiles_factory, size, camera_size, player_position);
         let overmap = ClientOvermap::new(
-            ChunkWorldReceiver::new(world_receiver.clone()),
+            ChunkWorldReceiver::new(),
             visual_overmap,
             size,
             player_position
         );
 
-        Self{tilemap, world_receiver, overmap, time_speed: 1.0, time}
+        Self{tilemap, overmap, time_speed: 1.0, time}
     }
 
     pub fn tilemap(&self) -> &TileMap
@@ -327,7 +327,12 @@ impl World
         })
     }
 
-    pub fn modify_tile<T>(&mut self, pos: TilePos, f: impl FnOnce(&mut Self, &mut Tile) -> T) -> Option<T>
+    pub fn modify_tile<T>(
+        &mut self,
+        passer: &mut ConnectionsHandler,
+        pos: TilePos,
+        f: impl FnOnce(&mut Self, &mut Tile) -> T
+    ) -> Option<T>
     {
         let tile: Tile = *some_or_return!(self.tile(pos));
         let mut new_tile: Tile = tile;
@@ -336,7 +341,7 @@ impl World
 
         if tile != new_tile
         {
-            self.set_tile(pos, new_tile);
+            self.set_tile(passer, pos, new_tile);
         }
 
         Some(value)
@@ -347,11 +352,11 @@ impl World
         self.overmap.tile(index)
     }
 
-    pub fn set_tile(&mut self, pos: TilePos, tile: Tile)
+    pub fn set_tile(&mut self, passer: &mut ConnectionsHandler, pos: TilePos, tile: Tile)
     {
         if self.set_tile_local(pos, tile)
         {
-            self.world_receiver.set_tile(pos, tile);
+            passer.send_message(Message::SetTile{pos, tile});
         }
     }
 
@@ -399,14 +404,14 @@ impl World
         }
     }
 
-    pub fn update(&mut self, dt: f32)
+    pub fn update(&mut self, passer: &mut ConnectionsHandler, dt: f32)
     {
         {
             let time = self.time() + dt as f64 * self.time_speed;
             self.set_time(time);
         }
 
-        self.overmap.update(dt);
+        self.overmap.update(passer, dt);
     }
 
     pub fn rescale(&mut self, size: Vector2<f32>)
