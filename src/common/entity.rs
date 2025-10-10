@@ -2902,89 +2902,125 @@ macro_rules! define_entities
                 is_trusted: bool
             ) -> Option<Message>
             {
-                let message = self.handle_message_common(message)?;
+                let message = crate::frame_time_this!{
+                    [update, game_state_update, process_messages] -> handle_message_common,
+                    self.handle_message_common(message)?
+                };
 
                 #[allow(unreachable_patterns)]
                 match message
                 {
                     Message::EntitySetMany{entities} =>
                     {
-                        if DebugConfig::is_enabled(DebugTool::DebugTimings)
-                        {
-                            eprint!("with {} entities ", entities.len());
-                        }
-
-                        $crate::debug_time_this!(
-                            "entity-set-many",
-                            entities.into_iter().for_each(|(entity, info)|
+                        crate::frame_time_this!{
+                            [update, game_state_update, process_messages] -> entity_set_many,
                             {
-                                self.handle_entity_set(create_info, entity, info)
-                            })
-                        );
+                                if DebugConfig::is_enabled(DebugTool::DebugTimings)
+                                {
+                                    eprint!("with {} entities ", entities.len());
+                                }
+
+                                $crate::debug_time_this!(
+                                    "entity-set-many",
+                                    entities.into_iter().for_each(|(entity, info)|
+                                    {
+                                        self.handle_entity_set(create_info, entity, info)
+                                    })
+                                );
+                            }
+                        };
 
                         None
                     },
                     Message::EntitySet{entity, info} =>
                     {
-                        self.handle_entity_set(create_info, entity, *info);
+                        crate::frame_time_this!{
+                            [update, game_state_update, process_messages] -> entity_set,
+                            self.handle_entity_set(create_info, entity, *info)
+                        };
 
                         None
                     },
                     Message::EntityRemove(EntityRemove(entity)) =>
                     {
-                        self.remove(entity);
+                        crate::frame_time_this!{
+                            [update, game_state_update, process_messages] -> entity_remove,
+                            {
+                                self.remove(entity);
 
-                        if is_trusted { passer.send_message(Message::EntityRemoveFinished{entity}); }
+                                if is_trusted { passer.send_message(Message::EntityRemoveFinished{entity}); }
+                            }
+                        };
 
                         None
                     },
                     Message::EntityRemoveMany(EntityRemoveMany(entities)) =>
                     {
-                        entities.iter().for_each(|entity|
-                        {
-                            self.remove(*entity);
-                        });
+                        crate::frame_time_this!{
+                            [update, game_state_update, process_messages] -> entity_remove_many,
+                            {
+                                entities.iter().for_each(|entity|
+                                {
+                                    self.remove(*entity);
+                                });
 
-                        if is_trusted { passer.send_message(Message::EntityRemoveManyFinished{entities}); }
+                                if is_trusted { passer.send_message(Message::EntityRemoveManyFinished{entities}); }
+                            }
+                        };
 
                         None
                     },
                     Message::EntityRemoveChunk{pos, entities: EntityRemoveMany(entities)} =>
                     {
-                        entities.iter().for_each(|entity|
-                        {
-                            self.remove(*entity);
-                        });
+                        crate::frame_time_this!{
+                            [update, game_state_update, process_messages] -> entity_remove_chunk,
+                            {
+                                entities.iter().for_each(|entity|
+                                {
+                                    self.remove(*entity);
+                                });
 
-                        if is_trusted { passer.send_message(Message::EntityRemoveChunkFinished{pos, entities}); }
+                                if is_trusted { passer.send_message(Message::EntityRemoveChunkFinished{pos, entities}); }
+                            }
+                        };
 
                         None
                     },
                     $(Message::$side_message_name{entity, component} =>
                     {
-                        debug_assert!(!entity.local);
-                        let component = component.map(|x|
-                        {
-                            x.server_to_client(||
+                        crate::frame_time_this!{
+                            [update, game_state_update, process_messages] -> $side_name,
                             {
-                                self.transform_clone(entity).unwrap_or_else(||
+                                debug_assert!(!entity.local);
+                                let component = component.map(|x|
                                 {
-                                    panic!(
-                                        "{} expected transform, got none",
-                                        stringify!($side_message_name)
-                                    )
-                                })
-                            }, create_info)
-                        });
+                                    x.server_to_client(||
+                                    {
+                                        self.transform_clone(entity).unwrap_or_else(||
+                                        {
+                                            panic!(
+                                                "{} expected transform, got none",
+                                                stringify!($side_message_name)
+                                            )
+                                        })
+                                    }, create_info)
+                                });
 
-                        self.$side_set_func(entity, component);
+                                self.$side_set_func(entity, component);
+                            }
+                        };
 
                         None
                     },)+
                     $(Message::$message_name{entity, component} =>
                     {
-                        debug_assert!(!entity.local);
-                        self.$set_func_no_change(entity, component.map(|x| *x));
+                        crate::frame_time_this!{
+                            [update, game_state_update, process_messages] -> $name,
+                            {
+                                debug_assert!(!entity.local);
+                                self.$set_func_no_change(entity, component.map(|x| *x));
+                            }
+                        };
 
                         None
                     },)+

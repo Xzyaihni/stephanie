@@ -141,9 +141,6 @@ pub fn update(
 
     let mut contacts = Vec::new();
 
-    let mut world_flat_time = None;
-    let mut world_z_time = None;
-
     crate::frame_time_this!{
         [update, update_pre, collider_system_update] -> world,
         for_each_component!(entities, collider, |entity, collider: &RefCell<Collider>|
@@ -165,8 +162,8 @@ pub fn update(
 
             let mut this = maybe_colliding_info!{with entity, collider};
 
-            crate::time_this_additive!{
-                world_flat_time,
+            crate::frame_time_this!{
+                [update, update_pre, collider_system_update, world] -> flat_time,
                 this.collide_with_world(world, &mut contacts)
             };
 
@@ -174,8 +171,8 @@ pub fn update(
 
             if physical.move_z
             {
-                crate::time_this_additive!{
-                    world_z_time,
+                crate::frame_time_this!{
+                    [update, update_pre, collider_system_update, world] -> z_time,
                     {
                         let next_position = physical.next_position_mut();
                         if this.collide_with_world_z(world, *next_position) && !this.collider.ghost
@@ -196,19 +193,6 @@ pub fn update(
             }
         })
     };
-
-    if DebugConfig::is_enabled(DebugTool::FrameTimings)
-    {
-        {
-            let time = world_flat_time.map(|x| x.as_micros() as f64 / 1000.0).unwrap_or(0.0);
-            crate::frame_timed!([update, update_pre, collider_system_update, world] -> flat_time, time);
-        }
-
-        {
-            let time = world_z_time.map(|x| x.as_micros() as f64 / 1000.0).unwrap_or(0.0);
-            crate::frame_timed!([update, update_pre, collider_system_update, world] -> z_time, time);
-        }
-    }
 
     if DebugConfig::is_enabled(DebugTool::PrintContactsCount)
     {

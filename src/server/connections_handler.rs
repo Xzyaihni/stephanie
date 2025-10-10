@@ -160,9 +160,11 @@ impl BufferSender for ConnectionsHandler
     {
         self.connections.iter_mut().try_for_each(|(_, connection)|
         {
-            let buffer = connection.message_buffer.get_buffered();
+            connection.message_passer.send_many(connection.message_buffer.buffered())?;
 
-            connection.message_passer.send_many(&buffer)
+            connection.message_buffer.clear_buffered();
+
+            Ok(())
         })
     }
 }

@@ -1082,10 +1082,15 @@ impl GameState
 
     pub fn process_messages(&mut self, create_info: &mut UpdateBuffersInfo)
     {
-        if self.connections_handler.send_buffered().is_err()
-        {
-            self.running = false;
-        }
+        crate::frame_time_this!{
+            [update, game_state_update, process_messages] -> send_buffered,
+            {
+                if self.connections_handler.send_buffered().is_err()
+                {
+                    self.running = false;
+                }
+            }
+        };
 
         if let Some(message) = self.delayed_messages.pop_front()
         {
@@ -1189,7 +1194,10 @@ impl GameState
             }
         }
 
-        let message = some_or_value!{self.world.handle_message(&mut self.delayed_messages, message), true};
+        let message = crate::frame_time_this!{
+            [update, game_state_update, process_messages] -> world_handle_message,
+            some_or_value!{self.world.handle_message(&mut self.delayed_messages, message), true}
+        };
 
         let message = some_or_value!{
             self.entities.handle_message(&mut self.connections_handler, create_info, message, self.is_trusted),

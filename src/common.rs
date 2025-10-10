@@ -235,8 +235,6 @@ macro_rules! debug_time_this
     }
 }
 
-pub const FRAME_TIME_AMOUNT: usize = 120;
-
 #[macro_export]
 macro_rules! time_this_additive
 {
@@ -264,7 +262,13 @@ macro_rules! time_this_additive
     }
 }
 
-pub type TimingType = Option<f64>;
+#[derive(Default)]
+pub struct TimingField<T>
+{
+    pub total: Option<f64>,
+    pub times: usize,
+    pub child: T
+}
 
 pub trait TimingsTrait
 {
@@ -279,8 +283,8 @@ impl TimingsTrait for ()
 #[macro_export]
 macro_rules! get_field_type
 {
-    () => { ($crate::common::TimingType, ()) };
-    ($t:ty) => { ($crate::common::TimingType, $t) }
+    () => { $crate::common::TimingField<()> };
+    ($t:ty) => { $crate::common::TimingField<$t> }
 }
 
 #[macro_export]
@@ -309,15 +313,38 @@ macro_rules! define_timings
                 let pad = "|".repeat(depth);
 
                 $(
-                    let child = self.$field.1.display(depth + 1);
+                    let child = self.$field.child.display(depth + 1);
 
-                    let this = format!(
-                        "{pad}{} {}",
-                        stringify!($field),
-                        self.$field.0.map(|time| format!("took {time:.2} ms")).unwrap_or_else(|| "is unrecorded".to_owned())
-                    );
+                    let time = self.$field.total.map(|time|
+                    {
+                        if self.$field.times > 1
+                        {
+                            let times = self.$field.times;
+                            let time_per_run = time / times as f64 * 1000.0;
 
-                    s += &(if let Some(child) = child { format!("{this} ->\n{child}") } else { format!("{this}\n") });
+                            format!("took {time:.2} ms total, ran {times} times ({time_per_run:.2} us per run)")
+                        } else
+                        {
+                            format!("took {time:.2} ms")
+                        }
+                    }).unwrap_or_else(||
+                    {
+                        "is unrecorded".to_owned()
+                    });
+
+                    let this = format!("{pad}{} {time}", stringify!($field));
+
+                    if self.$field.total.is_some() || child.is_some()
+                    {
+                        let this_s = if let Some(child) = child
+                        {
+                            format!("{this} ->\n{child}")
+                        } else
+                        {
+                            format!("{this}\n")
+                        };
+                        s += &this_s;
+                    }
                 )*
 
                 Some(s)
@@ -364,7 +391,42 @@ define_timings!
         ui_update,
         game_state_update is TimingsGameStateUpdate -> {
             before_render_pass,
-            process_messages,
+            process_messages is ProcessMessages -> {
+                send_buffered,
+                world_handle_message,
+                render,
+                light,
+                occluder,
+                parent,
+                sibling,
+                furniture,
+                health,
+                lazy_mix,
+                outlineable,
+                lazy_transform,
+                follow_rotation,
+                follow_position,
+                watchers,
+                damaging,
+                inventory,
+                named,
+                transform,
+                character,
+                enemy,
+                player,
+                collider,
+                physical,
+                anatomy,
+                door,
+                joint,
+                saveable,
+                handle_message_common,
+                entity_set_many,
+                entity_set,
+                entity_remove_many,
+                entity_remove,
+                entity_remove_chunk
+            },
             characters_update,
             watchers_update,
             create_queued is TimingsCreateQueued -> {
@@ -406,10 +468,18 @@ macro_rules! frame_timed
             let mut timings = $crate::common::THIS_FRAME_TIMINGS.lock();
 
             $(
-                let timings = &mut timings.$parent.1;
+                let timings = &mut timings.$parent.child;
             )*
 
-            timings.$name.0 = Some(time);
+            if let Some(timings) = timings.$name.total.as_mut()
+            {
+                *timings += time;
+            } else
+            {
+                timings.$name.total = Some(time)
+            };
+
+            timings.$name.times += 1;
         }
     }
 }

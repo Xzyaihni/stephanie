@@ -1,5 +1,3 @@
-use std::mem;
-
 use serde::{Serialize, Deserialize};
 
 use strum::{EnumCount, IntoStaticStr};
@@ -144,8 +142,13 @@ impl MessageBuffer
         self.buffer.clear();
     }
 
-    pub fn get_buffered(&mut self) -> Vec<Message>
+    pub fn buffered(&self) -> &Vec<Message>
     {
-        mem::take(&mut self.buffer)
+        &self.buffer
+    }
+
+    pub fn clear_buffered(&mut self)
+    {
+        self.buffer.clear();
     }
 }

@@ -58,9 +58,11 @@ impl BufferSender for ConnectionsHandler
 {
     fn send_buffered(&mut self) -> Result<(), MessageSerError>
     {
-        let buffer = self.message_buffer.get_buffered();
+        self.message_passer.send_many(self.message_buffer.buffered())?;
 
-        self.message_passer.send_many(&buffer)
+        self.message_buffer.clear_buffered();
+
+        Ok(())
     }
 }
 

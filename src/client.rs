@@ -305,14 +305,16 @@ impl Client
         {
             use crate::common::TimingsTrait;
 
-            let timings = crate::common::THIS_FRAME_TIMINGS.lock();
+            let mut timings = crate::common::THIS_FRAME_TIMINGS.lock();
 
-            let frame_time = timings.update.0.unwrap() + timings.update_buffers.0.unwrap() + timings.draw.0.unwrap();
+            let frame_time = timings.update.total.unwrap() + timings.update_buffers.total.unwrap() + timings.draw.total.unwrap();
 
             if frame_time > (1000.0 / crate::common::TARGET_FPS as f64)
             {
                 eprintln!("{}", timings.display(0).unwrap());
             }
+
+            *timings = Default::default();
         }
     }
 
