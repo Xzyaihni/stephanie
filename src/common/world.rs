@@ -26,7 +26,6 @@ use crate::{
         TileMap,
         TileInfo,
         Entity,
-        EntityInfo,
         OccludingCaster,
         SpatialGrid,
         EntityPasser,
@@ -429,25 +428,30 @@ impl World
         self.overmap.camera_moved(pos, on_change);
     }
 
-    fn chunked_entity_sets(delayed_messages: &mut VecDeque<Message>, entities: Vec<(Entity, EntityInfo)>)
+    fn chunked_entities<T>(
+        delayed_messages: &mut VecDeque<Message>,
+        entities: Vec<T>,
+        f: impl Fn(Vec<T>) -> Message
+    )
     {
         if entities.len() <= ENTITY_SETS_MAX
         {
-            delayed_messages.push_back(Message::EntitySetMany{entities});
+            delayed_messages.push_back(f(entities));
         } else
         {
             let mut head = entities;
             let tail = head.split_off(ENTITY_SETS_MAX);
 
-            delayed_messages.push_back(Message::EntitySetMany{entities: head});
+            delayed_messages.push_back(f(head));
 
-            Self::chunked_entity_sets(delayed_messages, tail)
+            Self::chunked_entities(delayed_messages, tail, f)
         }
     }
 
     pub fn handle_message(
         &mut self,
         delayed_messages: &mut VecDeque<Message>,
+        is_trusted: bool,
         message: Message
     ) -> Option<Message>
     {
@@ -464,7 +468,24 @@ impl World
 
                 if !entities.is_empty()
                 {
-                    Self::chunked_entity_sets(delayed_messages, entities);
+                    Self::chunked_entities(delayed_messages, entities, |entities| Message::EntitySetMany{entities});
+                }
+
+                None
+            },
+            Message::EntityRemoveChunk{pos, entities} =>
+            {
+                let entities = entities.into_inner();
+                if !entities.is_empty()
+                {
+                    Self::chunked_entities(delayed_messages, entities.clone(), |entities| Message::EntityRemoveManyRaw(entities));
+                }
+
+                if is_trusted
+                {
+                    delayed_messages.push_back(Message::RepeatMessage{
+                        message: Box::new(Message::EntityRemoveChunkFinished{pos, entities})
+                    });
                 }
 
                 None

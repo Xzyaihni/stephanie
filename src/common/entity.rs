@@ -2894,6 +2894,19 @@ macro_rules! define_entities
                 }
             }
 
+            pub fn handle_entity_remove_many(&mut self, entities: &[Entity])
+            {
+                crate::frame_time_this!{
+                    [update, game_state_update, process_messages] -> entity_remove_many_raw,
+                    {
+                        entities.iter().for_each(|entity|
+                        {
+                            self.remove(*entity);
+                        });
+                    }
+                };
+            }
+
             pub fn handle_message(
                 &mut self,
                 passer: &mut client::ConnectionsHandler,
@@ -2954,35 +2967,17 @@ macro_rules! define_entities
 
                         None
                     },
-                    Message::EntityRemoveMany(EntityRemoveMany(entities)) =>
+                    Message::EntityRemoveManyRaw(entities) =>
                     {
-                        crate::frame_time_this!{
-                            [update, game_state_update, process_messages] -> entity_remove_many,
-                            {
-                                entities.iter().for_each(|entity|
-                                {
-                                    self.remove(*entity);
-                                });
-
-                                if is_trusted { passer.send_message(Message::EntityRemoveManyFinished{entities}); }
-                            }
-                        };
+                        self.handle_entity_remove_many(&entities);
 
                         None
                     },
-                    Message::EntityRemoveChunk{pos, entities: EntityRemoveMany(entities)} =>
+                    Message::EntityRemoveMany(EntityRemoveMany(entities)) =>
                     {
-                        crate::frame_time_this!{
-                            [update, game_state_update, process_messages] -> entity_remove_chunk,
-                            {
-                                entities.iter().for_each(|entity|
-                                {
-                                    self.remove(*entity);
-                                });
+                        self.handle_entity_remove_many(&entities);
 
-                                if is_trusted { passer.send_message(Message::EntityRemoveChunkFinished{pos, entities}); }
-                            }
-                        };
+                        if is_trusted { passer.send_message(Message::EntityRemoveManyFinished{entities}); }
 
                         None
                     },

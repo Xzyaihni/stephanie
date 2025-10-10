@@ -423,9 +423,8 @@ define_timings!
                 handle_message_common,
                 entity_set_many,
                 entity_set,
-                entity_remove_many,
-                entity_remove,
-                entity_remove_chunk
+                entity_remove_many_raw,
+                entity_remove
             },
             characters_update,
             watchers_update,

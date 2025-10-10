@@ -49,6 +49,7 @@ pub enum Message
     EntitySetMany{entities: Vec<(Entity, EntityInfo)>},
     EntityRemove(EntityRemove),
     EntityRemoveFinished{entity: Entity},
+    EntityRemoveManyRaw(Vec<Entity>),
     EntityRemoveMany(EntityRemoveMany),
     EntityRemoveManyFinished{entities: Vec<Entity>},
     EntityRemoveChunk{pos: GlobalPos, entities: EntityRemoveMany},

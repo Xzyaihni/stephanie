@@ -1196,7 +1196,7 @@ impl GameState
 
         let message = crate::frame_time_this!{
             [update, game_state_update, process_messages] -> world_handle_message,
-            some_or_value!{self.world.handle_message(&mut self.delayed_messages, message), true}
+            some_or_value!{self.world.handle_message(&mut self.delayed_messages, self.is_trusted, message), true}
         };
 
         let message = some_or_value!{
@@ -1214,6 +1214,7 @@ impl GameState
             {
                 self.is_trusted = true;
             },
+            Message::RepeatMessage{message} => self.connections_handler.send_message(*message),
             #[cfg(debug_assertions)]
             Message::DebugMessage(_) => (),
             x => panic!("unhandled message: {x:?}")
