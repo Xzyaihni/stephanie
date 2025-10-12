@@ -75,6 +75,11 @@ impl Inventory
         Some(InventoryItem(id))
     }
 
+    pub fn items(&self) -> impl Iterator<Item=&Item>
+    {
+        self.items.iter().map(|(_, x)| x)
+    }
+
     pub fn items_ids(&self) -> impl Iterator<Item=(InventoryItem, &Item)>
     {
         self.items.iter().map(|(index, item)| (InventoryItem(index), item))

@@ -45,6 +45,12 @@ use crate::{
 };
 
 
+pub trait RenderInfoTrait
+{
+    fn is_visible(&self) -> bool;
+    fn set_visible(&mut self, value: bool);
+}
+
 #[repr(C)]
 #[derive(BufferContents)]
 pub struct OutlinedInfo
@@ -483,6 +489,19 @@ impl RenderInfo
     }
 }
 
+impl RenderInfoTrait for RenderInfo
+{
+    fn is_visible(&self) -> bool
+    {
+        self.visible
+    }
+
+    fn set_visible(&mut self, value: bool)
+    {
+        self.visible = value;
+    }
+}
+
 #[derive(Debug)]
 pub enum ClientObjectType
 {
@@ -835,5 +854,18 @@ impl ClientRenderInfo
                 info.reset_scissor();
             }
         }
+    }
+}
+
+impl RenderInfoTrait for ClientRenderInfo
+{
+    fn is_visible(&self) -> bool
+    {
+        self.visible
+    }
+
+    fn set_visible(&mut self, value: bool)
+    {
+        self.visible = value;
     }
 }

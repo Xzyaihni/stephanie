@@ -59,10 +59,19 @@
         (drop-rate 1 5)
         'heal_pills))
 
-(define (crate) (standard-drops trash))
+(define (crate)
+    (cond
+        ((eq? state 'create) (standard-drops trash))
+        ((eq? state 'destroy) '(stick))))
 
-(define (sink) '(bottle))
+(define (sink)
+    (cond
+        ((eq? state 'create) '(bottle))
+        ((eq? state 'destroy) '(stick))))
 
-(define (cabinet) '(heal_pills))
+(define (cabinet)
+    (cond
+        ((eq? state 'create) '(heal_pills))
+        ((eq? state 'destroy) '(stick))))
 
 ((eval name))

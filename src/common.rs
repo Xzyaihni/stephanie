@@ -54,7 +54,7 @@ pub use utility::*;
 pub use sides::{Side1d, Side2d, Side3d};
 
 pub use drug::Drug;
-pub use loot::Loot;
+pub use loot::{Loot, LootState};
 pub use item::{Item, ItemRarity, ItemBuff};
 pub use items_info::{ItemInfo, ItemId, ItemsInfo, Ranged};
 

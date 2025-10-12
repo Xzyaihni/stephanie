@@ -40,6 +40,7 @@ use crate::{
         particle_creator::*,
         raycast::*,
         physics::*,
+        item::*,
         Hairstyle,
         Side1d,
         Side2d,
@@ -50,7 +51,6 @@ use crate::{
         CharactersInfo,
         Light,
         ItemsInfo,
-        Item,
         InventoryItem,
         ItemInfo,
         Parent,
@@ -633,7 +633,8 @@ impl Character
         let holding_item = self.held_item_info(combined_info);
         let holding_state = holding_item.is_some();
 
-        some_or_return!(entities.parent_mut_no_change(holding_entity)).visible = holding_item.is_some();
+        if !entities.parent_exists(holding_entity) { return; }
+        entities.set_visible(holding_entity, holding_item.is_some());
 
         entities.lazy_setter.borrow_mut().set_follow_position_no_change(hand_right, holding_item.map(|_|
         {
@@ -797,10 +798,7 @@ impl Character
                     *angle_to_direction_3d(rotation)
                 };
 
-                let mut physical: Physical = PhysicalProperties{
-                    inverse_mass: item_info.mass.recip(),
-                    ..Default::default()
-                }.into();
+                let mut physical: Physical = item_physical(item_info).into();
 
                 let mass = physical.inverse_mass.recip();
 
@@ -809,28 +807,11 @@ impl Character
 
                 physical.add_force(direction * throw_amount);
 
-                let collider = ColliderInfo{
-                    kind: ColliderType::Rectangle,
-                    ..Default::default()
-                };
+                let collider = item_collider();
 
                 EntityInfo{
                     physical: Some(physical),
-                    lazy_transform: Some(LazyTransformInfo{
-                        deformation: Deformation::Stretch(StretchDeformation{
-                            animation: ValueAnimation::EaseOut(2.0),
-                            limit: 2.0,
-                            onset: 0.05,
-                            strength: 2.0
-                        }),
-                        transform: Transform{
-                            position: holding_transform.position,
-                            rotation: holding_transform.rotation,
-                            scale: item_info.scale3() * ENTITY_SCALE,
-                            ..Default::default()
-                        },
-                        ..Default::default()
-                    }.into()),
+                    lazy_transform: Some(item_lazy_transform(item_info, holding_transform.position, holding_transform.rotation).into()),
                     render: Some(RenderInfo{
                         object: Some(RenderObjectKind::TextureId{
                             id: item_info.texture.unwrap()
@@ -1831,12 +1812,9 @@ impl Character
 
         let set_visible = |sprite_state: &mut Stateful<_>, entity, is_visible|
         {
-            if let Some(mut parent) = entities.parent_mut_no_change(entity)
+            if entities.parent_exists(entity) || entities.render_exists(entity)
             {
-                parent.visible = is_visible;
-            } else if let Some(mut render) = entities.render_mut_no_change(entity)
-            {
-                render.visible = is_visible;
+                entities.set_visible(entity, is_visible);
             } else
             {
                 sprite_state.dirty();

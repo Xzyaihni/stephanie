@@ -30,6 +30,7 @@ use crate::{
     common::{
         some_or_value,
         some_or_return,
+        Loot,
         DataInfos,
         MessagePasser,
         tilemap::TileMapWithTextures
@@ -111,6 +112,11 @@ impl Client
             }
         }
 
+        let loot = Loot::new(client_init_info.data_infos.items_info.clone(), "items/loot.scm").unwrap_or_else(|err|
+        {
+            panic!("error parsing loot: {err}")
+        });
+
         let camera = Camera::new(info.object_info.aspect(), -1.0..1.0);
 
         let timestamp_query = info.setup.clone();
@@ -155,6 +161,7 @@ impl Client
             camera: camera.clone(),
             timestamp_query,
             data_infos: client_init_info.data_infos,
+            loot,
             tiles_factory,
             anatomy_locations,
             common_textures,

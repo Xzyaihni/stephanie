@@ -280,7 +280,7 @@ impl Entity
             local,
             id,
             #[cfg(debug_assertions)]
-            seed: Some(fastrand::u32(0..u32::MAX))
+            seed: DebugConfig::is_disabled(DebugTool::NoSeedChecks).then(|| fastrand::u32(0..u32::MAX))
         }
     }
 
@@ -436,7 +436,7 @@ impl OnSet<ClientEntities> for FurnitureId
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Parent
 {
-    pub visible: bool,
+    visible: bool,
     entity: Entity
 }
 
@@ -450,6 +450,11 @@ impl Parent
     pub fn entity(&self) -> Entity
     {
         self.entity
+    }
+
+    pub fn visible(&self) -> bool
+    {
+        self.visible
     }
 }
 
@@ -1333,8 +1338,13 @@ macro_rules! define_entities_both
         {
             pub fn with_seed(&self, mut entity: Entity) -> Entity
             {
-                if cfg!(debug_assertions)
+                #[cfg(debug_assertions)]
                 {
+                    if DebugConfig::is_enabled(DebugTool::NoSeedChecks)
+                    {
+                        return entity;
+                    }
+
                     let mut seed = None;
 
                     $(
@@ -1366,6 +1376,7 @@ macro_rules! define_entities_both
         impl<$($component_type: OnSet<Self> + Debug,)+> Entities<$($component_type,)+>
         where
             Self: AnyEntities,
+            RenderType: RenderInfoTrait,
             for<'a> &'a ParentType: Into<&'a Parent>,
             for<'a> &'a SiblingType: Into<&'a Entity>
         {
@@ -1539,7 +1550,10 @@ macro_rules! define_entities_both
 
                 pub fn $set_func_no_change(&mut self, entity: Entity, component: Option<$component_type>)
                 {
-                    debug_assert!(entity.seed().is_some(), "{entity:?} {component:#?} {:#?}", self.info_ref(entity));
+                    if DebugConfig::is_disabled(DebugTool::NoSeedChecks)
+                    {
+                        debug_assert!(entity.seed().is_some(), "{entity:?} {component:#?} {:#?}", self.info_ref(entity));
+                    }
 
                     if Self::IS_SERVER
                     {
@@ -1616,6 +1630,11 @@ macro_rules! define_entities_both
                     } else
                     {
                         remove_component!(self, entity, $name);
+                    }
+
+                    if const { (matches!(Component::$name, Component::parent) || matches!(Component::$name, Component::render)) }
+                    {
+                        self.update_child_visibility(entity);
                     }
 
                     self.check_all_seeds(entity);
@@ -1851,6 +1870,24 @@ macro_rules! define_entities_both
                 })
             }
 
+            fn update_child_visibility(&self, entity: Entity)
+            {
+                if let Some(parent) = self.parent(entity)
+                {
+                    if let Some(mut render) = self.render_mut_no_change(entity)
+                    {
+                        let parent = (&*parent).into();
+
+                        let parent_visible = self.render(parent.entity()).map(|parent_render|
+                        {
+                            parent_render.is_visible()
+                        }).unwrap_or(true);
+
+                        render.set_visible(parent.visible && parent_visible);
+                    }
+                }
+            }
+
             pub fn try_remove_sibling(&mut self, entity: Entity)
             {
                 let sibling = *some_or_return!(<Self as AnyEntities>::sibling(self, entity));
@@ -2079,6 +2116,21 @@ macro_rules! define_entities_both
                     [update, game_state_update, create_queued] -> remove,
                     self.remove_queued()
                 };
+            }
+
+            pub fn set_visible(&self, entity: Entity, is_visible: bool)
+            {
+                if let Some(mut parent) = self.parent_mut_no_change(entity)
+                {
+                    parent.visible = is_visible;
+
+                    drop(parent);
+
+                    self.update_child_visibility(entity);
+                } else if let Some(mut render) = self.render_mut_no_change(entity)
+                {
+                    render.visible = is_visible;
+                }
             }
 
             pub fn is_lootable(&self, entity: Entity) -> bool

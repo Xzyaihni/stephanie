@@ -1,15 +1,62 @@
 use std::fmt::{self, Display};
 
+use nalgebra::Vector3;
+
 use serde::{Serialize, Deserialize};
 
 use strum::{IntoEnumIterator, EnumIter};
 
 use crate::common::{
     random_f32,
+    ENTITY_SCALE,
+    collider::*,
+    lazy_transform::*,
+    physics::*,
+    Transform,
+    ItemInfo,
     ItemsInfo,
     items_info::ItemId
 };
 
+
+pub fn item_physical(info: &ItemInfo) -> PhysicalProperties
+{
+    PhysicalProperties{
+        inverse_mass: info.mass.recip(),
+        ..Default::default()
+    }
+}
+
+pub fn item_collider() -> ColliderInfo
+{
+    ColliderInfo{
+        kind: ColliderType::Rectangle,
+        ..Default::default()
+    }
+}
+
+pub fn item_lazy_transform(
+    info: &ItemInfo,
+    position: Vector3<f32>,
+    rotation: f32
+) -> LazyTransformInfo
+{
+    LazyTransformInfo{
+        deformation: Deformation::Stretch(StretchDeformation{
+            animation: ValueAnimation::EaseOut(2.0),
+            limit: 2.0,
+            onset: 0.05,
+            strength: 2.0
+        }),
+        transform: Transform{
+            position,
+            rotation,
+            scale: info.scale3() * ENTITY_SCALE,
+            ..Default::default()
+        },
+        ..Default::default()
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, EnumIter, Serialize, Deserialize)]
 pub enum ItemRarity

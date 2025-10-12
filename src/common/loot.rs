@@ -14,7 +14,17 @@ use crate::{
     }
 };
 
+use strum::IntoStaticStr;
 
+
+#[derive(Debug, Clone, Copy, IntoStaticStr)]
+pub enum LootState
+{
+    Create,
+    Destroy
+}
+
+#[derive(Clone)]
 pub struct Loot
 {
     info: Arc<ItemsInfo>,
@@ -58,14 +68,21 @@ impl Loot
         Ok(Item::new(&self.info, id))
     }
 
-    pub fn create(&self, name: &str) -> Vec<Item>
+    fn define_variables(memory: &mut LispMemory, state: LootState, name: &str) -> Result<(), lisp::Error>
+    {
+        let name = memory.new_symbol(name);
+        memory.define("name", name)?;
+
+        let state = memory.new_symbol(&<&str>::from(state).to_lowercase());
+        memory.define("state", state)
+    }
+
+    pub fn create(&self, state: LootState, name: &str) -> Vec<Item>
     {
         {
             let mut creator = self.creator.borrow_mut();
-            let memory = creator.memory_mut();
 
-            let symbol = memory.new_symbol(name);
-            if let Err(err) = memory.define("name", symbol)
+            if let Err(err) = Self::define_variables(creator.memory_mut(), state, name)
             {
                 eprintln!("{name}: {err}");
 

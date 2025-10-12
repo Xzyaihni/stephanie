@@ -334,11 +334,11 @@ impl YanyaApp for App
 
         let Config{name, listen_outside, address, port, debug} = Config::parse(env::args().skip(1));
 
-        let items_info = ItemsInfo::parse(
+        let items_info = Arc::new(ItemsInfo::parse(
             Some(&partial_info.object_info.assets.lock()),
             "items",
             "items/items.json"
-        );
+        ));
 
         let mut characters_info = CharactersInfo::new();
 
@@ -360,7 +360,7 @@ impl YanyaApp for App
         );
 
         let data_infos = DataInfos{
-            items_info: Arc::new(items_info),
+            items_info,
             enemies_info: Arc::new(enemies_info),
             furnitures_info: Arc::new(furnitures_info),
             characters_info: Arc::new(characters_info),

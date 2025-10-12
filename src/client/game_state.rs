@@ -44,6 +44,7 @@ use crate::{
         receiver_loop,
         render_info::*,
         lazy_transform::*,
+        Loot,
         MessagePasser,
         ClientLight,
         TileMap,
@@ -183,6 +184,7 @@ impl ClientEntitiesContainer
         &mut self,
         world: &mut World,
         passer: &mut ConnectionsHandler,
+        loot: &Loot,
         damage_info: &CommonTextures,
         _is_trusted: bool,
         dt: f32
@@ -258,7 +260,7 @@ impl ClientEntitiesContainer
 
         crate::frame_time_this!{
             [update, update_pre] -> damaging_system_update,
-            damaging_system::update(&mut self.entities, &space, world, passer, damage_info)
+            damaging_system::update(&mut self.entities, &space, world, loot, passer, damage_info)
         };
 
         crate::frame_time_this!{
@@ -341,18 +343,6 @@ impl ClientEntitiesContainer
                 drop(render_ref);
 
                 let mut render = render_cell.borrow_mut();
-
-                {
-                    if let Some(parent) = self.entities.parent(entity)
-                    {
-                        let parent_visible = self.entities.render(parent.entity()).map(|parent_render|
-                        {
-                            parent_render.visible
-                        }).unwrap_or(true);
-
-                        render.visible = parent.visible && parent_visible;
-                    }
-                }
 
                 render.set_transform(transform.clone());
 
@@ -541,6 +531,7 @@ pub struct GameStateInfo
     pub camera: Arc<RwLock<Camera>>,
     pub timestamp_query: TimestampQuery,
     pub data_infos: DataInfos,
+    pub loot: Loot,
     pub tiles_factory: TilesFactory,
     pub anatomy_locations: Rc<RefCell<dyn FnMut(&mut ObjectCreateInfo, &str) -> UiAnatomyLocations>>,
     pub common_textures: CommonTextures,
@@ -794,6 +785,7 @@ pub struct GameState
     pub common_textures: CommonTextures,
     pub connected_and_ready: bool,
     pub world: World,
+    loot: Loot,
     screen_object: SolidObject,
     ui_camera: Camera,
     timestamp_query: TimestampQuery,
@@ -950,6 +942,7 @@ impl GameState
             timestamp_query: info.timestamp_query,
             shaders: info.shaders,
             world,
+            loot: info.loot,
             debug_mode: info.debug_mode,
             tilemap,
             camera_scale: 1.0,
@@ -1514,6 +1507,7 @@ impl GameState
             self.entities.update(
                 &mut self.world,
                 &mut self.connections_handler,
+                &self.loot,
                 &self.common_textures,
                 self.is_trusted,
                 dt

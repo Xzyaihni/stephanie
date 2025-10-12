@@ -1699,7 +1699,7 @@ pub struct LispConfig
     pub memory: LispMemory
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Lisp
 {
     program: Program

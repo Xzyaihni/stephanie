@@ -14,6 +14,7 @@ use crate::common::{
     watcher::*,
     EntityInfo,
     Loot,
+    LootState,
     FurnituresInfo,
     FurnitureInfo,
     FurnitureId,
@@ -141,7 +142,7 @@ pub fn create(
     let inventory = info.container.then(||
     {
         let mut inventory = Inventory::new();
-        loot.create(&info.name).into_iter().for_each(|item| { inventory.push(item); });
+        loot.create(LootState::Create, &info.name).into_iter().for_each(|item| { inventory.push(item); });
 
         inventory
     });

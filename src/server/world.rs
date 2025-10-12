@@ -162,6 +162,8 @@ impl World
         world_name: String
     ) -> Result<Self, ParseError>
     {
+        let loot = Loot::new(data_infos.items_info, "items/loot.scm")?;
+
         let world_path = Self::world_path_associated(&world_name);
         let chunk_saver = ChunkSaver::new(world_path.join("chunks"), 100);
         let entities_saver = EntitiesSaver::new(world_path.join("entities"), 0);
@@ -176,8 +178,6 @@ impl World
 
         let overmaps = Rc::new(RefCell::new(HashMap::new()));
         let client_indexers = HashMap::new();
-
-        let loot = Loot::new(data_infos.items_info, "items/loot.scm")?;
 
         let time = match load_world_file(&Self::world_save_path_associated(&world_name))
         {
@@ -396,7 +396,7 @@ impl World
                 if let Some(mut parent) = container.parent_mut(*entity)
                 {
                     let matched_entity = container.with_seed(parent.entity().no_seed());
-                    *parent = Parent::new(matched_entity, parent.visible);
+                    *parent = Parent::new(matched_entity, parent.visible());
                 }
             });
         }

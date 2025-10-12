@@ -12,12 +12,15 @@ use crate::{
     debug_config::*,
     client::{ConnectionsHandler, CommonTextures},
     common::{
+        with_z,
         some_or_value,
         some_or_return,
         angle_between,
         opposite_angle,
         short_rotation,
+        random_rotation,
         angle_to_direction_3d,
+        aabb_bounds,
         damage::*,
         damaging::*,
         character::*,
@@ -26,8 +29,11 @@ use crate::{
         particle_creator::*,
         raycast::*,
         collider::*,
+        item::*,
         systems::{raycast_system, collider_system},
         ENTITY_SCALE,
+        Loot,
+        LootState,
         SpatialGrid,
         EntityInfo,
         PhysicalProperties,
@@ -172,6 +178,7 @@ pub fn damager<'a, 'b, 'c>(
     world: &'b mut World,
     space: &'a SpatialGrid,
     entities: &'a ClientEntities,
+    loot: &'a Loot,
     passer: &'c mut ConnectionsHandler,
     textures: &'a CommonTextures
 ) -> impl FnMut(DamagingResult) + use<'a, 'b, 'c>
@@ -258,7 +265,7 @@ pub fn damager<'a, 'b, 'c>(
                         ..result
                     };
 
-                    damager(world, space, entities, passer, textures)(result);
+                    damager(world, space, entities, loot, passer, textures)(result);
 
                     return;
                 }
@@ -303,7 +310,7 @@ pub fn damager<'a, 'b, 'c>(
                     ParticlesKind::Dust
                 };
 
-                damage_entity(entities, entity, result.other_entity, damage);
+                damage_entity(entities, loot, entity, result.other_entity, damage);
 
                 create_particles(textures, particle, true, result.damage_entry);
                 if let Some(position) = result.damage_exit
@@ -338,7 +345,7 @@ pub fn damager<'a, 'b, 'c>(
 
                 if destroyed
                 {
-                    destroy_tile_dependent(entities, space, tile_pos);
+                    destroy_tile_dependent(entities, space, loot, tile_pos);
                 }
 
                 create_particles(textures, ParticlesKind::Dust, true, result.damage_entry);
@@ -608,6 +615,7 @@ pub fn update(
     entities: &mut ClientEntities,
     space: &SpatialGrid,
     world: &mut World,
+    loot: &Loot,
     passer: &mut ConnectionsHandler,
     textures: &CommonTextures
 )
@@ -631,7 +639,7 @@ pub fn update(
         }).collect::<Vec<_>>()
     };
 
-    damage_entities.into_iter().for_each(damager(world, space, entities, passer, textures));
+    damage_entities.into_iter().for_each(damager(world, space, entities, loot, passer, textures));
 }
 
 fn flash_white_single(entities: &impl AnyEntities, entity: Entity)
@@ -653,14 +661,65 @@ fn flash_white_single(entities: &impl AnyEntities, entity: Entity)
     }
 }
 
-fn destroy_entity(entities: &impl AnyEntities, entity: Entity)
+fn destroy_entity(entities: &ClientEntities, loot: &Loot, entity: Entity)
 {
     entities.remove_deferred(entity);
+
+    let name = some_or_return!(entities.named(entity));
+    let transform = some_or_return!(entities.transform(entity));
+
+    let contained_items = entities.inventory(entity).map(|inventory|
+    {
+        inventory.items().cloned().collect::<Vec<_>>()
+    }).unwrap_or_default();
+
+    loot.create(LootState::Destroy, &name).into_iter().chain(contained_items).for_each(|item|
+    {
+        let item_info = entities.infos().items_info.get(item.id);
+
+        let rotation = random_rotation();
+
+        let item_scale = aabb_bounds(&Transform{
+            scale: item_info.scale3() * ENTITY_SCALE,
+            rotation,
+            ..Default::default()
+        });
+
+        let scale = transform.scale.xy() - item_scale.xy();
+
+        let position = transform.position.xy() + scale.map(|limit|
+        {
+            limit * (fastrand::f32() - 0.5)
+        });
+
+        let position = with_z(position, transform.position.z);
+
+        let lazy_transform = item_lazy_transform(item_info, position, rotation);
+
+        entities.push(true, EntityInfo{
+            render: Some(RenderInfo{
+                object: Some(RenderObjectKind::TextureId{
+                    id: item_info.texture.unwrap()
+                }.into()),
+                z_level: ZLevel::BelowFeet,
+                ..Default::default()
+            }),
+            physical: Some(item_physical(item_info).into()),
+            lazy_transform: Some(lazy_transform.into()),
+            collider: Some(ColliderInfo{
+                layer: ColliderLayer::ThrownDecal,
+                ..item_collider()
+            }.into()),
+            light: Some(item_info.lighting),
+            ..Default::default()
+        });
+    });
 }
 
 fn destroy_tile_dependent(
-    entities: &impl AnyEntities,
+    entities: &ClientEntities,
     space: &SpatialGrid,
+    loot: &Loot,
     tile_pos: TilePos
 )
 {
@@ -708,7 +767,7 @@ fn destroy_tile_dependent(
 
         if collided
         {
-            destroy_entity(entities, entity);
+            destroy_entity(entities, loot, entity);
         }
     };
 
@@ -720,7 +779,7 @@ fn destroy_tile_dependent(
     });
 }
 
-fn knockback_entity(entities: &impl AnyEntities, entity: Entity, knockback: Vector3<f32>)
+fn knockback_entity(entities: &ClientEntities, entity: Entity, knockback: Vector3<f32>)
 {
     let mut physical = some_or_return!(entities.physical_mut(entity));
 
@@ -729,7 +788,7 @@ fn knockback_entity(entities: &impl AnyEntities, entity: Entity, knockback: Vect
     some_or_return!(entities.character_mut(entity)).knockbacked();
 }
 
-fn flash_white(entities: &impl AnyEntities, entity: Entity)
+fn flash_white(entities: &ClientEntities, entity: Entity)
 {
     let flash_single = |entity| flash_white_single(entities, entity);
 
@@ -738,7 +797,7 @@ fn flash_white(entities: &impl AnyEntities, entity: Entity)
 }
 
 fn turn_towards_other(
-    entities: &impl AnyEntities,
+    entities: &ClientEntities,
     entity: Entity,
     other_entity: Entity,
 )
@@ -765,7 +824,8 @@ fn turn_towards_other(
 }
 
 pub fn damage_entity(
-    entities: &impl AnyEntities,
+    entities: &ClientEntities,
+    loot: &Loot,
     entity: Entity,
     other_entity: Entity,
     damage: Damage
@@ -779,7 +839,7 @@ pub fn damage_entity(
 
         if *health <= 0.0
         {
-            destroy_entity(entities, entity);
+            destroy_entity(entities, loot, entity);
         }
     }
 

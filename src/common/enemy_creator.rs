@@ -10,6 +10,7 @@ use crate::common::{
     physics::*,
     ENTITY_SCALE,
     Loot,
+    LootState,
     Inventory,
     Anatomy,
     HumanAnatomy,
@@ -37,7 +38,7 @@ pub fn create(
     let name = info.name.clone();
 
     let mut inventory = Inventory::new();
-    loot.create(&name).into_iter().for_each(|item| { inventory.push(item); });
+    loot.create(LootState::Create, &name).into_iter().for_each(|item| { inventory.push(item); });
 
     let character = Character::new(info.character, Faction::Zob);
 
