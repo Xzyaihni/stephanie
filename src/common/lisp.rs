@@ -908,7 +908,7 @@ impl Default for LispMemory
 {
     fn default() -> Self
     {
-        Self::new(Rc::new(Primitives::default()), 256, 1 << 10)
+        Self::new(Rc::new(Primitives::default()), 256, 1 << 11)
     }
 }
 

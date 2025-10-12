@@ -4,6 +4,12 @@
 (define (drop-between f start end)
     (map (lambda (_) (f)) (counter (random-integer-between start (+ end 1)))))
 
+(define (drop-between-less f start end rate)
+    (cond
+        ((= start 0) (if (rate) (drop-between-less 1 end rate) '()))
+        ((= start 1) (maybe-multiple f rate (+ (- end start) 1)))
+        (else (cons (f) (drop-between-less f (- start 1) (- end 1) rate)))))
+
 (define (maybe-multiple f rate limit)
     (define (inner current limit)
         (if (> limit 0)
@@ -11,7 +17,7 @@
                 (inner (cons (f) current) (- limit 1))
                 current)
             current))
-    (inner (list (f)) limit))
+    (inner (list (f)) (- limit 1)))
 
 (define (drop-rate x total)
     (lambda ()
@@ -85,7 +91,7 @@
 
 (define (glass) (standard-drops '(glass_shard)))
 
-(define (concrete) (standard-drops '(rock boulder)))
-(define (asphalt) (standard-drops '(rock boulder)))
+(define (concrete) (if ((drop-rate 1 3)) '(boulder) (drop-between-less (lambda () 'rock) 2 4 (drop-rate 1 3))))
+(define (asphalt) (if ((drop-rate 1 3)) '(boulder) (drop-between-less (lambda () 'rock) 2 4 (drop-rate 1 3))))
 
 ((eval name))
