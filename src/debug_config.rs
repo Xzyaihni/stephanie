@@ -26,6 +26,7 @@ pub enum DebugTool
     AllowSeedMismatch,
     Lisp,
     LispDisableChecks,
+    LispMemory,
     RedundantWorldChecks,
     DisableEnemySystem,
     ClientMessages,

@@ -1,6 +1,6 @@
 use std::f32;
 
-use strum::{EnumString, IntoStaticStr};
+use strum::EnumString;
 
 use serde::{Serialize, Deserialize};
 
@@ -29,12 +29,24 @@ use crate::common::{
 
 pub const DOOR_WIDTH: f32 = 0.3;
 
-#[derive(Debug, Clone, Copy, EnumString, IntoStaticStr, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, EnumString, Serialize, Deserialize)]
 #[strum(ascii_case_insensitive)]
 pub enum DoorMaterial
 {
     Metal,
     Wood
+}
+
+impl From<DoorMaterial> for &'static str
+{
+    fn from(value: DoorMaterial) -> Self
+    {
+        match value
+        {
+            DoorMaterial::Metal => "metal",
+            DoorMaterial::Wood => "wood"
+        }
+    }
 }
 
 impl DoorMaterial
@@ -251,7 +263,7 @@ impl Door
     {
         format!(
             "furniture/{}_door{}.png",
-            <&str>::from(self.material).to_lowercase(),
+            <&str>::from(self.material),
             self.width
         )
     }
@@ -293,6 +305,7 @@ impl Door
                     ..Default::default()
                 }.into()),
                 occluder: door.door_occluder(),
+                named: Some(<&str>::from(door.material).to_owned() + " door"),
                 watchers: Some(Watchers::default()),
                 ..Default::default()
             });

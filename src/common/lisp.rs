@@ -11,6 +11,8 @@ use std::{
 
 use strum::{Display, EnumCount};
 
+use crate::debug_config::*;
+
 pub use program::{
     Register,
     Effect,
@@ -1270,6 +1272,11 @@ impl LispMemory
         mem::swap(&mut self.memory, &mut self.swap_memory);
 
         self.swap_memory.clear();
+
+        if DebugConfig::is_enabled(DebugTool::LispMemory)
+        {
+            eprintln!("after gc: {} list remaining, {} general remaining", self.memory.list_remaining(), self.memory.remaining());
+        }
     }
 
     fn stack_push(stack: &mut Vec<LispValue>, value: LispValue) -> Result<(), Error>
@@ -1397,6 +1404,11 @@ impl LispMemory
 
     fn need_list_memory(&mut self, amount: usize) -> Result<(), Error>
     {
+        if DebugConfig::is_enabled(DebugTool::LispMemory)
+        {
+            eprintln!("[remaining {}] allocating list {amount}", self.memory.list_remaining());
+        }
+
         if self.memory.list_remaining() < amount
         {
             self.gc();
@@ -1412,6 +1424,11 @@ impl LispMemory
 
     fn need_memory(&mut self, amount: usize) -> Result<(), Error>
     {
+        if DebugConfig::is_enabled(DebugTool::LispMemory)
+        {
+            eprintln!("[remaining {}] allocating general {amount}", self.memory.remaining());
+        }
+
         if self.memory.remaining() < amount
         {
             self.gc();

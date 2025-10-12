@@ -179,7 +179,7 @@ pub enum ChunkGenerationError
 {
     SymbolAllocation(String, lisp::Error),
     TagSymbolAllocation(lisp::Error),
-    LispRuntime(lisp::ErrorPos),
+    LispRuntime{source: &'static str, err: lisp::ErrorPos},
     WrongOutput(lisp::Error),
     WrongSize{expected: usize, got: usize}
 }
@@ -192,7 +192,7 @@ impl Display for ChunkGenerationError
         {
             Self::SymbolAllocation(name, err) => write!(f, "error allocating {name} symbol: {err}"),
             Self::TagSymbolAllocation(err) => write!(f, "error allocating tag symbol: {err}"),
-            Self::LispRuntime(err) => write!(f, "{err}"),
+            Self::LispRuntime{source, err} => write!(f, "(in {source}) {err}"),
             Self::WrongOutput(err) => write!(f, "expected vector: {err}"),
             Self::WrongSize{expected, got} => write!(f, "expected vector with {expected} elements, got {got}")
         }
@@ -358,7 +358,9 @@ impl ChunkGenerator
             let (memory, value): (LispMemory, LispValue) = this_chunk.run()
                 .map_err(|err|
                 {
-                    ChunkGenerationError::LispRuntime(err)
+                    let source = ["standard", "default", "chunk"][err.position.source];
+
+                    ChunkGenerationError::LispRuntime{source, err}
                 })?
                 .destructure();
 

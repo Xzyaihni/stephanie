@@ -5,10 +5,13 @@
     (map (lambda (_) (f)) (counter (random-integer-between start (+ end 1)))))
 
 (define (maybe-multiple f rate limit)
-    (f)
-    (if (> limit 0)
-        (if (rate)
-            (maybe-multiple f rate (- limit 1)))))
+    (define (inner current limit)
+        (if (> limit 0)
+            (if (rate)
+                (inner (cons (f) current) (- limit 1))
+                current)
+            current))
+    (inner (list (f)) limit))
 
 (define (drop-rate x total)
     (lambda ()
@@ -19,7 +22,7 @@
         (cons x xs)
         xs))
 
-(define trash '(rock bottle short_stick stick branch duct_tape))
+(define (trash) '(rock bottle short_stick stick branch duct_tape))
 
 (define (standard-drops items)
     (maybe-multiple (lambda () (any-of items)) (drop-rate 1 3) 3))
@@ -61,17 +64,28 @@
 
 (define (crate)
     (cond
-        ((eq? state 'create) (standard-drops trash))
-        ((eq? state 'destroy) '(stick))))
+        ((eq? state 'create) (standard-drops (trash)))
+        ((eq? state 'destroy) (standard-drops '(stick short_stick plank)))))
 
 (define (sink)
     (cond
         ((eq? state 'create) '(bottle))
-        ((eq? state 'destroy) '(stick))))
+        ((eq? state 'destroy) (standard-drops '(pipe short_stick plank ceramic)))))
 
 (define (cabinet)
     (cond
         ((eq? state 'create) '(heal_pills))
-        ((eq? state 'destroy) '(stick))))
+        ((eq? state 'destroy) (standard-drops '(metal_shard)))))
+
+(define (wood_chair) (standard-drops '(stick short_stick plank)))
+(define (wood_table) (standard-drops '(stick plank)))
+(define (bed) (standard-drops '(stick plank cloth)))
+
+(define (wood) (standard-drops '(stick short_stick plank)))
+
+(define (glass) (standard-drops '(glass_shard)))
+
+(define (concrete) (standard-drops '(rock boulder)))
+(define (asphalt) (standard-drops '(rock boulder)))
 
 ((eval name))

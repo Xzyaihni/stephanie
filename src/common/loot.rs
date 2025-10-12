@@ -70,7 +70,7 @@ impl Loot
 
     fn define_variables(memory: &mut LispMemory, state: LootState, name: &str) -> Result<(), lisp::Error>
     {
-        let name = memory.new_symbol(name);
+        let name = memory.new_symbol(&name.replace(' ', "_"));
         memory.define("name", name)?;
 
         let state = memory.new_symbol(&<&str>::from(state).to_lowercase());
@@ -95,7 +95,8 @@ impl Loot
             Ok(x) => x.destructure(),
             Err(err) =>
             {
-                eprintln!("{name}: {err}");
+                let source = ["standard", "loot"][err.position.source];
+                eprintln!("{name}: (in {source}) {err}");
 
                 return Vec::new();
             }

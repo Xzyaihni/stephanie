@@ -340,12 +340,24 @@ pub fn damager<'a, 'b, 'c>(
             {
                 let destroyed = world.modify_tile(passer, tile_pos, |world, tile|
                 {
-                    tile.damage(world.tilemap(), damage.data)
-                }).unwrap_or(false);
+                    let previous_tile = *tile;
+                    let tilemap = world.tilemap();
+                    tile.damage(tilemap, damage.data).then(||
+                    {
+                        tilemap.info(previous_tile).name.clone()
+                    })
+                }).unwrap_or_default();
 
-                if destroyed
+                let transform = Transform{
+                    position: Vector3::from(tile_pos.position()) + Vector3::repeat(TILE_SIZE / 2.0),
+                    scale: Vector3::repeat(TILE_SIZE),
+                    ..Default::default()
+                };
+
+                if let Some(name) = destroyed
                 {
                     destroy_tile_dependent(entities, space, loot, tile_pos);
+                    spawn_items(entities, loot, &transform, &name);
                 }
 
                 create_particles(textures, ParticlesKind::Dust, true, result.damage_entry);
@@ -363,11 +375,7 @@ pub fn damager<'a, 'b, 'c>(
                         mix: Some(MixColor::color([1.0, 1.0, 1.0, 0.005])),
                         ..Default::default()
                     }),
-                    transform: Some(Transform{
-                        position: Vector3::from(tile_pos.position()) + Vector3::repeat(TILE_SIZE / 2.0),
-                        scale: Vector3::repeat(TILE_SIZE),
-                        ..Default::default()
-                    }),
+                    transform: Some(transform),
                     watchers: Some(Watchers::new(vec![
                         Watcher{
                             kind: WatcherType::Lifetime(HIGHLIGHT_DURATION.into()),
@@ -661,59 +669,73 @@ fn flash_white_single(entities: &impl AnyEntities, entity: Entity)
     }
 }
 
+fn spawn_item(entities: &ClientEntities, transform: &Transform, item: &Item)
+{
+    let item_info = entities.infos().items_info.get(item.id);
+
+    let rotation = random_rotation();
+
+    let item_scale = aabb_bounds(&Transform{
+        scale: item_info.scale3() * ENTITY_SCALE,
+        rotation,
+        ..Default::default()
+    });
+
+    let scale = transform.scale.xy() - item_scale.xy();
+
+    let position = transform.position.xy() + scale.map(|limit|
+    {
+        limit * (fastrand::f32() - 0.5)
+    });
+
+    let position = with_z(position, transform.position.z);
+
+    let lazy_transform = item_lazy_transform(item_info, position, rotation);
+
+    entities.push(true, EntityInfo{
+        render: Some(RenderInfo{
+            object: Some(RenderObjectKind::TextureId{
+                id: item_info.texture.unwrap()
+            }.into()),
+            z_level: ZLevel::BelowFeet,
+            ..Default::default()
+        }),
+        physical: Some(item_physical(item_info).into()),
+        lazy_transform: Some(lazy_transform.into()),
+        collider: Some(ColliderInfo{
+            layer: ColliderLayer::ThrownDecal,
+            ..item_collider()
+        }.into()),
+        light: Some(item_info.lighting),
+        ..Default::default()
+    });
+}
+
+fn spawn_items(entities: &ClientEntities, loot: &Loot, transform: &Transform, name: &str)
+{
+    loot.create(LootState::Destroy, name).into_iter().for_each(|item|
+    {
+        spawn_item(entities, &transform, &item)
+    });
+}
+
 fn destroy_entity(entities: &ClientEntities, loot: &Loot, entity: Entity)
 {
     entities.remove_deferred(entity);
 
-    let name = some_or_return!(entities.named(entity));
     let transform = some_or_return!(entities.transform(entity));
 
-    let contained_items = entities.inventory(entity).map(|inventory|
+    if let Some(inventory) = entities.inventory(entity)
     {
-        inventory.items().cloned().collect::<Vec<_>>()
-    }).unwrap_or_default();
-
-    loot.create(LootState::Destroy, &name).into_iter().chain(contained_items).for_each(|item|
-    {
-        let item_info = entities.infos().items_info.get(item.id);
-
-        let rotation = random_rotation();
-
-        let item_scale = aabb_bounds(&Transform{
-            scale: item_info.scale3() * ENTITY_SCALE,
-            rotation,
-            ..Default::default()
-        });
-
-        let scale = transform.scale.xy() - item_scale.xy();
-
-        let position = transform.position.xy() + scale.map(|limit|
+        inventory.items().for_each(|item|
         {
-            limit * (fastrand::f32() - 0.5)
+            spawn_item(entities, &transform, item);
         });
+    }
 
-        let position = with_z(position, transform.position.z);
+    let name = some_or_return!(entities.named(entity));
 
-        let lazy_transform = item_lazy_transform(item_info, position, rotation);
-
-        entities.push(true, EntityInfo{
-            render: Some(RenderInfo{
-                object: Some(RenderObjectKind::TextureId{
-                    id: item_info.texture.unwrap()
-                }.into()),
-                z_level: ZLevel::BelowFeet,
-                ..Default::default()
-            }),
-            physical: Some(item_physical(item_info).into()),
-            lazy_transform: Some(lazy_transform.into()),
-            collider: Some(ColliderInfo{
-                layer: ColliderLayer::ThrownDecal,
-                ..item_collider()
-            }.into()),
-            light: Some(item_info.lighting),
-            ..Default::default()
-        });
-    });
+    spawn_items(entities, loot, &transform, &name);
 }
 
 fn destroy_tile_dependent(
