@@ -361,7 +361,11 @@ impl ClientEntitiesContainer
                 if is_render_above
                 {
                     self.above_world_renders.push(entity);
-                    render.update_buffers(info);
+
+                    crate::frame_time_this!{
+                        [update_buffers, entities_update_buffers, normal] -> update_draw_buffers_above_world,
+                        render.update_buffers(info)
+                    };
                 } else
                 {
                     let real_z = (transform.position.z / TILE_SIZE).floor() as i32;
@@ -417,7 +421,10 @@ impl ClientEntitiesContainer
 
                     if is_render_visible || is_render_shadow
                     {
-                        render.update_buffers(info);
+                        crate::frame_time_this!{
+                            [update_buffers, entities_update_buffers, normal] -> update_draw_buffers,
+                            render.update_buffers(info)
+                        };
                     }
                 }
             },
@@ -482,14 +489,19 @@ impl ClientEntitiesContainer
 
                 drop(light_ref);
 
-                light_cell.borrow_mut().update_buffers(info, position);
+                crate::frame_time_this!{
+                    [update_buffers, entities_update_buffers, lights] -> update_draw_buffers,
+                    {
+                        light_cell.borrow_mut().update_buffers(info, position);
 
-                world.update_buffers_light_shadows(
-                    info,
-                    &light_visibility,
-                    &OccludingCaster::from(position),
-                    self.light_renders.len()
-                );
+                        world.update_buffers_light_shadows(
+                            info,
+                            &light_visibility,
+                            &OccludingCaster::from(position),
+                            self.light_renders.len()
+                        );
+                    }
+                };
 
                 self.light_renders.push(entity);
             },
@@ -1096,7 +1108,10 @@ impl GameState
         {
             self.process_message_inner(create_info, message);
 
-            return;
+            if !self.is_loading
+            {
+                return;
+            }
         }
 
         loop
@@ -1105,7 +1120,7 @@ impl GameState
             {
                 Ok(message) =>
                 {
-                    if !self.process_message_inner(create_info, message)
+                    if !self.process_message_inner(create_info, message) && !self.is_loading
                     {
                         return;
                     }

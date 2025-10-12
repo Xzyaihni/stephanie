@@ -8,6 +8,7 @@ use std::{
 #[allow(unused_imports)]
 use std::sync::LazyLock;
 
+#[allow(unused_imports)]
 use parking_lot::Mutex;
 
 use message::Message;
@@ -443,8 +444,13 @@ define_timings!
         world_update_buffers_normal,
         world_update_buffers_shadows,
         entities_update_buffers is TimingsEntitiesUpdateBuffers -> {
-            normal,
-            lights
+            normal is TimingsEntitiesUpdateBuffersNormal -> {
+                update_draw_buffers_above_world,
+                update_draw_buffers
+            },
+            lights is TimingsEntitiesUpdateBuffersLights -> {
+                update_draw_buffers
+            }
         }
     },
     draw
@@ -498,9 +504,9 @@ macro_rules! frame_time_this
 
             if DebugConfig::is_enabled(DebugTool::FrameTimings)
             {
-                let (time, value) = $crate::get_time_this!($($tt)*);
+                let (_time, value) = $crate::get_time_this!($($tt)*);
 
-                $crate::frame_timed!([$($parent,)*] -> $name, time);
+                $crate::frame_timed!([$($parent,)*] -> $name, _time);
 
                 value
             } else
