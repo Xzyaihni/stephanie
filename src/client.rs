@@ -314,7 +314,9 @@ impl Client
 
             let mut timings = crate::common::THIS_FRAME_TIMINGS.lock();
 
-            let frame_time = timings.update.total.unwrap() + timings.update_buffers.total.unwrap() + timings.draw.total.unwrap();
+            let frame_time = timings.update.total.unwrap_or(0.0)
+                + timings.update_buffers.total.unwrap_or(0.0)
+                + timings.draw.total.unwrap_or(0.0);
 
             if frame_time > (1000.0 / crate::common::TARGET_FPS as f64)
             {

@@ -129,15 +129,5 @@
         "mass": 0.4,
 	"lighting": 2.0,
         "groups": ["utility"]
-    },
-    {
-        "name": "snel",
-        "mass": 0.1,
-        "groups": ["animals"]
-    },
-    {
-        "name": "bee",
-        "mass": 0.05,
-        "groups": ["animals"]
     }
 ]

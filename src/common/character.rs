@@ -433,10 +433,11 @@ impl Character
                         }
                     ),
                     transform: Transform{
-                        scale: Vector3::repeat(0.4),
+                        scale: Vector3::repeat(0.4 * character_info.scale),
                         position,
                         ..Default::default()
                     },
+                    inherit_scale: false,
                     ..Default::default()
                 }.into()),
                 parent: Some(Parent::new(entity, true)),
