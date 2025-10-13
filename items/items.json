@@ -106,6 +106,12 @@
         "groups": ["trash", "utility"]
     },
     {
+        "name": "cloth",
+        "comfort": 0.5,
+        "mass": 0.02,
+        "groups": ["trash", "utility"]
+    },
+    {
         "name": "glass shard",
         "comfort": 0.2,
         "sharpness": 0.9,
