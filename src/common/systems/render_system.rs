@@ -105,16 +105,11 @@ pub fn draw(
 
     renders.iter().flatten().for_each(|&entity|
     {
-        let outline = entities.outlineable(entity).and_then(|outline|
-        {
-            outline.current()
-        }).unwrap_or_default();
-
         let render = entities.render(entity).unwrap();
 
         let outline = OutlinedInfo::new(
             render.mix,
-            outline,
+            render.outlined,
             animation
         );
 
@@ -216,16 +211,11 @@ pub fn draw(
 
     above_world.iter().for_each(|&entity|
     {
-        let outline = entities.outlineable(entity).and_then(|outline|
-        {
-            outline.current()
-        }).unwrap_or_default();
-
         let render = entities.render(entity).unwrap();
 
         let outline = OutlinedInfo::new(
             render.mix,
-            outline,
+            render.outlined,
             animation
         );
 

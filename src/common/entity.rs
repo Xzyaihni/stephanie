@@ -27,7 +27,6 @@ use crate::{
         Joint,
         Light,
         ClientLight,
-        Outlineable,
         LazyMix,
         DataInfos,
         Occluder,
@@ -45,6 +44,7 @@ use crate::{
         Saveable,
         EntitiesSaver,
         FurnitureId,
+        Item,
         furniture_creator,
         character::PartialCombinedInfo
     }
@@ -355,13 +355,13 @@ no_on_set!{
     ClientRenderInfo,
     RenderInfo,
     LazyMix,
-    Outlineable,
     LazyTransform,
     FollowRotation,
     FollowPosition,
     Inventory,
     String,
     Entity,
+    Item,
     f32,
     Transform,
     Enemy,
@@ -811,16 +811,6 @@ macro_rules! entity_info_common
                 self.watchers = Some(Default::default());
             }
 
-            if self.player.is_none() && self.inventory.is_some() && self.outlineable.is_none()
-            {
-                self.outlineable = Some(Outlineable::default());
-            }
-
-            if self.outlineable.is_some() && self.watchers.is_none()
-            {
-                self.watchers = Some(Watchers::default());
-            }
-
             if self.character.is_some()
             {
                 self.lazy_transform.as_mut().unwrap().deformation = Deformation::Stretch(
@@ -925,6 +915,14 @@ macro_rules! common_trait_impl
         fn set_z_level(&self, entity: Entity, z_level: ZLevel)
         {
             self.render_mut(entity).map(|mut x| x.set_z_level(z_level));
+        }
+
+        fn set_outlined(&self, entity: Entity, value: bool)
+        {
+            if let Some(mut render) = self.render_mut(entity)
+            {
+                render.outlined = value;
+            }
         }
 
         fn is_visible(&self, entity: Entity) -> bool
@@ -2175,14 +2173,6 @@ macro_rules! define_entities_both
                 a.metric_distance(&b) <= interactable_distance
             }
 
-            pub fn update_outlineable(&mut self, dt: f32)
-            {
-                for_each_component!(self, outlineable, |_entity, outlineable: &RefCell<Outlineable>|
-                {
-                    outlineable.borrow_mut().update(dt);
-                });
-            }
-
             pub fn update_lazy_one(
                 &self,
                 entity: Entity,
@@ -2754,8 +2744,12 @@ macro_rules! define_entities
 
             fn z_level(&self, entity: Entity) -> Option<ZLevel>;
             fn set_z_level(&self, entity: Entity, z_level: ZLevel);
+
+            fn set_outlined(&self, entity: Entity, value: bool);
+
             fn is_visible(&self, entity: Entity) -> bool;
             fn visible_target(&self, entity: Entity) -> Option<RefMut<'_, bool>>;
+
             fn mix_color_target(&self, entity: Entity) -> Option<RefMut<'_, Option<MixColor>>>;
 
             fn exists(&self, entity: Entity) -> bool;
@@ -3089,9 +3083,9 @@ define_entities!{
     (parent, parent_mut, parent_mut_no_change, set_parent, set_parent_no_change, on_parent, resort_parent, parent_exists, SetParent, ParentType, Parent),
     (sibling, sibling_mut, sibling_mut_no_change, set_sibling, set_sibling_no_change, on_sibling, resort_sibling, sibling_exists, SetSibling, SiblingType, Entity),
     (furniture, furniture_mut, furniture_mut_no_change, set_furniture, set_furniture_no_change, on_furniture, resort_furniture, furniture_exists, SetFurniture, FurnitureType, FurnitureId),
+    (item, item_mut, item_mut_no_change, set_item, set_item_no_change, on_item, resort_item, item_exists, SetItem, ItemType, Item),
     (health, health_mut, health_mut_no_change, set_health, set_health_no_change, on_health, resort_health, health_exists, SetHealth, HealthType, f32),
     (lazy_mix, lazy_mix_mut, lazy_mix_mut_no_change, set_lazy_mix, set_lazy_mix_no_change, on_lazy_mix, resort_lazy_mix, lazy_mix_exists, SetLazyMix, LazyMixType, LazyMix),
-    (outlineable, outlineable_mut, outlinable_mut_no_change, set_outlineable, set_outlineable_no_change, on_outlineable, resort_outlineable, outlineable_exists, SetOutlineable, OutlineableType, Outlineable),
     (lazy_transform, lazy_transform_mut, lazy_transform_mut_no_change, set_lazy_transform, set_lazy_transform_no_change, on_lazy_transform, resort_lazy_transform, lazy_transform_exists, SetLazyTransform, LazyTransformType, LazyTransform),
     (follow_rotation, follow_rotation_mut, follow_rotation_mut_no_change, set_follow_rotation, set_follow_rotation_no_change, on_follow_rotation, resort_follow_rotation, follow_rotation_exists, SetFollowRotation, FollowRotationType, FollowRotation),
     (follow_position, follow_position_mut, follow_position_mut_no_change, set_follow_position, set_follow_position_no_change, on_follow_position, resort_follow_position, follow_position_exists, SetFollowPosition, FollowPositionType, FollowPosition),

@@ -13,6 +13,7 @@ use crate::common::{
     EntityInfo,
     Collider,
     Occluder,
+    Item,
     entity::AnyEntities
 };
 
@@ -158,6 +159,7 @@ pub enum WatcherAction
     OutlineableDisable,
     SetVisible(bool),
     SetMixColor(Option<MixColor>),
+    SetItem(Option<Box<Item>>),
     SetCollider(Option<Box<Collider>>),
     SetOccluder(Option<Occluder>),
     SetTargetPosition(Vector3<f32>),
@@ -198,10 +200,7 @@ impl WatcherAction
             },
             Self::OutlineableDisable =>
             {
-                if let Some(mut outlineable) = entities.outlineable_mut(entity)
-                {
-                    outlineable.disable();
-                }
+                entities.set_outlined(entity, false);
             },
             Self::SetVisible(value) =>
             {
@@ -216,6 +215,10 @@ impl WatcherAction
                 {
                     *target = value;
                 }
+            },
+            Self::SetItem(value) =>
+            {
+                entities.set_item(entity, value.map(|x| *x));
             },
             Self::SetCollider(value) =>
             {

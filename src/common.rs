@@ -27,8 +27,6 @@ pub use tilemap::{
     TileMapWithTextures
 };
 
-pub use outlineable::Outlineable;
-
 pub use lazy_mix::LazyMix;
 pub use lazy_transform::{
     LazyTransform,
@@ -130,8 +128,6 @@ pub mod anatomy;
 
 pub mod character;
 pub mod characters_info;
-
-pub mod outlineable;
 
 pub mod watcher;
 pub mod lazy_mix;
@@ -371,7 +367,6 @@ define_timings!
             sleeping_update,
             enemy_system_update,
             lazy_mix_update,
-            outlineable_update,
             physical_update,
             collider_system_update is TimingsCollisionSystemUpdate -> {
                 world is TimingsCollisionSystemWorld -> {
@@ -401,9 +396,9 @@ define_timings!
                 parent,
                 sibling,
                 furniture,
+                item,
                 health,
                 lazy_mix,
-                outlineable,
                 lazy_transform,
                 follow_rotation,
                 follow_position,

@@ -707,6 +707,7 @@ fn spawn_item(entities: &ClientEntities, transform: &Transform, item: &Item)
             ..item_collider()
         }.into()),
         light: Some(item_info.lighting),
+        item: Some(item.clone()),
         ..Default::default()
     });
 }

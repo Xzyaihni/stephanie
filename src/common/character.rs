@@ -830,6 +830,11 @@ impl Character
                     watchers: Some(Watchers::new(vec![
                         Watcher{
                             kind: WatcherType::Collision,
+                            action: WatcherAction::SetItem(Some(Box::new(item))),
+                            ..Default::default()
+                        },
+                        Watcher{
+                            kind: WatcherType::Collision,
                             action: WatcherAction::SetCollider(Some(Box::new(ColliderInfo{
                                 layer: ColliderLayer::ThrownDecal,
                                 ..collider

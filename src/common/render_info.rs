@@ -126,7 +126,7 @@ impl OutlinedInfo
 {
     pub fn new(
         other_color: Option<MixColor>,
-        outlined: f32,
+        outlined: bool,
         animation: f32
     ) -> Self
     {
@@ -136,7 +136,7 @@ impl OutlinedInfo
             other_color: other_color.other_color,
             other_mix: other_color.other_mix,
             animation,
-            outlined,
+            outlined: if outlined { 1.0 } else { 0.0 },
             keep_transparency: other_color.keep_transparency
         }
     }
@@ -455,6 +455,7 @@ pub struct RenderInfo
     pub above_world: bool,
     pub mix: Option<MixColor>,
     pub aspect: Aspect,
+    pub outlined: bool,
     pub z_level: ZLevel
 }
 
@@ -471,6 +472,7 @@ impl Default for RenderInfo
             above_world: false,
             mix: None,
             aspect: Aspect::Fill,
+            outlined: false,
             z_level: ZLevel::Shoulders
         }
     }
@@ -592,6 +594,7 @@ pub struct ClientRenderInfo
     pub above_world: bool,
     pub mix: Option<MixColor>,
     pub aspect: Aspect,
+    pub outlined: bool,
     z_level: ZLevel
 }
 
@@ -623,6 +626,7 @@ impl ServerToClient<ClientRenderInfo> for RenderInfo
             above_world: self.above_world,
             mix: self.mix,
             aspect: self.aspect,
+            outlined: self.outlined,
             z_level: self.z_level
         };
 

@@ -224,11 +224,6 @@ impl ClientEntitiesContainer
         };
 
         crate::frame_time_this!{
-            [update, update_pre] -> outlineable_update,
-            self.entities.update_outlineable(dt)
-        };
-
-        crate::frame_time_this!{
             [update, update_pre] -> physical_update,
             physical_system::update(&mut self.entities, world, dt)
         };

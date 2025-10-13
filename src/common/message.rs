@@ -13,7 +13,6 @@ use crate::common::{
     Joint,
     Light,
     LazyMix,
-    Outlineable,
     Transform,
     Collider,
     Physical,
@@ -29,6 +28,7 @@ use crate::common::{
     RenderInfo,
     OnConnectInfo,
     FurnitureId,
+    Item,
     entity::{EntityRemoveMany, EntityRemove},
     world::{Pos3, TilePos, Tile, Chunk, GlobalPos}
 };
@@ -57,11 +57,11 @@ pub enum Message
     SetParent{entity: Entity, component: Option<Box<Parent>>},
     SetSibling{entity: Entity, component: Option<Box<Entity>>},
     SetFurniture{entity: Entity, component: Option<Box<FurnitureId>>},
+    SetItem{entity: Entity, component: Option<Box<Item>>},
     SetHealth{entity: Entity, component: Option<Box<f32>>},
     SetTransform{entity: Entity, component: Option<Box<Transform>>},
     SetLazyTransform{entity: Entity, component: Option<Box<LazyTransform>>},
     SetLazyMix{entity: Entity, component: Option<Box<LazyMix>>},
-    SetOutlineable{entity: Entity, component: Option<Box<Outlineable>>},
     SetFollowRotation{entity: Entity, component: Option<Box<FollowRotation>>},
     SetFollowPosition{entity: Entity, component: Option<Box<FollowPosition>>},
     SetInventory{entity: Entity, component: Option<Box<Inventory>>},
