@@ -757,14 +757,11 @@ pub fn aabb_bounds(transform: &Transform) -> Vector3<f32>
 
 pub fn aabb_points(transform: &Transform) -> (Vector2<f32>, Vector2<f32>)
 {
+    let half_size = aabb_bounds(transform).xy() * 0.5;
+
     let pos = transform.position.xy();
-    let half_scale = transform.scale.xy() * 0.5;
-    let rotation = transform.rotation;
 
-    let a = rotate_point(-half_scale, rotation);
-    let b = rotate_point(half_scale, rotation);
-
-    (vector![a.x.min(b.x), a.y.min(b.y)] + pos, vector![a.x.max(b.x), a.y.max(b.y)] + pos)
+    (pos - half_size, pos + half_size)
 }
 
 pub fn rectangle_points(transform: &Transform) -> [Vector2<f32>; 4]

@@ -371,6 +371,16 @@ impl ClientEntitiesContainer
 
                     let occluded_checker = world.occluded_checker(render_transform);
 
+                    if DebugConfig::is_enabled(DebugTool::DisplayTouchedTiles)
+                    {
+                        if DebugConfig::get_debug_value_integer() as usize == entity.id
+                        {
+                            let render_transform = render.object.as_ref().unwrap().transform().unwrap();
+
+                            occluded_checker.debug_touched_tiles(&self.entities, world.visual_global_mapper(), &render_transform);
+                        }
+                    }
+
                     let sky_occluded = below_player
                         && occluded_checker.sky_occluded(world.visual_chunks(), occluded_checker_info);
 

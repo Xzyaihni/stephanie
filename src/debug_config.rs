@@ -38,6 +38,7 @@ pub enum DebugTool
     DisplayPathfind,
     DisplayPathfindAttempt,
     DisplayCollisions,
+    DisplayTouchedTiles,
     CollisionBounds,
     Contacts,
     Velocity,

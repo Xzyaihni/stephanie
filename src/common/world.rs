@@ -62,7 +62,7 @@ pub use client_overmap::TilePos;
 pub use visual_overmap::{OccludedChecker, OccludedCheckerInfo};
 
 use client_overmap::ClientOvermap;
-use visual_overmap::{VisualOvermap, VisualOvermapChunk, OccludedSlice};
+use visual_overmap::{VisualOvermap, VisualOvermapChunk, OccludedSlice, GlobalMapper};
 
 pub use sky_light::SkyLight;
 
@@ -530,6 +530,11 @@ impl World
     pub fn occluded_checker(&self, transform: &Transform) -> OccludedChecker
     {
         self.overmap.occluded_checker(transform)
+    }
+
+    pub fn visual_global_mapper(&self) -> GlobalMapper
+    {
+        self.overmap.visual_global_mapper()
     }
 
     pub fn update_buffers_light_shadows(

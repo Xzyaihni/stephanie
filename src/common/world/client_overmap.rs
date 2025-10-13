@@ -21,7 +21,7 @@ use crate::{
 
 use super::{
     Tile,
-    visual_overmap::{VisualOvermap, OccludedChecker, OccludedCheckerInfo, VisualOvermapChunk, OccludedSlice},
+    visual_overmap::{VisualOvermap, OccludedChecker, OccludedCheckerInfo, VisualOvermapChunk, OccludedSlice, GlobalMapper},
     overmap::{
         ChunksContainer,
         Overmap,
@@ -499,6 +499,11 @@ impl ClientOvermap
     pub fn occluded_checker(&self, transform: &Transform) -> OccludedChecker
     {
         self.visual_overmap.occluded_checker(transform)
+    }
+
+    pub fn visual_global_mapper(&self) -> GlobalMapper
+    {
+        self.visual_overmap.global_mapper()
     }
 
     pub fn update_buffers_light_shadows(

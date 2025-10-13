@@ -37,6 +37,7 @@ use crate::{
 
 use super::{
     TILE_SIZE,
+    TilePos,
     chunk::{
         rounded_single,
         to_tile_single,
@@ -361,7 +362,7 @@ impl OccludedSlice
     }
 }
 
-struct GlobalMapper
+pub struct GlobalMapper
 {
     size: Pos3<usize>,
     position: GlobalPos
@@ -488,6 +489,74 @@ impl OccludedChecker
                 f(pos, self.top_left_tile.z, tile_start, tile_end)
             })
         })
+    }
+
+    pub fn debug_touched_tiles(&self, entities: &ClientEntities, mapper: GlobalMapper, transform: &Transform)
+    {
+        let display_point = |p|
+        {
+            let p = with_z(p, transform.position.z);
+
+            entities.push(true, EntityInfo{
+                transform: Some(Transform{
+                    position: p,
+                    scale: Vector3::repeat(0.01),
+                    ..Default::default()
+                }),
+                render: Some(RenderInfo{
+                    object: Some(RenderObjectKind::Texture{
+                        name: "circle.png".into()
+                    }.into()),
+                    mix: Some(MixColor{keep_transparency: true, ..MixColor::color([0.0, 1.0, 0.0, 0.5])}),
+                    above_world: true,
+                    ..Default::default()
+                }),
+                watchers: Some(Watchers::simple_one_frame()),
+                ..Default::default()
+            });
+        };
+
+        {
+            let (a, b) = aabb_points(transform);
+
+            display_point(a);
+            display_point(b);
+        }
+
+        self.run(|pos, height, top_left, bottom_right|
+        {
+            let chunk = mapper.to_global(pos);
+
+            (top_left.y..=bottom_right.y).for_each(|y|
+            {
+                (top_left.x..=bottom_right.x).for_each(|x|
+                {
+                    let tile_local = Pos3::new(x, y, height);
+                    let local = ChunkLocal::from(tile_local);
+                    let tile_pos = TilePos{chunk, local};
+
+                    entities.push(true, EntityInfo{
+                        transform: Some(Transform{
+                            position: tile_pos.center_position().into(),
+                            scale: Vector3::repeat(TILE_SIZE),
+                            ..Default::default()
+                        }),
+                        render: Some(RenderInfo{
+                            object: Some(RenderObjectKind::Texture{
+                                name: "solid.png".into()
+                            }.into()),
+                            mix: Some(MixColor{keep_transparency: true, ..MixColor::color([0.0, 0.0, 1.0, 0.1])}),
+                            above_world: true,
+                            ..Default::default()
+                        }),
+                        watchers: Some(Watchers::simple_one_frame()),
+                        ..Default::default()
+                    });
+                });
+            });
+
+            true
+        });
     }
 
     pub fn sky_occluded(
@@ -1159,7 +1228,7 @@ impl VisualOvermap
         });
     }
 
-    fn global_mapper(&self) -> GlobalMapper
+    pub fn global_mapper(&self) -> GlobalMapper
     {
         GlobalMapper{
             size: self.size(),
@@ -1351,9 +1420,9 @@ impl VisualOvermap
         let (top_left, top_left_tile) = {
             let pos: Pos3<_> = top_left_pos.into();
 
-            let chunk = self.to_local(pos.rounded()).unwrap_or_else(||
+            let chunk = self.to_local(pos.rounded()).map(|x| x.pos).unwrap_or_else(||
             {
-                LocalPos::new(Pos3::repeat(0), self.visibility_checker.size)
+                Pos3::repeat(0)
             });
 
             let tile = pos.to_tile();
@@ -1364,9 +1433,9 @@ impl VisualOvermap
         let (bottom_right, bottom_right_tile) = {
             let pos: Pos3<_> = bottom_right_pos.into();
 
-            let chunk = self.to_local(pos.rounded()).unwrap_or_else(||
+            let chunk = self.to_local(pos.rounded()).map(|x| x.pos).unwrap_or_else(||
             {
-                LocalPos::new(self.visibility_checker.size - Pos3::repeat(1), self.visibility_checker.size)
+                self.visibility_checker.size - Pos3::repeat(1)
             });
 
             let tile = pos.to_tile();
@@ -1375,9 +1444,9 @@ impl VisualOvermap
         };
 
         OccludedChecker{
-            top_left: top_left.pos,
-            bottom_right: bottom_right.pos,
-            size: top_left.size,
+            top_left,
+            bottom_right,
+            size: self.visibility_checker.size,
             top_left_tile,
             bottom_right_tile,
             z: transform.position.z
