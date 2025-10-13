@@ -76,12 +76,12 @@
 (define (sink)
     (cond
         ((eq? state 'create) '(bottle))
-        ((eq? state 'destroy) (standard-drops '(pipe short_stick plank ceramic)))))
+        ((eq? state 'destroy) (standard-drops '(pipe short_stick plank ceramic_shard)))))
 
 (define (cabinet)
     (cond
         ((eq? state 'create) '(heal_pills))
-        ((eq? state 'destroy) (standard-drops '(metal_shard)))))
+        ((eq? state 'destroy) (standard-drops '(metal_shard glass_shard)))))
 
 (define (wood_chair) (standard-drops '(stick short_stick plank)))
 (define (wood_table) (standard-drops '(stick plank)))

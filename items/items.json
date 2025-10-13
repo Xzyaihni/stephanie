@@ -100,6 +100,36 @@
         "groups": ["weapons"]
     },
     {
+        "name": "plank",
+        "comfort": 0.5,
+        "mass": 1.0,
+        "groups": ["trash", "utility"]
+    },
+    {
+        "name": "glass shard",
+        "comfort": 0.2,
+        "sharpness": 0.9,
+        "side_sharpness": 0.9,
+        "mass": 0.05,
+        "groups": ["trash"]
+    },
+    {
+        "name": "metal shard",
+        "comfort": 0.6,
+        "sharpness": 0.3,
+        "side_sharpness": 0.3,
+        "mass": 0.2,
+        "groups": ["trash"]
+    },
+    {
+        "name": "ceramic shard",
+        "comfort": 0.6,
+        "sharpness": 0.4,
+        "side_sharpness": 0.4,
+        "mass": 0.15,
+        "groups": ["trash"]
+    },
+    {
         "name": "glock",
         "ranged": {
             "Pistol": {
