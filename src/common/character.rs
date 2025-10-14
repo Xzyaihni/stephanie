@@ -394,7 +394,6 @@ impl Character
                     },
                     ..Default::default()
                 }.into()),
-                watchers: Some(Default::default()),
                 ..Default::default()
             }
         };
@@ -448,7 +447,6 @@ impl Character
                     z_level: if is_player { ZLevel::PlayerHair } else { ZLevel::Hair },
                     ..Default::default()
                 }),
-                watchers: Some(Default::default()),
                 ..Default::default()
             }
         };
@@ -787,6 +785,8 @@ impl Character
 
             let info = self.info.as_ref().unwrap();
 
+            let collider = item_collider();
+
             let entity_info = {
                 let holding_transform = entities.transform(info.holding).unwrap();
 
@@ -808,8 +808,6 @@ impl Character
 
                 physical.add_force(direction * throw_amount);
 
-                let collider = item_collider();
-
                 EntityInfo{
                     physical: Some(physical),
                     lazy_transform: Some(item_lazy_transform(item_info, holding_transform.position, holding_transform.rotation).into()),
@@ -827,64 +825,65 @@ impl Character
                         faction: Some(self.faction),
                         ..Default::default()
                     }.into()),
-                    watchers: Some(Watchers::new(vec![
-                        Watcher{
-                            kind: WatcherType::Collision,
-                            action: WatcherAction::SetItem(Some(Box::new(item))),
-                            ..Default::default()
-                        },
-                        Watcher{
-                            kind: WatcherType::Collision,
-                            action: WatcherAction::SetCollider(Some(Box::new(ColliderInfo{
-                                layer: ColliderLayer::ThrownDecal,
-                                ..collider
-                            }.into()))),
-                            ..Default::default()
-                        },
-                        Watcher{
-                            kind: WatcherType::Collision,
-                            action: WatcherAction::AddWatcher(Box::new(Watcher{
-                                kind: WatcherType::Lifetime(0.5.into()),
-                                action: WatcherAction::Explode(Box::new(ExplodeInfo{
-                                    keep: false,
-                                    info: ParticlesInfo{
-                                        amount: 3..5,
-                                        speed: ParticleSpeed::Random(0.1),
-                                        decay: ParticleDecay::Random(3.5..=5.0),
-                                        position: ParticlePosition::Spread(1.0),
-                                        rotation: ParticleRotation::Random,
-                                        scale: ParticleScale::Spread{
-                                            scale: Vector3::repeat(ENTITY_SCALE * 0.4),
-                                            variation: 0.1
-                                        },
-                                        min_scale: ENTITY_SCALE * 0.02
-                                    },
-                                    prototype: EntityInfo{
-                                        physical: Some(PhysicalProperties{
-                                            inverse_mass: 0.01_f32.recip(),
-                                            floating: true,
-                                            ..Default::default()
-                                        }.into()),
-                                        render: Some(RenderInfo{
-                                            object: Some(RenderObjectKind::TextureId{
-                                                id: combined_info.common_textures.dust
-                                            }.into()),
-                                            z_level: ZLevel::BelowFeet,
-                                            ..Default::default()
-                                        }),
-                                        ..Default::default()
-                                    }
-                                })),
-                                ..Default::default()
-                            })),
-                            ..Default::default()
-                        }
-                    ])),
                     ..Default::default()
                 }
             };
 
-            entities.push(true, entity_info);
+            let throw_projectile_entity = entities.push(true, entity_info);
+
+            entities.add_watcher(throw_projectile_entity, Watcher{
+                kind: WatcherType::Collision,
+                action: WatcherAction::SetItem(Some(Box::new(item))),
+                ..Default::default()
+            });
+
+            entities.add_watcher(throw_projectile_entity, Watcher{
+                kind: WatcherType::Collision,
+                action: WatcherAction::SetCollider(Some(Box::new(ColliderInfo{
+                    layer: ColliderLayer::ThrownDecal,
+                    ..collider
+                }.into()))),
+                ..Default::default()
+            });
+
+            entities.add_watcher(throw_projectile_entity, Watcher{
+                kind: WatcherType::Collision,
+                action: WatcherAction::AddWatcher(Box::new(Watcher{
+                    kind: WatcherType::Lifetime(0.5.into()),
+                    action: WatcherAction::Explode(Box::new(ExplodeInfo{
+                        keep: false,
+                        info: ParticlesInfo{
+                            amount: 3..5,
+                            speed: ParticleSpeed::Random(0.1),
+                            decay: ParticleDecay::Random(3.5..=5.0),
+                            position: ParticlePosition::Spread(1.0),
+                            rotation: ParticleRotation::Random,
+                            scale: ParticleScale::Spread{
+                                scale: Vector3::repeat(ENTITY_SCALE * 0.4),
+                                variation: 0.1
+                            },
+                            min_scale: ENTITY_SCALE * 0.02
+                        },
+                        prototype: EntityInfo{
+                            physical: Some(PhysicalProperties{
+                                inverse_mass: 0.01_f32.recip(),
+                                floating: true,
+                                ..Default::default()
+                            }.into()),
+                            render: Some(RenderInfo{
+                                object: Some(RenderObjectKind::TextureId{
+                                    id: combined_info.common_textures.dust
+                                }.into()),
+                                z_level: ZLevel::BelowFeet,
+                                ..Default::default()
+                            }),
+                            ..Default::default()
+                        }
+                    })),
+                    ..Default::default()
+                })),
+                ..Default::default()
+            });
 
             entities.inventory_mut(info.this).unwrap().remove(held);
 
@@ -1001,9 +1000,7 @@ impl Character
 
         lazy.target().rotation = start_rotation - new_rotation;
 
-        let mut watchers = combined_info.entities.watchers_mut(holding).unwrap();
-
-        watchers.push(Watcher{
+        combined_info.entities.add_watcher(holding, Watcher{
             kind: WatcherType::Lifetime(0.2.into()),
             action: WatcherAction::SetLazyRotation(Self::default_lazy_rotation()),
             ..Default::default()
@@ -1019,7 +1016,7 @@ impl Character
             };
         } else
         {
-            watchers.push(Watcher{
+            combined_info.entities.add_watcher(holding, Watcher{
                 kind: WatcherType::Lifetime((swing_time * 0.8).into()),
                 action: WatcherAction::SetTargetRotation(start_rotation),
                 ..Default::default()
@@ -1217,24 +1214,22 @@ impl Character
 
         let rotation = start_rotation - current_hand_rotation;
 
-        let mut watchers = entities.watchers_mut(info.hand_left).unwrap();
-
         let end = extend_time + extend_time;
         let kind = WatcherType::Lifetime(end.into());
 
-        watchers.push(Watcher{
+        entities.add_watcher(info.hand_left, Watcher{
             kind: kind.clone(),
             action: WatcherAction::SetLazyRotation(Self::default_lazy_rotation()),
             ..Default::default()
         });
 
-        watchers.push(Watcher{
+        entities.add_watcher(info.hand_left, Watcher{
             kind: kind.clone(),
             action: WatcherAction::SetTargetRotation(rotation),
             ..Default::default()
         });
 
-        watchers.push(Watcher{
+        entities.add_watcher(info.hand_left, Watcher{
             kind,
             action: WatcherAction::SetTargetPosition(held_position),
             ..Default::default()
@@ -1400,7 +1395,7 @@ impl Character
         let angle = short_rotation(opposite_angle(self.bash_side.opposite().to_angle() - f32::consts::FRAC_PI_2)) * 0.6;
         let minimum_distance = some_or_return!(combined_info.entities.transform(info.this)).scale.xy().max();
 
-        combined_info.entities.push(
+        let projectile_entity = combined_info.entities.push(
             true,
             EntityInfo{
                 lazy_transform: Some(LazyTransformInfo{
@@ -1427,16 +1422,15 @@ impl Character
                     faction: Some(self.faction),
                     ..Default::default()
                 }.into()),
-                watchers: Some(Watchers::new(vec![
-                    Watcher{
-                        kind: WatcherType::Lifetime(0.2.into()),
-                        action: WatcherAction::Remove,
-                        ..Default::default()
-                    }
-                ])),
                 ..Default::default()
             }
         );
+
+        combined_info.entities.add_watcher(projectile_entity, Watcher{
+            kind: WatcherType::Lifetime(0.2.into()),
+            action: WatcherAction::Remove,
+            ..Default::default()
+        });
     }
 
     fn poke_projectile(&mut self, combined_info: CombinedInfo, item: Item)
@@ -1467,7 +1461,7 @@ impl Character
             height: self.melee_height()
         };
 
-        combined_info.entities.push(
+        let projectile_entity = combined_info.entities.push(
             true,
             EntityInfo{
                 follow_rotation: Some(FollowRotation::new(
@@ -1499,16 +1493,15 @@ impl Character
                     source: Some(info.this),
                     ..Default::default()
                 }.into()),
-                watchers: Some(Watchers::new(vec![
-                    Watcher{
-                        kind: WatcherType::Lifetime(0.2.into()),
-                        action: WatcherAction::Remove,
-                        ..Default::default()
-                    }
-                ])),
                 ..Default::default()
             }
         );
+
+        combined_info.entities.add_watcher(projectile_entity, Watcher{
+            kind: WatcherType::Lifetime(0.2.into()),
+            action: WatcherAction::Remove,
+            ..Default::default()
+        });
     }
 
     fn handle_actions(&mut self, combined_info: CombinedInfo)

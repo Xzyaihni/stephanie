@@ -1,5 +1,3 @@
-use std::mem;
-
 use nalgebra::Vector3;
 
 use serde::{Serialize, Deserialize};
@@ -17,6 +15,12 @@ use crate::common::{
     entity::AnyEntities
 };
 
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WatcherId
+{
+    Outline
+}
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Lifetime
@@ -49,7 +53,7 @@ impl Lifetime
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct Frames
 {
     current: u32,
@@ -64,7 +68,7 @@ impl From<u32> for Frames
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub enum WatcherType
 {
     Instant,
@@ -77,7 +81,7 @@ pub enum WatcherType
 
 impl WatcherType
 {
-    fn meets<E: AnyEntities>(
+    pub fn meets<E: AnyEntities>(
         &mut self,
         entities: &E,
         entity: Entity,
@@ -143,7 +147,7 @@ impl WatcherType
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct ExplodeInfo
 {
     pub keep: bool,
@@ -151,7 +155,7 @@ pub struct ExplodeInfo
     pub prototype: EntityInfo
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub enum WatcherAction
 {
     None,
@@ -193,10 +197,7 @@ impl WatcherAction
             Self::None => (),
             Self::AddWatcher(watcher) =>
             {
-                if let Some(mut watchers) = entities.watchers_mut(entity)
-                {
-                    watchers.push(*watcher);
-                }
+                entities.add_watcher(entity, *watcher);
             },
             Self::OutlineableDisable =>
             {
@@ -289,11 +290,12 @@ impl WatcherAction
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct Watcher
 {
     pub kind: WatcherType,
     pub action: WatcherAction,
+    pub id: Option<WatcherId>,
     pub persistent: bool
 }
 
@@ -304,6 +306,7 @@ impl Default for Watcher
         Self{
             kind: WatcherType::Instant,
             action: WatcherAction::None,
+            id: None,
             persistent: false
         }
     }
@@ -327,78 +330,5 @@ impl Watcher
             action: WatcherAction::Remove,
             ..Default::default()
         }
-    }
-}
-
-#[derive(Default, Debug, Clone, Serialize, Deserialize)]
-pub struct Watchers(Vec<Watcher>);
-
-impl Watchers
-{
-    pub fn new(watchers: Vec<Watcher>) -> Self
-    {
-        Self(watchers)
-    }
-
-    pub fn simple_disappearing(lifetime: f32) -> Self
-    {
-        Self::new(vec![Watcher::simple_disappearing(lifetime)])
-    }
-
-    pub fn simple_one_frame() -> Self
-    {
-        Self::new(vec![Watcher::simple_one_frame()])
-    }
-
-    pub fn execute<E: AnyEntities>(
-        &mut self,
-        entities: &E,
-        entity: Entity,
-        dt: f32
-    ) -> Vec<WatcherAction>
-    {
-        let mut actions = Vec::new();
-        self.0.retain_mut(|watcher|
-        {
-            let meets = watcher.kind.meets(entities, entity, dt);
-
-            if meets
-            {
-                let replacement = if watcher.persistent
-                {
-                    watcher.action.clone()
-                } else
-                {
-                    Default::default()
-                };
-
-                actions.push(mem::replace(&mut watcher.action, replacement));
-            }
-
-            if watcher.persistent
-            {
-                true
-            } else
-            {
-                !meets
-            }
-        });
-
-        actions
-    }
-
-    pub fn replace(&mut self, watchers: Vec<Watcher>)
-    {
-        self.0 = watchers;
-    }
-
-    pub fn push(&mut self, watcher: Watcher)
-    {
-        self.0.push(watcher);
-    }
-
-    pub fn find(&mut self, f: impl Fn(&&mut Watcher) -> bool) -> Option<&mut Watcher>
-    {
-        self.0.iter_mut().find(f)
     }
 }

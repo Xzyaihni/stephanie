@@ -205,22 +205,23 @@ pub fn damager<'a, 'b, 'c>(
 
             let watcher = kind.create(textures, weak, angle);
 
-            entities.push(true, EntityInfo{
+            let entity = entities.push(true, EntityInfo{
                 transform: Some(Transform{
                     position,
                     scale: Vector3::repeat(ENTITY_SCALE),
                     ..Default::default()
                 }),
-                watchers: Some(Watchers::new(vec![watcher])),
                 ..Default::default()
             });
+
+            entities.add_watcher(entity, watcher);
         };
 
         if DebugConfig::is_enabled(DebugTool::DamagePoints)
         {
             let make_point = |position, color|
             {
-                entities.push(true, EntityInfo{
+                let entity = entities.push(true, EntityInfo{
                     transform: Some(Transform{
                         position,
                         scale: Vector3::repeat(0.02),
@@ -234,9 +235,10 @@ pub fn damager<'a, 'b, 'c>(
                         above_world: true,
                         ..Default::default()
                     }),
-                    watchers: Some(Watchers::simple_disappearing(1.0)),
                     ..Default::default()
                 });
+
+                entities.add_watcher(entity, Watcher::simple_disappearing(1.0));
             };
 
             make_point(result.damage_entry, [1.0, 0.0, 0.0, 1.0]);
@@ -366,7 +368,7 @@ pub fn damager<'a, 'b, 'c>(
                     create_particles(textures, ParticlesKind::Dust, false, position);
                 }
 
-                entities.push(true, EntityInfo{
+                let entity = entities.push(true, EntityInfo{
                     render: Some(RenderInfo{
                         object: Some(RenderObjectKind::TextureId{
                             id: textures.solid
@@ -376,13 +378,12 @@ pub fn damager<'a, 'b, 'c>(
                         ..Default::default()
                     }),
                     transform: Some(transform),
-                    watchers: Some(Watchers::new(vec![
-                        Watcher{
-                            kind: WatcherType::Lifetime(HIGHLIGHT_DURATION.into()),
-                            action: WatcherAction::Remove,
-                            ..Default::default()
-                        }
-                    ])),
+                    ..Default::default()
+                });
+
+                entities.add_watcher(entity, Watcher{
+                    kind: WatcherType::Lifetime(HIGHLIGHT_DURATION.into()),
+                    action: WatcherAction::Remove,
                     ..Default::default()
                 });
             }
@@ -652,20 +653,15 @@ pub fn update(
 
 fn flash_white_single(entities: &impl AnyEntities, entity: Entity)
 {
-    if let Some(mut watchers) = entities.watchers_mut(entity)
+    if let Some(mut mix_color) = entities.mix_color_target(entity)
     {
-        if let Some(mut mix_color) = entities.mix_color_target(entity)
-        {
-            *mix_color = Some(MixColor{color: [1.0; 4], amount: 0.8, keep_transparency: true});
+        *mix_color = Some(MixColor{color: [1.0; 4], amount: 0.8, keep_transparency: true});
 
-            watchers.push(
-                Watcher{
-                    kind: WatcherType::Lifetime(HIGHLIGHT_DURATION.into()),
-                    action: WatcherAction::SetMixColor(None),
-                    ..Default::default()
-                }
-            );
-        }
+        entities.add_watcher(entity, Watcher{
+            kind: WatcherType::Lifetime(HIGHLIGHT_DURATION.into()),
+            action: WatcherAction::SetMixColor(None),
+            ..Default::default()
+        });
     }
 }
 

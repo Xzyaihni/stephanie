@@ -841,7 +841,6 @@ pub fn debug_marker_info(
             mix: Some(MixColor::color(color)),
             ..Default::default()
         }),
-        watchers: Some(Watchers::simple_one_frame()),
         ..Default::default()
     }
 }
@@ -897,7 +896,6 @@ fn direction_like_info(
                 above_world: true,
                 ..Default::default()
             }),
-            watchers: Some(Watchers::simple_one_frame()),
             ..Default::default()
         }
     })

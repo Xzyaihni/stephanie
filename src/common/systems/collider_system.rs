@@ -76,7 +76,7 @@ pub fn debug_collision_bounds<T: Borrow<Collider>>(
         transform.scale = scale;
     }
 
-    entities.push(true, EntityInfo{
+    let entity = entities.push(true, EntityInfo{
         transform: Some(transform),
         render: Some(RenderInfo{
             object: Some(RenderObjectKind::Texture{
@@ -86,9 +86,10 @@ pub fn debug_collision_bounds<T: Borrow<Collider>>(
             above_world: true,
             ..Default::default()
         }),
-        watchers: Some(Watchers::simple_one_frame()),
         ..Default::default()
     });
+
+    entities.add_watcher(entity, Watcher::simple_one_frame());
 }
 
 pub fn update_sleeping(
@@ -269,7 +270,8 @@ pub fn update(
 
                 if let Some(line) = line_info(this, other, 0.005, [0.0, 0.0, 1.0])
                 {
-                    entities.push(true, line);
+                    let entity = entities.push(true, line);
+                    entities.add_watcher(entity, Watcher::simple_one_frame());
                 }
             });
         });

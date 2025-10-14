@@ -373,7 +373,6 @@ no_on_set!{
     Light,
     ClientLight,
     Damaging,
-    Watchers,
     Occluder,
     ClientOccluder,
     UnitType
@@ -806,11 +805,6 @@ macro_rules! entity_info_common
                 }
             }
 
-            if self.anatomy.is_some() && self.watchers.is_none()
-            {
-                self.watchers = Some(Default::default());
-            }
-
             if self.character.is_some()
             {
                 self.lazy_transform.as_mut().unwrap().deformation = Deformation::Stretch(
@@ -865,6 +859,11 @@ macro_rules! common_trait_impl
         fn infos(&self) -> &DataInfos
         {
             self.infos.as_ref().unwrap()
+        }
+
+        fn add_watcher(&self, entity: Entity, watcher: Watcher)
+        {
+            self.add_watcher(entity, watcher);
         }
 
         fn exists(&self, entity: Entity) -> bool
@@ -1327,6 +1326,7 @@ macro_rules! define_entities_both
             create_render_queue: RefCell<Vec<(Entity, RenderComponent)>>,
             changed_entities: RefCell<ChangedEntities>,
             side_sync: RefCell<SideSyncEntities>,
+            watchers: RefCell<Vec<(Entity, Watcher)>>,
             on_remove: Rc<RefCell<Vec<Box<dyn FnMut(&mut Self, Entity)>>>>,
             $($on_name: Rc<RefCell<Vec<OnComponentChange>>>,)+
             $(pub $name: ObjectsStore<ComponentWrapper<$component_type>>,)+
@@ -1391,6 +1391,7 @@ macro_rules! define_entities_both
                     create_render_queue: RefCell::new(Vec::new()),
                     changed_entities: RefCell::new(Default::default()),
                     side_sync: RefCell::new(Default::default()),
+                    watchers: RefCell::new(Vec::new()),
                     on_remove: Rc::new(RefCell::new(Vec::new())),
                     $($on_name: Rc::new(RefCell::new(Vec::new())),)+
                     $($name: ObjectsStore::new(),)+
@@ -1521,7 +1522,7 @@ macro_rules! define_entities_both
 
                 pub fn $mut_func(&self, entity: Entity) -> Option<RefMut<'_, $component_type>>
                 {
-                    if const { !(matches!(Component::$name, Component::transform) || matches!(Component::$name, Component::watchers)) }
+                    if const { !matches!(Component::$name, Component::transform) }
                     {
                         self.changed_entities.borrow_mut().$name.push(entity);
                     }
@@ -1694,27 +1695,65 @@ macro_rules! define_entities_both
                 self.on_remove.borrow_mut().push(f);
             }
 
+            pub fn add_watcher(&self, entity: Entity, watcher: Watcher)
+            {
+                self.watchers.borrow_mut().push((entity, watcher));
+            }
+
+            pub fn replace_watcher(&self, check_entity: Entity, watcher: Watcher)
+            {
+                debug_assert!(watcher.id.is_some());
+
+                let check_id = some_or_return!(watcher.id);
+
+                let mut watchers = self.watchers.borrow_mut();
+                if let Some(found) = watchers.iter_mut().find(|(entity, watcher)|
+                {
+                    *entity == check_entity && watcher.id.map(|id| id == check_id).unwrap_or(false)
+                })
+                {
+                    found.1 = watcher;
+                } else
+                {
+                    watchers.push((check_entity, watcher));
+                }
+            }
+
             pub fn update_watchers(
                 &mut self,
                 dt: f32
             )
-            where
-                for<'a> &'a mut WatchersType: Into<&'a mut Watchers>
             {
-                // the borrow checker forcing me to collect into vectors cuz why not!
-                let pairs: Vec<_> = iterate_components_with!(self, watchers, map, |entity, watchers: &RefCell<WatchersType>|
+                let mut actions = Vec::new();
+                self.watchers.borrow_mut().retain_mut(|(entity, watcher)|
                 {
-                    let actions = (&mut *watchers.borrow_mut()).into().execute(self, entity, dt);
+                    let meets = watcher.kind.meets(self, *entity, dt);
 
-                    (entity, actions)
-                }).collect();
-
-                pairs.into_iter().for_each(|(entity, actions)|
-                {
-                    actions.into_iter().for_each(|action|
+                    if meets
                     {
-                        action.execute(self, entity);
-                    });
+                        let replacement = if watcher.persistent
+                        {
+                            watcher.action.clone()
+                        } else
+                        {
+                            Default::default()
+                        };
+
+                        actions.push((*entity, mem::replace(&mut watcher.action, replacement)));
+                    }
+
+                    if watcher.persistent
+                    {
+                        true
+                    } else
+                    {
+                        !meets
+                    }
+                });
+
+                actions.into_iter().for_each(|(entity, action)|
+                {
+                    action.execute(self, entity);
                 });
             }
 
@@ -2734,6 +2773,8 @@ macro_rules! define_entities
 
             fn infos(&self) -> &DataInfos;
 
+            fn add_watcher(&self, entity: Entity, watcher: Watcher);
+
             fn lazy_target_ref(&self, entity: Entity) -> Option<Ref<'_, Transform>>;
             fn lazy_target(&self, entity: Entity) -> Option<RefMut<'_, Transform>>;
             fn lazy_target_end(&self, entity: Entity) -> Option<Transform>;
@@ -3089,7 +3130,6 @@ define_entities!{
     (lazy_transform, lazy_transform_mut, lazy_transform_mut_no_change, set_lazy_transform, set_lazy_transform_no_change, on_lazy_transform, resort_lazy_transform, lazy_transform_exists, SetLazyTransform, LazyTransformType, LazyTransform),
     (follow_rotation, follow_rotation_mut, follow_rotation_mut_no_change, set_follow_rotation, set_follow_rotation_no_change, on_follow_rotation, resort_follow_rotation, follow_rotation_exists, SetFollowRotation, FollowRotationType, FollowRotation),
     (follow_position, follow_position_mut, follow_position_mut_no_change, set_follow_position, set_follow_position_no_change, on_follow_position, resort_follow_position, follow_position_exists, SetFollowPosition, FollowPositionType, FollowPosition),
-    (watchers, watchers_mut, watchers_mut_no_change, set_watchers, set_watchers_no_change, on_watchers, resort_watchers, watchers_exists, SetWatchers, WatchersType, Watchers),
     (damaging, damaging_mut, damaging_mut_no_change, set_damaging, set_damaging_no_change, on_damaging, resort_damaging, damaging_exists, SetDamaging, DamagingType, Damaging),
     (inventory, inventory_mut, inventory_mut_no_change, set_inventory, set_inventory_no_change, on_inventory, resort_inventory, inventory_exists, SetInventory, InventoryType, Inventory),
     (named, named_mut, named_mut_no_change, set_named, set_named_no_change, on_named, resort_named, named_exists, SetNamed, NamedType, String),

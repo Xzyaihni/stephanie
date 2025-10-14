@@ -124,25 +124,9 @@ impl ParticleCreator
         entities: &mut E,
         entity: Entity,
         info: ParticlesInfo,
-        mut prototype: EntityInfo
+        prototype: EntityInfo
     )
     {
-        prototype.watchers = Some(Watchers::new(vec![
-            Watcher{
-                kind: WatcherType::Instant,
-                action: WatcherAction::SetTargetScale(Vector3::zeros()),
-                ..Default::default()
-            },
-            Watcher{
-                kind: WatcherType::ScaleDistance{
-                    from: Vector3::zeros(),
-                    near: info.min_scale
-                },
-                action: WatcherAction::Remove,
-                ..Default::default()
-            }
-        ]));
-
         let position;
         let scale;
         {
@@ -205,7 +189,22 @@ impl ParticleCreator
             }
 
             // for now particles r local (i might change that?)
-            entities.push_eager(true, prototype);
+            let prototype_entity = entities.push_eager(true, prototype);
+
+            entities.add_watcher(prototype_entity, Watcher{
+                kind: WatcherType::Instant,
+                action: WatcherAction::SetTargetScale(Vector3::zeros()),
+                ..Default::default()
+            });
+
+            entities.add_watcher(prototype_entity, Watcher{
+                kind: WatcherType::ScaleDistance{
+                    from: Vector3::zeros(),
+                    near: info.min_scale
+                },
+                action: WatcherAction::Remove,
+                ..Default::default()
+            });
         })
     }
 }

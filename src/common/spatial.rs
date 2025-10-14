@@ -388,7 +388,8 @@ impl KNode
 
                                     if let Some(line) = line_info(with_z(start, z), with_z(end, z), ENTITY_SCALE * 0.05, [0.4, 0.0, 0.0])
                                     {
-                                        client_entities.push(true, line);
+                                        let entity = client_entities.push(true, line);
+                                        client_entities.add_watcher(entity, Watcher::simple_one_frame());
                                     }
                                 }
 
@@ -400,7 +401,8 @@ impl KNode
 
                                 if let Some(line) = line_info(with_z(start, z), with_z(end, z), thickness, [0.0, 0.0, 0.5])
                                 {
-                                    client_entities.push(true, line);
+                                    let entity = client_entities.push(true, line);
+                                    client_entities.add_watcher(entity, Watcher::simple_one_frame());
                                 }
 
                                 scale[axis_i] *= 0.5;
@@ -409,7 +411,7 @@ impl KNode
                                 (line, position + if *state { -shift } else { shift }, scale)
                             });
 
-                        client_entities.push(true, EntityInfo{
+                        let entity = client_entities.push(true, EntityInfo{
                             transform: Some(Transform{
                                 position: with_z(position, transform.position.z),
                                 scale: scale.xyx(),
@@ -424,9 +426,10 @@ impl KNode
                                 z_level: ZLevel::BelowFeet,
                                 ..Default::default()
                             }),
-                            watchers: Some(Watchers::simple_one_frame()),
                             ..Default::default()
                         });
+
+                        client_entities.add_watcher(entity, Watcher::simple_one_frame());
                     }
                 });
             }
@@ -590,7 +593,7 @@ impl SpatialGrid
                 {
                     if player_z == z
                     {
-                        entities.push(true, EntityInfo{
+                        let entity = entities.push(true, EntityInfo{
                             transform: Some(Transform{
                                 position,
                                 scale: half_scale * 2.0,
@@ -605,9 +608,10 @@ impl SpatialGrid
                                 z_level: ZLevel::BelowFeet,
                                 ..Default::default()
                             }),
-                            watchers: Some(Watchers::simple_one_frame()),
                             ..Default::default()
                         });
+
+                        entities.add_watcher(entity, Watcher::simple_one_frame());
                     }
                 }
             }

@@ -40,22 +40,10 @@ pub fn update(
         return;
     }
 
-    if let Some(mut watchers) = entities.watchers_mut(entity)
-    {
-        let kind = WatcherType::Lifetime(0.1.into());
-        if let Some(found) = watchers.find(|watcher|
-        {
-            matches!(watcher.action, WatcherAction::OutlineableDisable)
-        })
-        {
-            found.kind = kind;
-        } else
-        {
-            watchers.push(Watcher{
-                kind,
-                action: WatcherAction::OutlineableDisable,
-                ..Default::default()
-            });
-        }
-    }
+    entities.replace_watcher(entity, Watcher{
+        kind: WatcherType::Lifetime(0.1.into()),
+        action: WatcherAction::OutlineableDisable,
+        id: Some(WatcherId::Outline),
+        ..Default::default()
+    });
 }

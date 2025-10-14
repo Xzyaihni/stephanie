@@ -5,7 +5,6 @@ use strum::{EnumCount, IntoStaticStr};
 use nalgebra::Vector3;
 
 use crate::common::{
-    watcher::*,
     lazy_transform::*,
     damaging::*,
     Occluder,
@@ -71,7 +70,6 @@ pub enum Message
     SetDoor{entity: Entity, component: Option<Box<Door>>},
     SetJoint{entity: Entity, component: Option<Box<Joint>>},
     SetLight{entity: Entity, component: Option<Box<Light>>},
-    SetWatchers{entity: Entity, component: Option<Box<Watchers>>},
     SetDamaging{entity: Entity, component: Option<Box<Damaging>>},
     SetAnatomy{entity: Entity, component: Option<Box<Anatomy>>},
     SetCharacter{entity: Entity, component: Option<Box<Character>>},

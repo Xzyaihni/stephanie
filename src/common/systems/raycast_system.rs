@@ -189,23 +189,26 @@ pub fn raycast(
 
             let position = start + *direction * hit.result.distance;
 
-            entities.push(true, EntityInfo{
-                transform: Some(Transform{
-                    position,
-                    scale: Vector3::repeat(0.01),
+            {
+                let entity = entities.push(true, EntityInfo{
+                    transform: Some(Transform{
+                        position,
+                        scale: Vector3::repeat(0.01),
+                        ..Default::default()
+                    }),
+                    render: Some(RenderInfo{
+                        object: Some(RenderObjectKind::Texture{
+                            name: "circle.png".into()
+                        }.into()),
+                        above_world: true,
+                        mix: Some(MixColor{keep_transparency: true, ..MixColor::color(color)}),
+                        ..Default::default()
+                    }),
                     ..Default::default()
-                }),
-                render: Some(RenderInfo{
-                    object: Some(RenderObjectKind::Texture{
-                        name: "circle.png".into()
-                    }.into()),
-                    above_world: true,
-                    mix: Some(MixColor{keep_transparency: true, ..MixColor::color(color)}),
-                    ..Default::default()
-                }),
-                watchers: Some(Watchers::simple_disappearing(10.0)),
-                ..Default::default()
-            });
+                });
+
+                entities.add_watcher(entity, Watcher::simple_disappearing(10.0));
+            }
 
             let arrow_scale = hit.result.pierce;
 
@@ -216,7 +219,7 @@ pub fn raycast(
                 [0.0, 0.0, 0.0]
             )
             {
-                entities.push(true, EntityInfo{
+                let entity = entities.push(true, EntityInfo{
                     transform: arrow.transform,
                     render: Some(RenderInfo{
                         object: Some(RenderObjectKind::Texture{
@@ -226,9 +229,10 @@ pub fn raycast(
                         mix: Some(MixColor{keep_transparency: true, ..MixColor::color(color)}),
                         ..Default::default()
                     }),
-                    watchers: Some(Watchers::simple_disappearing(10.0)),
                     ..Default::default()
                 });
+
+                entities.add_watcher(entity, Watcher::simple_disappearing(10.0));
             }
         });
     }

@@ -30,7 +30,7 @@ use crate::{
         AnyEntities,
         EntityInfo,
         OccluderVisibilityChecker,
-        watcher::Watchers,
+        watcher::Watcher,
         entity::ClientEntities
     }
 };
@@ -497,7 +497,7 @@ impl OccludedChecker
         {
             let p = with_z(p, transform.position.z);
 
-            entities.push(true, EntityInfo{
+            let entity = entities.push(true, EntityInfo{
                 transform: Some(Transform{
                     position: p,
                     scale: Vector3::repeat(0.01),
@@ -511,9 +511,10 @@ impl OccludedChecker
                     above_world: true,
                     ..Default::default()
                 }),
-                watchers: Some(Watchers::simple_one_frame()),
                 ..Default::default()
             });
+
+            entities.add_watcher(entity, Watcher::simple_one_frame());
         };
 
         {
@@ -535,7 +536,7 @@ impl OccludedChecker
                     let local = ChunkLocal::from(tile_local);
                     let tile_pos = TilePos{chunk, local};
 
-                    entities.push(true, EntityInfo{
+                    let entity = entities.push(true, EntityInfo{
                         transform: Some(Transform{
                             position: tile_pos.center_position().into(),
                             scale: Vector3::repeat(TILE_SIZE),
@@ -549,9 +550,10 @@ impl OccludedChecker
                             above_world: true,
                             ..Default::default()
                         }),
-                        watchers: Some(Watchers::simple_one_frame()),
                         ..Default::default()
                     });
+
+                    entities.add_watcher(entity, Watcher::simple_one_frame());
                 });
             });
 
@@ -1136,7 +1138,8 @@ impl VisualOvermap
                     let color = if visible { [0.0, 1.0, 0.0] } else { [1.0, 0.0, 0.0] };
                     if let Some(x) = line_info(with_z(start, height_z), with_z(end, height_z), 0.01, color)
                     {
-                        entities.push(true, x);
+                        let entity = entities.push(true, x);
+                        entities.add_watcher(entity, Watcher::simple_one_frame());
                     }
                 });
 
@@ -1183,7 +1186,7 @@ impl VisualOvermap
                 [0.0, 1.0, 0.0, 0.2]
             };
 
-            entities.push(true, EntityInfo{
+            let entity = entities.push(true, EntityInfo{
                 transform: Some(Transform{
                     position,
                     scale: Vector3::repeat(TILE_SIZE),
@@ -1197,9 +1200,10 @@ impl VisualOvermap
                     mix: Some(MixColor::color(color)),
                     ..Default::default()
                 }),
-                watchers: Some(Watchers::simple_one_frame()),
                 ..Default::default()
             });
+
+            entities.add_watcher(entity, Watcher::simple_one_frame());
         });
     }
 

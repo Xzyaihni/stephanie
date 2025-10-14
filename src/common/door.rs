@@ -17,7 +17,6 @@ use crate::common::{
     render_info::*,
     lazy_transform::*,
     physics::*,
-    watcher::*,
     Entity,
     Occluder,
     EntityInfo,
@@ -306,7 +305,6 @@ impl Door
                 }.into()),
                 occluder: door.door_occluder(),
                 named: Some(<&str>::from(door.material).to_owned() + " door"),
-                watchers: Some(Watchers::default()),
                 ..Default::default()
             });
 

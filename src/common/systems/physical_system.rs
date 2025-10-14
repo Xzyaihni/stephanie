@@ -6,6 +6,7 @@ use crate::{
         direction_arrow_info,
         physics::*,
         AnyEntities,
+        watcher::Watcher,
         world::World,
         entity::{
             for_each_component,
@@ -77,7 +78,8 @@ pub fn update(entities: &mut ClientEntities, world: &World, dt: f32)
                     [0.0, 0.0, 1.0]
                 )
                 {
-                    entities.push(true, info);
+                    let entity = entities.push(true, info);
+                    entities.add_watcher(entity, Watcher::simple_one_frame());
                 }
             }
         }

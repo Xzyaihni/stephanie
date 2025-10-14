@@ -695,27 +695,31 @@ impl ContactResolver
             [1.0, 0.0, 0.0, 1.0]
         };
 
-        entities.push(true, EntityInfo{
-            transform: Some(Transform{
-                position: with_z(contact.point, z),
-                scale: Vector3::repeat(contact.penetration),
+        {
+            let entity = entities.push(true, EntityInfo{
+                transform: Some(Transform{
+                    position: with_z(contact.point, z),
+                    scale: Vector3::repeat(contact.penetration),
+                    ..Default::default()
+                }),
+                render: Some(RenderInfo{
+                    object: Some(RenderObjectKind::Texture{
+                        name: "circle.png".into()
+                    }.into()),
+                    above_world: true,
+                    mix: Some(MixColor{color, amount: 1.0, keep_transparency: true}),
+                    ..Default::default()
+                }),
                 ..Default::default()
-            }),
-            render: Some(RenderInfo{
-                object: Some(RenderObjectKind::Texture{
-                    name: "circle.png".into()
-                }.into()),
-                above_world: true,
-                mix: Some(MixColor{color, amount: 1.0, keep_transparency: true}),
-                ..Default::default()
-            }),
-            watchers: Some(Watchers::simple_one_frame()),
-            ..Default::default()
-        });
+            });
+
+            entities.add_watcher(entity, Watcher::simple_one_frame());
+        }
 
         if let Some(info) = direction_arrow_info(with_z(contact.point, z), with_z(*contact.normal, 0.0), 0.01, [color[0], color[1], color[2]])
         {
-            entities.push(true, info);
+            let entity = entities.push(true, info);
+            entities.add_watcher(entity, Watcher::simple_one_frame());
         }
     }
 

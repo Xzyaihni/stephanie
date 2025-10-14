@@ -49,7 +49,7 @@ fn debug_display_current(entities: &ClientEntities, node: Node)
     let v = node.cost * 0.05;
     let color = [v, 0.0, 1.0 - v, 0.5];
 
-    entities.push(true, EntityInfo{
+    let entity = entities.push(true, EntityInfo{
         transform: Some(Transform{
             position: node.value.center_position().into(),
             scale: Vector3::repeat(TILE_SIZE),
@@ -63,37 +63,42 @@ fn debug_display_current(entities: &ClientEntities, node: Node)
             above_world: true,
             ..Default::default()
         }),
-        watchers: Some(Watchers::simple_disappearing(1.0)),
         ..Default::default()
     });
+
+    entities.add_watcher(entity, Watcher::simple_disappearing(1.0));
 }
 
 fn debug_display_collided_entity(entities: &ClientEntities, entity: Entity, position: TilePos)
 {
     let position: Vector3<f32> = position.center_position().into();
 
-    entities.push(true, EntityInfo{
-        transform: Some(Transform{
-            position,
-            scale: Vector3::repeat(TILE_SIZE),
+    {
+        let entity = entities.push(true, EntityInfo{
+            transform: Some(Transform{
+                position,
+                scale: Vector3::repeat(TILE_SIZE),
+                ..Default::default()
+            }),
+            render: Some(RenderInfo{
+                object: Some(RenderObjectKind::Texture{
+                    name: "solid.png".into()
+                }.into()),
+                mix: Some(MixColor{keep_transparency: true, ..MixColor::color([1.0, 1.0, 0.0, 0.5])}),
+                above_world: true,
+                ..Default::default()
+            }),
             ..Default::default()
-        }),
-        render: Some(RenderInfo{
-            object: Some(RenderObjectKind::Texture{
-                name: "solid.png".into()
-            }.into()),
-            mix: Some(MixColor{keep_transparency: true, ..MixColor::color([1.0, 1.0, 0.0, 0.5])}),
-            above_world: true,
-            ..Default::default()
-        }),
-        watchers: Some(Watchers::simple_disappearing(1.0)),
-        ..Default::default()
-    });
+        });
+
+        entities.add_watcher(entity, Watcher::simple_disappearing(1.0));
+    }
 
     let other_position = some_or_return!(entities.transform(entity)).position;
     if let Some(line) = line_info(position, other_position, 0.005, [0.0, 1.0, 1.0])
     {
-        entities.push(true, line);
+        let entity = entities.push(true, line);
+        entities.add_watcher(entity, Watcher::simple_one_frame());
     }
 }
 
@@ -583,7 +588,7 @@ impl WorldPath
                 [0.0, 0.0, 1.0, 0.5]
             };
 
-            entities.push(true, EntityInfo{
+            let entity = entities.push(true, EntityInfo{
                 transform: Some(Transform{
                     position,
                     scale: Vector3::repeat(TILE_SIZE * 0.3),
@@ -597,16 +602,18 @@ impl WorldPath
                     above_world: true,
                     ..Default::default()
                 }),
-                watchers: Some(Watchers::simple_one_frame()),
                 ..Default::default()
             });
+
+            entities.add_watcher(entity, Watcher::simple_one_frame());
         });
 
         self.values.iter().zip(self.values.iter().skip(1)).for_each(|(previous, current)|
         {
             if let Some(info) = line_info(*previous, *current, TILE_SIZE * 0.1, [0.2, 0.2, 1.0])
             {
-                entities.push(true, info);
+                let entity = entities.push(true, info);
+                entities.add_watcher(entity, Watcher::simple_one_frame());
             }
         });
     }
