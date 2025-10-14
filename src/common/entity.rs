@@ -861,11 +861,6 @@ macro_rules! common_trait_impl
             self.infos.as_ref().unwrap()
         }
 
-        fn add_watcher(&self, entity: Entity, watcher: Watcher)
-        {
-            self.add_watcher(entity, watcher);
-        }
-
         fn exists(&self, entity: Entity) -> bool
         {
             Self::exists(self, entity)
@@ -1695,68 +1690,6 @@ macro_rules! define_entities_both
                 self.on_remove.borrow_mut().push(f);
             }
 
-            pub fn add_watcher(&self, entity: Entity, watcher: Watcher)
-            {
-                self.watchers.borrow_mut().push((entity, watcher));
-            }
-
-            pub fn replace_watcher(&self, check_entity: Entity, watcher: Watcher)
-            {
-                debug_assert!(watcher.id.is_some());
-
-                let check_id = some_or_return!(watcher.id);
-
-                let mut watchers = self.watchers.borrow_mut();
-                if let Some(found) = watchers.iter_mut().find(|(entity, watcher)|
-                {
-                    *entity == check_entity && watcher.id.map(|id| id == check_id).unwrap_or(false)
-                })
-                {
-                    found.1 = watcher;
-                } else
-                {
-                    watchers.push((check_entity, watcher));
-                }
-            }
-
-            pub fn update_watchers(
-                &mut self,
-                dt: f32
-            )
-            {
-                let mut actions = Vec::new();
-                self.watchers.borrow_mut().retain_mut(|(entity, watcher)|
-                {
-                    let meets = watcher.kind.meets(self, *entity, dt);
-
-                    if meets
-                    {
-                        let replacement = if watcher.persistent
-                        {
-                            watcher.action.clone()
-                        } else
-                        {
-                            Default::default()
-                        };
-
-                        actions.push((*entity, mem::replace(&mut watcher.action, replacement)));
-                    }
-
-                    if watcher.persistent
-                    {
-                        true
-                    } else
-                    {
-                        !meets
-                    }
-                });
-
-                actions.into_iter().for_each(|(entity, action)|
-                {
-                    action.execute(self, entity);
-                });
-            }
-
             pub fn set_deferred_render(&self, entity: Entity, render: RenderInfo)
             {
                 self.create_render_queue.borrow_mut()
@@ -2153,6 +2086,68 @@ macro_rules! define_entities_both
                     [update, game_state_update, create_queued] -> remove,
                     self.remove_queued()
                 };
+            }
+
+            pub fn add_watcher(&self, entity: Entity, watcher: Watcher)
+            {
+                self.watchers.borrow_mut().push((entity, watcher));
+            }
+
+            pub fn replace_watcher(&self, check_entity: Entity, watcher: Watcher)
+            {
+                debug_assert!(watcher.id.is_some());
+
+                let check_id = some_or_return!(watcher.id);
+
+                let mut watchers = self.watchers.borrow_mut();
+                if let Some(found) = watchers.iter_mut().find(|(entity, watcher)|
+                {
+                    *entity == check_entity && watcher.id.map(|id| id == check_id).unwrap_or(false)
+                })
+                {
+                    found.1 = watcher;
+                } else
+                {
+                    watchers.push((check_entity, watcher));
+                }
+            }
+
+            pub fn update_watchers(
+                &mut self,
+                dt: f32
+            )
+            {
+                let mut actions = Vec::new();
+                self.watchers.borrow_mut().retain_mut(|(entity, watcher)|
+                {
+                    let meets = watcher.kind.meets(self, *entity, dt);
+
+                    if meets
+                    {
+                        let replacement = if watcher.persistent
+                        {
+                            watcher.action.clone()
+                        } else
+                        {
+                            Default::default()
+                        };
+
+                        actions.push((*entity, mem::replace(&mut watcher.action, replacement)));
+                    }
+
+                    if watcher.persistent
+                    {
+                        true
+                    } else
+                    {
+                        !meets
+                    }
+                });
+
+                actions.into_iter().for_each(|(entity, action)|
+                {
+                    action.execute(self, entity);
+                });
             }
 
             pub fn set_visible(&self, entity: Entity, is_visible: bool)
@@ -2772,8 +2767,6 @@ macro_rules! define_entities
             )+
 
             fn infos(&self) -> &DataInfos;
-
-            fn add_watcher(&self, entity: Entity, watcher: Watcher);
 
             fn lazy_target_ref(&self, entity: Entity) -> Option<Ref<'_, Transform>>;
             fn lazy_target(&self, entity: Entity) -> Option<RefMut<'_, Transform>>;

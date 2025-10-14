@@ -651,7 +651,7 @@ pub fn update(
     damage_entities.into_iter().for_each(damager(world, space, entities, loot, passer, textures));
 }
 
-fn flash_white_single(entities: &impl AnyEntities, entity: Entity)
+fn flash_white_single(entities: &ClientEntities, entity: Entity)
 {
     if let Some(mut mix_color) = entities.mix_color_target(entity)
     {

@@ -290,8 +290,6 @@ impl GameServer
             }
         };
 
-        self.entities.update_watchers(dt);
-
         if self.rare_timer <= 0.0
         {
             self.rare();

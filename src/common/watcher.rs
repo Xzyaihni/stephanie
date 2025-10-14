@@ -12,7 +12,8 @@ use crate::common::{
     Collider,
     Occluder,
     Item,
-    entity::AnyEntities
+    AnyEntities,
+    entity::ClientEntities
 };
 
 
@@ -81,9 +82,9 @@ pub enum WatcherType
 
 impl WatcherType
 {
-    pub fn meets<E: AnyEntities>(
+    pub fn meets(
         &mut self,
-        entities: &E,
+        entities: &ClientEntities,
         entity: Entity,
         dt: f32
     ) -> bool
@@ -186,9 +187,9 @@ impl Default for WatcherAction
 
 impl WatcherAction
 {
-    pub fn execute<E: AnyEntities>(
+    pub fn execute(
         self,
-        entities: &mut E,
+        entities: &mut ClientEntities,
         entity: Entity
     )
     {
@@ -201,20 +202,23 @@ impl WatcherAction
             },
             Self::OutlineableDisable =>
             {
-                entities.set_outlined(entity, false);
+                if let Some(mut render) = entities.render_mut(entity)
+                {
+                    render.outlined = false;
+                }
             },
             Self::SetVisible(value) =>
             {
-                if let Some(mut target) = entities.visible_target(entity)
+                if let Some(mut render) = entities.render_mut(entity)
                 {
-                    *target = value;
+                    render.visible = value;
                 }
             },
             Self::SetMixColor(value) =>
             {
-                if let Some(mut target) = entities.mix_color_target(entity)
+                if let Some(mut render) = entities.render_mut(entity)
                 {
-                    *target = value;
+                    render.mix = value;
                 }
             },
             Self::SetItem(value) =>
@@ -227,7 +231,7 @@ impl WatcherAction
             },
             Self::SetOccluder(value) =>
             {
-                entities.set_occluder(entity, value);
+                entities.lazy_setter.borrow_mut().set_occluder(entity, value);
             },
             Self::SetTargetPosition(position) =>
             {
@@ -274,7 +278,7 @@ impl WatcherAction
             },
             Self::Explode(info) =>
             {
-                ParticleCreator::create_particles(
+                create_particles(
                     entities,
                     entity,
                     info.info,

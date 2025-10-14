@@ -39,7 +39,7 @@ mod resolver;
 
 
 pub fn debug_collision_bounds<T: Borrow<Collider>>(
-    entities: &impl AnyEntities,
+    entities: &ClientEntities,
     colliding_info: &CollidingInfo<T>
 )
 {

@@ -14,7 +14,8 @@ use crate::common::{
     watcher::*,
     AnyEntities,
     Entity,
-    EntityInfo
+    EntityInfo,
+    entity::ClientEntities
 };
 
 
@@ -114,97 +115,90 @@ pub struct ParticlesInfo
     pub min_scale: f32
 }
 
-pub struct ParticleCreator
+pub fn create_particles(
+    entities: &mut ClientEntities,
+    entity: Entity,
+    info: ParticlesInfo,
+    prototype: EntityInfo
+)
 {
-}
-
-impl ParticleCreator
-{
-    pub fn create_particles<E: AnyEntities>(
-        entities: &mut E,
-        entity: Entity,
-        info: ParticlesInfo,
-        prototype: EntityInfo
-    )
+    let position;
+    let scale;
     {
-        let position;
-        let scale;
-        {
-            let transform = entities.transform(entity).expect("particle creator must have a transform");
+        let transform = entities.transform(entity).expect("particle creator must have a transform");
 
-            position = transform.position;
-            scale = transform.scale;
+        position = transform.position;
+        scale = transform.scale;
+    }
+
+    let parent_velocity = entities.physical(entity).map(|x| *x.velocity());
+
+    let amount = fastrand::usize(info.amount);
+    (0..amount).for_each(|_|
+    {
+        let mut prototype = prototype.clone();
+        prototype.lazy_transform = Some(LazyTransformInfo{
+            scaling: Scaling::EaseOut{decay: info.decay.get()},
+            transform: Transform{
+                scale: info.scale.get(),
+                ..Default::default()
+            },
+            ..Default::default()
+        }.into());
+
+        if let Some(target) = prototype.target()
+        {
+            target.position = position;
+
+            match info.position
+            {
+                ParticlePosition::Exact => (),
+                ParticlePosition::Spread(mult) =>
+                {
+                    let r = ||
+                    {
+                        2.0 * fastrand::f32()
+                    };
+
+                    let offset = scale - Vector3::new(scale.x * r(), scale.y * r(), 0.0);
+                    target.position += (offset / 2.0) * mult;
+                }
+            }
+
+            target.position.z = position.z;
+
+            target.rotation = match info.rotation
+            {
+                ParticleRotation::Exact(x) => x,
+                ParticleRotation::Random => random_rotation()
+            };
         }
 
-        let parent_velocity = entities.physical(entity).map(|x| *x.velocity());
-
-        let amount = fastrand::usize(info.amount);
-        (0..amount).for_each(|_|
+        if let Some(physical) = prototype.physical.as_mut()
         {
-            let mut prototype = prototype.clone();
-            prototype.lazy_transform = Some(LazyTransformInfo{
-                scaling: Scaling::EaseOut{decay: info.decay.get()},
-                transform: Transform{
-                    scale: info.scale.get(),
-                    ..Default::default()
-                },
-                ..Default::default()
-            }.into());
+            let velocity = info.speed.velocity();
+            let mut velocity = parent_velocity.unwrap_or_default() + velocity;
+            velocity.z = 0.0;
 
-            if let Some(target) = prototype.target()
-            {
-                target.position = position;
+            physical.set_velocity_raw(velocity);
+        }
 
-                match info.position
-                {
-                    ParticlePosition::Exact => (),
-                    ParticlePosition::Spread(mult) =>
-                    {
-                        let r = ||
-                        {
-                            2.0 * fastrand::f32()
-                        };
+        // for now particles r local (i might change that?)
+        let prototype_entity = entities.push_eager(true, prototype);
 
-                        let offset = scale - Vector3::new(scale.x * r(), scale.y * r(), 0.0);
-                        target.position += (offset / 2.0) * mult;
-                    }
-                }
+        entities.add_watcher(prototype_entity, Watcher{
+            kind: WatcherType::Instant,
+            action: WatcherAction::SetTargetScale(Vector3::zeros()),
+            ..Default::default()
+        });
 
-                target.position.z = position.z;
-
-                target.rotation = match info.rotation
-                {
-                    ParticleRotation::Exact(x) => x,
-                    ParticleRotation::Random => random_rotation()
-                };
-            }
-
-            if let Some(physical) = prototype.physical.as_mut()
-            {
-                let velocity = info.speed.velocity();
-                let mut velocity = parent_velocity.unwrap_or_default() + velocity;
-                velocity.z = 0.0;
-
-                physical.set_velocity_raw(velocity);
-            }
-
-            // for now particles r local (i might change that?)
-            let prototype_entity = entities.push_eager(true, prototype);
-
-            entities.add_watcher(prototype_entity, Watcher{
-                kind: WatcherType::Instant,
-                action: WatcherAction::SetTargetScale(Vector3::zeros()),
-                ..Default::default()
-            });
-
-            entities.add_watcher(prototype_entity, Watcher{
-                kind: WatcherType::ScaleDistance{
-                    from: Vector3::zeros(),
-                    near: info.min_scale
-                },
-                action: WatcherAction::Remove,
-                ..Default::default()
-            });
-        })
-    }
+        entities.add_watcher(prototype_entity, Watcher{
+            kind: WatcherType::ScaleDistance{
+                from: Vector3::zeros(),
+                near: info.min_scale
+            },
+            action: WatcherAction::Remove,
+            ..Default::default()
+        });
+    })
 }
