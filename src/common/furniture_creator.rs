@@ -68,14 +68,15 @@ pub fn update_furniture(entities: &ClientEntities, entity: Entity)
             setter.set_render_no_change(entity, Some(render));
         }
 
+        let collider = ColliderInfo{
+            kind: ColliderType::Rectangle,
+            sleeping: true,
+            layer: if info.colliding { ColliderLayer::Normal } else { ColliderLayer::Damageable },
+            ..Default::default()
+        };
+
         if info.colliding
         {
-            setter.set_collider_no_change(entity, Some(ColliderInfo{
-                kind: ColliderType::Rectangle,
-                sleeping: true,
-                ..Default::default()
-            }.into()));
-
             let physical = if info.attached
             {
                 PhysicalProperties{
@@ -93,15 +94,9 @@ pub fn update_furniture(entities: &ClientEntities, entity: Entity)
             };
 
             setter.set_physical_no_change(entity, Some(physical.into()));
-        } else if info.container
-        {
-            setter.set_collider_no_change(entity, Some(ColliderInfo{
-                kind: ColliderType::Rectangle,
-                sleeping: true,
-                ghost: true,
-                ..Default::default()
-            }.into()));
         }
+
+        setter.set_collider_no_change(entity, Some(collider.into()));
     }
 }
 

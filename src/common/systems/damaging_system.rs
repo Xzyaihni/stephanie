@@ -150,21 +150,14 @@ pub fn damager<'a, 'b, 'c>(
             {
                 let has_anatomy = entities.anatomy_exists(entity);
 
-                let is_door = entities.collider(entity).map(|x| matches!(x.layer, ColliderLayer::Door)).unwrap_or(false);
-
-                // is the visible part of the door
-                if is_door && !entities.door_exists(entity)
+                if let Some(parent_sibling) = entities.sibling_first(entity)
                 {
-                    let door_main = some_or_return!(entities.sibling_first(entity));
-
                     let result = DamagingResult{
-                        kind: DamagingKind::Entity(door_main, faction, knockback_factor),
-                        ..result
+                        kind: DamagingKind::Entity(parent_sibling, faction, knockback_factor),
+                        ..result.clone()
                     };
 
                     damager(world, space, entities, loot, passer, textures)(result);
-
-                    return;
                 }
 
                 if !has_anatomy

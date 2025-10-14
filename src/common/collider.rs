@@ -155,7 +155,8 @@ pub enum ColliderLayer
     LyingEnemy,
     PathfindEnemy,
     Vision,
-    ThrownDecal
+    ThrownDecal,
+    Damageable
 }
 
 impl ColliderLayer
@@ -234,13 +235,26 @@ impl ColliderLayer
             (ThrownDecal, Normal, false),
             (ThrownDecal, Damage, false),
             (ThrownDecal, World, true),
-            (ThrownDecal, Mouse, false),
+            (ThrownDecal, Mouse, true),
             (ThrownDecal, Door, false),
             (ThrownDecal, Player, false),
             (ThrownDecal, NormalEnemy, false),
             (ThrownDecal, LyingEnemy, false),
             (ThrownDecal, PathfindEnemy, false),
-            (ThrownDecal, Vision, false)
+            (ThrownDecal, Vision, false),
+
+            (Damageable, Damageable, false),
+            (Damageable, Normal, false),
+            (Damageable, Damage, true),
+            (Damageable, World, false),
+            (Damageable, Mouse, false),
+            (Damageable, Door, false),
+            (Damageable, Player, false),
+            (Damageable, NormalEnemy, false),
+            (Damageable, LyingEnemy, false),
+            (Damageable, PathfindEnemy, false),
+            (Damageable, Vision, false),
+            (Damageable, ThrownDecal, false)
         }
     }
 }

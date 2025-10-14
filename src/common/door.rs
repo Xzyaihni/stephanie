@@ -179,7 +179,7 @@ impl Door
 
         let mut setter = entities.lazy_setter.borrow_mut();
         setter.set_occluder(visible_door, occluder);
-        setter.set_collider(visible_door, collider.map(Into::into));
+        setter.set_collider(visible_door, Some(collider.into()));
 
         self.update_parent_state(entities, entity);
     }
@@ -223,22 +223,19 @@ impl Door
         self.is_closed().then_some(Occluder::Door)
     }
 
-    pub fn door_collider(&self) -> Option<ColliderInfo>
+    pub fn door_collider(&self) -> ColliderInfo
     {
-        self.is_closed().then(||
-        {
-            let override_transform = Some(OverrideTransform{
-                transform: self.door_transform(),
-                override_position: true
-            });
+        let override_transform = Some(OverrideTransform{
+            transform: self.door_transform(),
+            override_position: true
+        });
 
-            ColliderInfo{
-                kind: ColliderType::Rectangle,
-                layer: ColliderLayer::Door,
-                override_transform,
-                ..Default::default()
-            }
-        })
+        ColliderInfo{
+            kind: ColliderType::Rectangle,
+            layer: if self.is_closed() { ColliderLayer::Door } else { ColliderLayer::Damageable },
+            override_transform,
+            ..Default::default()
+        }
     }
 
     pub fn door_transform(&self) -> Transform
@@ -290,13 +287,10 @@ impl Door
                     z_level: ZLevel::Door,
                     ..Default::default()
                 }),
-                collider: door.door_collider().map(|x|
-                {
-                    ColliderInfo{
-                        sleeping: true,
-                        ..x
-                    }.into()
-                }),
+                collider: Some(ColliderInfo{
+                    sleeping: true,
+                    ..door.door_collider()
+                }.into()),
                 physical: Some(PhysicalProperties{
                     inverse_mass: 0.0,
                     floating: true,

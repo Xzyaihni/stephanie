@@ -1,6 +1,5 @@
 use crate::common::{
     some_or_return,
-    watcher::*,
     Entity,
     entity::ClientEntities
 };
@@ -31,30 +30,19 @@ pub fn update(
     entities: &ClientEntities,
     player: Entity,
     mouse: Entity
-)
+) -> Option<Entity>
 {
     let entity = some_or_return!(mouse_selected(entities, player, mouse));
 
     if !entities.is_lootable(entity)
     {
-        return;
+        return None;
     }
 
     if let Some(mut render) = entities.render_mut_no_change(entity)
     {
         render.outlined = true;
-
-        entities.replace_watcher(entity, Watcher{
-            kind: WatcherType::Lifetime(0.1.into()),
-            action: Box::new(|entities, entity|
-            {
-                if let Some(mut render) = entities.render_mut(entity)
-                {
-                    render.outlined = false;
-                }
-            }),
-            id: Some(WatcherId::Outline),
-            ..Default::default()
-        });
     }
+
+    Some(entity)
 }

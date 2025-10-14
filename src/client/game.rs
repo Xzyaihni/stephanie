@@ -1080,6 +1080,7 @@ struct PlayerInfo
     animation: Option<PlayerAnimation>,
     previous_stamina: Option<f32>,
     previous_cooldown: (f32, f32),
+    mouse_highlighted: Option<Entity>,
     interacted: bool
 }
 
@@ -1098,6 +1099,7 @@ impl PlayerInfo
             animation: None,
             previous_stamina: None,
             previous_cooldown: (0.0, 0.0),
+            mouse_highlighted: None,
             interacted: false
         }
     }
@@ -1276,11 +1278,19 @@ impl<'a> PlayerContainer<'a>
         {
             Control::MainAction =>
             {
-                let entities = self.game_state.entities();
-
-                if let Some(mouse_touched) = mouse_highlight_system::mouse_selected(entities, self.info.entity, self.info.mouse_entity)
+                if let Some(mouse_touched) = self.info.mouse_highlighted
                 {
-                    if entities.is_lootable(mouse_touched)
+                    if let Some(item) = self.game_state.entities().item(mouse_touched).map(|x| x.clone())
+                    {
+                        let entities = self.game_state.entities();
+
+                        if let Some(mut inventory) = entities.inventory_mut(self.info.entity)
+                        {
+                            inventory.push(item);
+
+                            entities.remove_deferred(mouse_touched);
+                        }
+                    } else
                     {
                         if let Some(other) = self.info.other_entity
                         {
@@ -1303,9 +1313,9 @@ impl<'a> PlayerContainer<'a>
 
                             actions
                         }));
-
-                        return;
                     }
+
+                    return;
                 }
 
                 self.character_action(CharacterAction::Bash);
@@ -1520,11 +1530,24 @@ impl<'a> PlayerContainer<'a>
                 transform.position = camera_position + mouse_position;
             }
 
-            mouse_highlight_system::update(
+            let new_mouse_highlighted = mouse_highlight_system::update(
                 entities,
                 self.info.entity,
                 self.info.mouse_entity
             );
+
+            if let Some(previous_mouse_highlighted) = self.info.mouse_highlighted
+            {
+                if Some(previous_mouse_highlighted) != new_mouse_highlighted
+                {
+                    if let Some(mut render) = entities.render_mut_no_change(previous_mouse_highlighted)
+                    {
+                        render.outlined = false;
+                    }
+                }
+            }
+
+            self.info.mouse_highlighted = new_mouse_highlighted;
         }
 
         self.update_camera_follow();
