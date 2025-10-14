@@ -4,15 +4,10 @@ use serde::{Serialize, Deserialize};
 
 use crate::common::{
     short_rotation,
-    render_info::*,
+    ENTITY_SCALE,
     particle_creator::*,
-    lazy_transform::*,
     Entity,
     EntityInfo,
-    Collider,
-    Occluder,
-    Item,
-    AnyEntities,
     entity::ClientEntities
 };
 
@@ -156,151 +151,13 @@ pub struct ExplodeInfo
     pub prototype: EntityInfo
 }
 
-#[derive(Debug, Clone)]
-pub enum WatcherAction
-{
-    None,
-    AddWatcher(Box<Watcher>),
-    OutlineableDisable,
-    SetVisible(bool),
-    SetMixColor(Option<MixColor>),
-    SetItem(Option<Box<Item>>),
-    SetCollider(Option<Box<Collider>>),
-    SetOccluder(Option<Occluder>),
-    SetTargetPosition(Vector3<f32>),
-    SetTargetScale(Vector3<f32>),
-    SetTargetRotation(f32),
-    SetLazyRotation(Rotation),
-    SetLazyConnection(Connection),
-    Remove,
-    Create(Box<EntityInfo>),
-    Explode(Box<ExplodeInfo>)
-}
+pub type ActionType = Box<dyn FnOnce(&mut ClientEntities, Entity)>;
 
-impl Default for WatcherAction
-{
-    fn default() -> Self
-    {
-        Self::None
-    }
-}
-
-impl WatcherAction
-{
-    pub fn execute(
-        self,
-        entities: &mut ClientEntities,
-        entity: Entity
-    )
-    {
-        match self
-        {
-            Self::None => (),
-            Self::AddWatcher(watcher) =>
-            {
-                entities.add_watcher(entity, *watcher);
-            },
-            Self::OutlineableDisable =>
-            {
-                if let Some(mut render) = entities.render_mut(entity)
-                {
-                    render.outlined = false;
-                }
-            },
-            Self::SetVisible(value) =>
-            {
-                if let Some(mut render) = entities.render_mut(entity)
-                {
-                    render.visible = value;
-                }
-            },
-            Self::SetMixColor(value) =>
-            {
-                if let Some(mut render) = entities.render_mut(entity)
-                {
-                    render.mix = value;
-                }
-            },
-            Self::SetItem(value) =>
-            {
-                entities.set_item(entity, value.map(|x| *x));
-            },
-            Self::SetCollider(value) =>
-            {
-                entities.set_collider(entity, value.map(|x| *x));
-            },
-            Self::SetOccluder(value) =>
-            {
-                entities.lazy_setter.borrow_mut().set_occluder(entity, value);
-            },
-            Self::SetTargetPosition(position) =>
-            {
-                if let Some(mut target) = entities.target(entity)
-                {
-                    target.position = position;
-                }
-            },
-            Self::SetTargetScale(scale) =>
-            {
-                if let Some(mut target) = entities.target(entity)
-                {
-                    target.scale = scale;
-                }
-            },
-            Self::SetTargetRotation(rotation) =>
-            {
-                if let Some(mut target) = entities.target(entity)
-                {
-                    target.rotation = rotation;
-                }
-            },
-            Self::SetLazyRotation(rotation) =>
-            {
-                if let Some(mut lazy) = entities.lazy_transform_mut(entity)
-                {
-                    lazy.rotation = rotation;
-                }
-            },
-            Self::SetLazyConnection(connection) =>
-            {
-                if let Some(mut lazy) = entities.lazy_transform_mut(entity)
-                {
-                    lazy.connection = connection;
-                }
-            },
-            Self::Remove =>
-            {
-                entities.remove(entity);
-            },
-            Self::Create(info) =>
-            {
-                entities.push_eager(true, *info);
-            },
-            Self::Explode(info) =>
-            {
-                create_particles(
-                    entities,
-                    entity,
-                    info.info,
-                    info.prototype
-                );
-
-                if !info.keep
-                {
-                    entities.remove(entity);
-                }
-            }
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
 pub struct Watcher
 {
     pub kind: WatcherType,
-    pub action: WatcherAction,
-    pub id: Option<WatcherId>,
-    pub persistent: bool
+    pub action: ActionType,
+    pub id: Option<WatcherId>
 }
 
 impl Default for Watcher
@@ -309,9 +166,8 @@ impl Default for Watcher
     {
         Self{
             kind: WatcherType::Instant,
-            action: WatcherAction::None,
-            id: None,
-            persistent: false
+            action: Box::new(|_, _| {}),
+            id: None
         }
     }
 }
@@ -322,7 +178,7 @@ impl Watcher
     {
         Self{
             kind: WatcherType::Lifetime(lifetime.into()),
-            action: WatcherAction::Remove,
+            action: Box::new(|entities, entity| entities.remove(entity)),
             ..Default::default()
         }
     }
@@ -331,8 +187,46 @@ impl Watcher
     {
         Self{
             kind: WatcherType::Frames(1.into()),
-            action: WatcherAction::Remove,
+            action: Box::new(|entities, entity| entities.remove(entity)),
             ..Default::default()
         }
+    }
+
+    pub fn explode_action(info: ExplodeInfo) -> ActionType
+    {
+        Box::new(move |entities, entity|
+        {
+            debug_assert!(entities.transform_exists(entity));
+
+            let parent_velocity = entities.physical(entity).map(|x| *x.velocity()).unwrap_or_default();
+
+            let physical = info.prototype.physical.map(|mut physical|
+            {
+                physical.add_velocity_raw(parent_velocity);
+
+                physical
+            });
+
+            let transform = entities.transform(entity).as_deref().cloned();
+            let parent_scale = transform.as_ref().map(|x| x.scale).unwrap_or_else(|| Vector3::repeat(ENTITY_SCALE));
+
+            let entity_info = EntityInfo{
+                transform,
+                physical,
+                ..info.prototype
+            };
+
+            create_particles(
+                &mut *entities,
+                info.info,
+                entity_info,
+                parent_scale
+            );
+
+            if !info.keep
+            {
+                entities.remove(entity);
+            }
+        })
     }
 }

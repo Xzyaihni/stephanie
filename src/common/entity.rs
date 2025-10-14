@@ -263,6 +263,13 @@ pub trait ServerToClient<T>
     ) -> T;
 }
 
+pub trait ClientEntitiesPush
+{
+    fn entities_ref(&self) -> &ClientEntities;
+
+    fn push(&mut self, info: EntityInfo) -> Entity;
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Entity
 {
@@ -586,6 +593,20 @@ impl EntityRemoveMany
     }
 }
 
+impl ClientEntitiesPush for &ClientEntities
+{
+    fn entities_ref(&self) -> &ClientEntities { self }
+
+    fn push(&mut self, info: EntityInfo) -> Entity { <ClientEntities as AnyEntities>::push(self, true, info) }
+}
+
+impl ClientEntitiesPush for &mut ClientEntities
+{
+    fn entities_ref(&self) -> &ClientEntities { self }
+
+    fn push(&mut self, info: EntityInfo) -> Entity { <ClientEntities as AnyEntities>::push_eager(self, true, info) }
+}
+
 macro_rules! impl_common_systems
 {
     ($this_entity_info:ident, $(($name:ident, $set_func:ident, $component_type:ident)),+,) =>
@@ -747,14 +768,17 @@ macro_rules! entity_info_common
         {
             if let Some(lazy) = self.lazy_transform.as_ref()
             {
-                let parent_transform = self.parent.as_ref()
-                    .and_then(|x|
-                    {
-                        entities.transform(x.entity).as_deref().cloned()
-                    });
+                if self.transform.is_none()
+                {
+                    let parent_transform = self.parent.as_ref()
+                        .and_then(|x|
+                        {
+                            entities.transform(x.entity).as_deref().cloned()
+                        });
 
-                let new_transform = lazy.target_global(parent_transform.as_ref());
-                self.transform = Some(new_transform);
+                    let new_transform = lazy.target_global(parent_transform.as_ref());
+                    self.transform = Some(new_transform);
+                }
             } else
             {
                 let must_have_lazy = self.follow_rotation.is_some() || self.follow_position.is_some();
@@ -2124,29 +2148,15 @@ macro_rules! define_entities_both
 
                     if meets
                     {
-                        let replacement = if watcher.persistent
-                        {
-                            watcher.action.clone()
-                        } else
-                        {
-                            Default::default()
-                        };
-
-                        actions.push((*entity, mem::replace(&mut watcher.action, replacement)));
+                        actions.push((*entity, mem::replace(&mut watcher.action, Box::new(|_, _| {}))));
                     }
 
-                    if watcher.persistent
-                    {
-                        true
-                    } else
-                    {
-                        !meets
-                    }
+                    !meets
                 });
 
                 actions.into_iter().for_each(|(entity, action)|
                 {
-                    action.execute(self, entity);
+                    action(self, entity);
                 });
             }
 
@@ -2167,21 +2177,34 @@ macro_rules! define_entities_both
 
             pub fn is_lootable(&self, entity: Entity) -> bool
             {
-                let is_player = self.player_exists(entity);
-                let has_inventory = self.inventory(entity).map(|inventory|
+                if self.player_exists(entity)
                 {
-                    !inventory.is_empty()
-                }).unwrap_or(false);
+                    return false;
+                }
 
-                let maybe_anatomy = if let Some(anatomy) = self.anatomy(entity)
+                if self.item_exists(entity)
                 {
-                    anatomy.speed() == 0.0
-                } else
-                {
-                    true
-                };
+                    return true;
+                }
 
-                !is_player && has_inventory && maybe_anatomy
+                if let Some(inventory) = self.inventory(entity)
+                {
+                    if !inventory.is_empty()
+                    {
+                        if let Some(anatomy) = self.anatomy(entity)
+                        {
+                            if anatomy.speed() == 0.0
+                            {
+                                return true;
+                            }
+                        } else
+                        {
+                            return true;
+                        }
+                    }
+                }
+
+                false
             }
 
             pub fn within_interactable_distance(&self, a: Entity, b: Entity) -> bool
@@ -2698,7 +2721,7 @@ macro_rules! define_entities
 
                 let entity = self.push_inner(local, info.shared());
 
-                self.create_queue.borrow_mut().push((entity, info));
+                self.create_queue.get_mut().push((entity, info));
 
                 entity
             }

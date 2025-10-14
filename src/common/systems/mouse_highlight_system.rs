@@ -40,10 +40,21 @@ pub fn update(
         return;
     }
 
-    entities.replace_watcher(entity, Watcher{
-        kind: WatcherType::Lifetime(0.1.into()),
-        action: WatcherAction::OutlineableDisable,
-        id: Some(WatcherId::Outline),
-        ..Default::default()
-    });
+    if let Some(mut render) = entities.render_mut_no_change(entity)
+    {
+        render.outlined = true;
+
+        entities.replace_watcher(entity, Watcher{
+            kind: WatcherType::Lifetime(0.1.into()),
+            action: Box::new(|entities, entity|
+            {
+                if let Some(mut render) = entities.render_mut(entity)
+                {
+                    render.outlined = false;
+                }
+            }),
+            id: Some(WatcherId::Outline),
+            ..Default::default()
+        });
+    }
 }

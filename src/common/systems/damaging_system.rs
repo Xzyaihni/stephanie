@@ -4,7 +4,7 @@ use std::{
     cell::RefCell
 };
 
-use nalgebra::{Unit, Vector3};
+use nalgebra::Vector3;
 
 use serde::{Serialize, Deserialize};
 
@@ -36,7 +36,6 @@ use crate::{
         LootState,
         SpatialGrid,
         EntityInfo,
-        PhysicalProperties,
         Transform,
         Side2d,
         AnyEntities,
@@ -50,111 +49,6 @@ use crate::{
 
 
 const HIGHLIGHT_DURATION: f32 = 0.2;
-
-#[derive(Debug, Clone, Copy)]
-enum ParticlesKind
-{
-    Blood,
-    Dust
-}
-
-impl ParticlesKind
-{
-    fn create(self, textures: &CommonTextures, weak: bool, angle: f32) -> Watcher
-    {
-        let direction = Unit::new_unchecked(
-            Vector3::new(-angle.cos(), angle.sin(), 0.0)
-        );
-
-        let keep = false;
-
-        let info = match self
-        {
-            Self::Blood =>
-            {
-                let scale_single = ENTITY_SCALE * 0.1 * if weak { 0.8 } else { 1.0 };
-                let scale = Vector3::repeat(scale_single)
-                    .component_mul(&Vector3::new(4.0, 1.0, 1.0));
-
-                ExplodeInfo{
-                    keep,
-                    info: ParticlesInfo{
-                        amount: 2..4,
-                        speed: ParticleSpeed::DirectionSpread{
-                            direction,
-                            speed: if weak { 0.5..=0.7 } else { 1.7..=2.0 },
-                            spread: 0.2
-                        },
-                        decay: ParticleDecay::Random(7.0..=10.0),
-                        position: ParticlePosition::Spread(0.1),
-                        rotation: ParticleRotation::Exact(-angle),
-                        scale: ParticleScale::Spread{scale, variation: 0.1},
-                        min_scale: scale_single * 1.1
-                    },
-                    prototype: EntityInfo{
-                        physical: Some(PhysicalProperties{
-                            inverse_mass: 0.05_f32.recip(),
-                            floating: true,
-                            ..Default::default()
-                        }.into()),
-                        render: Some(RenderInfo{
-                            object: Some(RenderObjectKind::TextureId{
-                                id: textures.blood
-                            }.into()),
-                            z_level: ZLevel::Knee,
-                            ..Default::default()
-                        }),
-                        ..Default::default()
-                    }
-                }
-            },
-            Self::Dust =>
-            {
-                let scale_single = ENTITY_SCALE * 0.3 * if weak { 0.8 } else { 1.0 };
-                let scale = Vector3::repeat(scale_single);
-
-                ExplodeInfo{
-                    keep,
-                    info: ParticlesInfo{
-                        amount: 2..4,
-                        speed: ParticleSpeed::DirectionSpread{
-                            direction,
-                            speed: if weak { 0.08..=0.1 } else { 0.4..=0.5 },
-                            spread: if weak { 1.0 } else { 0.3 }
-                        },
-                        decay: ParticleDecay::Random(0.7..=1.0),
-                        position: ParticlePosition::Spread(0.1),
-                        rotation: ParticleRotation::Random,
-                        scale: ParticleScale::Spread{scale, variation: 0.1},
-                        min_scale: scale_single * 0.3
-                    },
-                    prototype: EntityInfo{
-                        physical: Some(PhysicalProperties{
-                            inverse_mass: 0.01_f32.recip(),
-                            floating: true,
-                            damping: 0.1,
-                            ..Default::default()
-                        }.into()),
-                        render: Some(RenderInfo{
-                            object: Some(RenderObjectKind::TextureId{
-                                id: textures.dust
-                            }.into()),
-                            z_level: ZLevel::Knee,
-                            ..Default::default()
-                        }),
-                        ..Default::default()
-                    }
-                }
-            }
-        };
-
-        Watcher{
-            kind: WatcherType::Instant,
-            action: WatcherAction::Explode(Box::new(info)),
-            ..Default::default()
-        }
-    }
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum DamagingKind
@@ -203,18 +97,19 @@ pub fn damager<'a, 'b, 'c>(
                 angle
             };
 
-            let watcher = kind.create(textures, weak, angle);
-
-            let entity = entities.push(true, EntityInfo{
-                transform: Some(Transform{
-                    position,
-                    scale: Vector3::repeat(ENTITY_SCALE),
-                    ..Default::default()
-                }),
-                ..Default::default()
-            });
-
-            entities.add_watcher(entity, watcher);
+            let info = kind.create(textures, weak, angle);
+            create_particles(
+                entities,
+                info.info,
+                EntityInfo{
+                    transform: Some(Transform{
+                        position,
+                        ..Default::default()
+                    }),
+                    ..info.prototype
+                },
+                Vector3::repeat(ENTITY_SCALE)
+            );
         };
 
         if DebugConfig::is_enabled(DebugTool::DamagePoints)
@@ -383,7 +278,7 @@ pub fn damager<'a, 'b, 'c>(
 
                 entities.add_watcher(entity, Watcher{
                     kind: WatcherType::Lifetime(HIGHLIGHT_DURATION.into()),
-                    action: WatcherAction::Remove,
+                    action: Box::new(|entities, entity| entities.remove(entity)),
                     ..Default::default()
                 });
             }
@@ -659,7 +554,13 @@ fn flash_white_single(entities: &ClientEntities, entity: Entity)
 
         entities.add_watcher(entity, Watcher{
             kind: WatcherType::Lifetime(HIGHLIGHT_DURATION.into()),
-            action: WatcherAction::SetMixColor(None),
+            action: Box::new(|entities, entity|
+            {
+                if let Some(mut render) = entities.render_mut(entity)
+                {
+                    render.mix = None;
+                }
+            }),
             ..Default::default()
         });
     }

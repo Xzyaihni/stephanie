@@ -833,55 +833,40 @@ impl Character
 
             entities.add_watcher(throw_projectile_entity, Watcher{
                 kind: WatcherType::Collision,
-                action: WatcherAction::SetItem(Some(Box::new(item))),
+                action: Box::new(|entities, entity| entities.set_item(entity, Some(item))),
                 ..Default::default()
             });
 
             entities.add_watcher(throw_projectile_entity, Watcher{
                 kind: WatcherType::Collision,
-                action: WatcherAction::SetCollider(Some(Box::new(ColliderInfo{
-                    layer: ColliderLayer::ThrownDecal,
-                    ..collider
-                }.into()))),
+                action: Box::new(move |entities, entity|
+                {
+                    entities.set_collider(entity, Some(ColliderInfo{
+                        layer: ColliderLayer::ThrownDecal,
+                        ..collider
+                    }.into()));
+                }),
                 ..Default::default()
             });
 
+            let explode_info = ParticlesKind::Dust.create(combined_info.common_textures, true, 0.0);
             entities.add_watcher(throw_projectile_entity, Watcher{
                 kind: WatcherType::Collision,
-                action: WatcherAction::AddWatcher(Box::new(Watcher{
-                    kind: WatcherType::Lifetime(0.5.into()),
-                    action: WatcherAction::Explode(Box::new(ExplodeInfo{
-                        keep: false,
-                        info: ParticlesInfo{
-                            amount: 3..5,
-                            speed: ParticleSpeed::Random(0.1),
-                            decay: ParticleDecay::Random(3.5..=5.0),
-                            position: ParticlePosition::Spread(1.0),
-                            rotation: ParticleRotation::Random,
-                            scale: ParticleScale::Spread{
-                                scale: Vector3::repeat(ENTITY_SCALE * 0.4),
-                                variation: 0.1
+                action: Box::new(move |entities, entity|
+                {
+                    entities.add_watcher(entity, Watcher{
+                        kind: WatcherType::Lifetime(0.5.into()),
+                        action: Watcher::explode_action(ExplodeInfo{
+                            info: ParticlesInfo{
+                                speed: ParticleSpeed::Random(0.1),
+                                position: ParticlePosition::Spread(1.0),
+                                ..explode_info.info
                             },
-                            min_scale: ENTITY_SCALE * 0.02
-                        },
-                        prototype: EntityInfo{
-                            physical: Some(PhysicalProperties{
-                                inverse_mass: 0.01_f32.recip(),
-                                floating: true,
-                                ..Default::default()
-                            }.into()),
-                            render: Some(RenderInfo{
-                                object: Some(RenderObjectKind::TextureId{
-                                    id: combined_info.common_textures.dust
-                                }.into()),
-                                z_level: ZLevel::BelowFeet,
-                                ..Default::default()
-                            }),
-                            ..Default::default()
-                        }
-                    })),
-                    ..Default::default()
-                })),
+                            ..explode_info
+                        }),
+                        ..Default::default()
+                    });
+                }),
                 ..Default::default()
             });
 
@@ -1002,7 +987,13 @@ impl Character
 
         combined_info.entities.add_watcher(holding, Watcher{
             kind: WatcherType::Lifetime(0.2.into()),
-            action: WatcherAction::SetLazyRotation(Self::default_lazy_rotation()),
+            action: Box::new(|entities, entity|
+            {
+                if let Some(mut lazy) = entities.lazy_transform_mut(entity)
+                {
+                    lazy.rotation = Self::default_lazy_rotation();
+                }
+            }),
             ..Default::default()
         });
 
@@ -1018,7 +1009,13 @@ impl Character
         {
             combined_info.entities.add_watcher(holding, Watcher{
                 kind: WatcherType::Lifetime((swing_time * 0.8).into()),
-                action: WatcherAction::SetTargetRotation(start_rotation),
+                action: Box::new(move |entities, entity|
+                {
+                    if let Some(mut target) = entities.target(entity)
+                    {
+                        target.rotation = start_rotation;
+                    }
+                }),
                 ..Default::default()
             });
         }
@@ -1219,19 +1216,37 @@ impl Character
 
         entities.add_watcher(info.hand_left, Watcher{
             kind: kind.clone(),
-            action: WatcherAction::SetLazyRotation(Self::default_lazy_rotation()),
+            action: Box::new(|entities, entity|
+            {
+                if let Some(mut lazy) = entities.lazy_transform_mut(entity)
+                {
+                    lazy.rotation = Self::default_lazy_rotation();
+                }
+            }),
             ..Default::default()
         });
 
         entities.add_watcher(info.hand_left, Watcher{
             kind: kind.clone(),
-            action: WatcherAction::SetTargetRotation(rotation),
+            action: Box::new(move |entities, entity|
+            {
+                if let Some(mut target) = entities.target(entity)
+                {
+                    target.rotation = rotation;
+                }
+            }),
             ..Default::default()
         });
 
         entities.add_watcher(info.hand_left, Watcher{
             kind,
-            action: WatcherAction::SetTargetPosition(held_position),
+            action: Box::new(move |entities, entity|
+            {
+                if let Some(mut target) = entities.target(entity)
+                {
+                    target.position = held_position;
+                }
+            }),
             ..Default::default()
         });
 
@@ -1428,7 +1443,7 @@ impl Character
 
         combined_info.entities.add_watcher(projectile_entity, Watcher{
             kind: WatcherType::Lifetime(0.2.into()),
-            action: WatcherAction::Remove,
+            action: Box::new(|entities, entity| entities.remove(entity)),
             ..Default::default()
         });
     }
@@ -1499,7 +1514,7 @@ impl Character
 
         combined_info.entities.add_watcher(projectile_entity, Watcher{
             kind: WatcherType::Lifetime(0.2.into()),
-            action: WatcherAction::Remove,
+            action: Box::new(|entities, entity| entities.remove(entity)),
             ..Default::default()
         });
     }
