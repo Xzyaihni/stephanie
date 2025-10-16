@@ -92,7 +92,7 @@ use super::{
     VisibilityChecker
 };
 
-pub use controls_controller::{ControlsController, UiControls, Control, ControlState, KeyMapping};
+pub use controls_controller::{ControlsController, UiControls, Control, ControlState, KeyMapping, ChangedKey};
 
 use notifications::{Notifications, Notification};
 

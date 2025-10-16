@@ -44,6 +44,7 @@ pub use game_state::{
     Control,
     ControlState,
     KeyMapping,
+    ChangedKey,
     CommonTextures,
     ui::element::{UiElement, UiElementShapeMask}
 };
@@ -278,17 +279,12 @@ impl Client
 
     pub fn input(&mut self, control: yanyaengine::Control) -> bool
     {
-        if let yanyaengine::Control::Keyboard{repeat: true, ..} = control
-        {
-            return true;
-        }
-
         if let yanyaengine::Control::Keyboard{
             state,
             ..
         } = control.clone()
         {
-            if let Some((KeyMapping::Keyboard(key), _)) = KeyMapping::from_control(control.clone())
+            if let Some(ChangedKey{key: KeyMapping::Keyboard(key), ..}) = KeyMapping::from_control(control.clone())
             {
                 if self.game.on_key_state(key, state == ElementState::Pressed)
                 {

@@ -121,16 +121,17 @@ impl Display for KeyMapping
 
 impl KeyMapping
 {
-    pub fn from_control(value: yanyaengine::Control) -> Option<(Self, Option<Key>)>
+    pub fn from_control(value: yanyaengine::Control) -> Option<ChangedKey>
     {
         match value
         {
             yanyaengine::Control::Keyboard{
                 keycode: PhysicalKey::Code(code),
                 logical,
+                repeat,
                 ..
-            } => Some((KeyMapping::Keyboard(code), Some(logical))),
-            yanyaengine::Control::Mouse{button, ..} => Some((KeyMapping::Mouse(button), None)),
+            } => Some(ChangedKey{key: KeyMapping::Keyboard(code), logical: Some(logical), repeat}),
+            yanyaengine::Control::Mouse{button, ..} => Some(ChangedKey{key: KeyMapping::Mouse(button), logical: None, repeat: false}),
             yanyaengine::Control::Scroll{..} => None,
             _ => None
         }
@@ -168,7 +169,7 @@ pub struct UiControls<Id>
     pub clipboard: ClipboardWrapper,
     click_taken: bool,
     pub state: ControlsState<Id>,
-    pub controls: Vec<((KeyMapping, Option<Key>), ControlState)>
+    pub controls: Vec<(ChangedKey, ControlState)>
 }
 
 impl<Id: PartialEq + Clone> UiControls<Id>
@@ -177,7 +178,7 @@ impl<Id: PartialEq + Clone> UiControls<Id>
     {
         self.state.click_mappings.iter().fold(false, |acc, mapping|
         {
-            let key_id = self.controls.iter().position(|((key, _), _)| mapping == key);
+            let key_id = self.controls.iter().position(|(changed, _)| *mapping == changed.key);
             let is_down = key_id.map(|index| self.controls[index].1.is_down()).unwrap_or(false);
 
             if is_down
@@ -199,7 +200,7 @@ impl<Id: PartialEq + Clone> UiControls<Id>
     {
         self.state.click_mappings.iter().any(|mapping|
         {
-            self.controls.iter().find(|((key, _), _)| mapping == key).map(|(_, x)| x.is_down()).unwrap_or(false)
+            self.controls.iter().find(|(changed, _)| *mapping == changed.key).map(|(_, x)| x.is_down()).unwrap_or(false)
         })
     }
 
@@ -237,13 +238,21 @@ impl Display for ClipboardError
     }
 }
 
+#[derive(Debug)]
+pub struct ChangedKey
+{
+    pub key: KeyMapping,
+    pub logical: Option<Key>,
+    pub repeat: bool
+}
+
 pub struct ControlsController<Id>
 {
     clipboard: Rc<RefCell<Option<Clipboard>>>,
     controls_state: Option<ControlsState<Id>>,
     key_mapping: BiMap<KeyMapping, Control>,
     keys: [ControlState; Control::COUNT],
-    changed: Vec<((KeyMapping, Option<Key>), ControlState)>
+    changed: Vec<(ChangedKey, ControlState)>
 }
 
 impl<Id> ControlsController<Id>
@@ -374,8 +383,13 @@ impl<Id> ControlsController<Id>
     ) -> impl Iterator<Item=(Control, ControlState)> + use<'_, Id>
     {
         self.controls_state = Some(changed.state);
-        changed.controls.into_iter().filter_map(|((key, _logical), state)|
+        changed.controls.into_iter().filter_map(|(ChangedKey{key, repeat, ..}, state)|
         {
+            if repeat
+            {
+                return None;
+            }
+
             self.key_mapping.get(&key).cloned().map(|matched|
             {
                 self.keys[matched as usize] = state;

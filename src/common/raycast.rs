@@ -141,44 +141,43 @@ fn swept_aabb_world_inner<'a, const EXCLUDE_BEFORE: bool>(
 
     let direction = Unit::new_normalize(direction);
 
-    let half_size = this.scale / 2.0;
+    let half_size = this.scale * 0.5;
 
-    let top_left = start.zip_map(&end, |a, b| a.min(b)) - half_size;
-    let bottom_right = start.zip_map(&end, |a, b| a.max(b)) + half_size;
+    let top_left = TilePos::from(start.zip_map(&end, |a, b| a.min(b)) - half_size);
+    let bottom_right = TilePos::from(start.zip_map(&end, |a, b| a.max(b)) + half_size);
 
     let size = this.scale + Vector3::repeat(TILE_SIZE);
 
-    TilePos::from(top_left).tiles_between(TilePos::from(bottom_right))
-        .filter_map(move |pos|
+    top_left.tiles_between(bottom_right).filter_map(move |pos|
+    {
+        let tile = world.tile(pos);
+
+        let is_colliding = tile.map(|tile| tilemap[*tile].colliding).unwrap_or(false);
+
+        if !is_colliding
         {
-            let tile = world.tile(pos);
+            return None;
+        }
 
-            let is_colliding = tile.map(|tile| tilemap[*tile].colliding).unwrap_or(false);
+        let other = Transform{
+            scale: size,
+            position: pos.center_position().into(),
+            ..Default::default()
+        };
 
-            if !is_colliding
+        raycast_rectangle(start, direction, &other).map(|x|
+        {
+            (pos, x.distance)
+        }).filter(|(_, x)|
+        {
+            if EXCLUDE_BEFORE && *x < (TILE_SIZE * -0.1)
             {
-                return None;
+                return false;
             }
 
-            let other = Transform{
-                scale: size,
-                position: pos.center_position().into(),
-                ..Default::default()
-            };
-
-            raycast_rectangle(start, direction, &other).map(|x|
-            {
-                (pos, x.distance)
-            }).filter(|(_, x)|
-            {
-                if EXCLUDE_BEFORE && *x < (TILE_SIZE * -0.1)
-                {
-                    return false;
-                }
-
-                *x <= limit
-            })
+            *x <= limit
         })
+    })
 }
 
 pub fn raycast_world<'a, Exit: FnMut(&TileInfo, &TilePos, &RaycastResult) -> bool>(

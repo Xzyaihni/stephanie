@@ -11,17 +11,17 @@ pub fn text_input_handle<Id: Idable>(
     text: &mut String
 )
 {
-    controls.controls.retain(|((key, logical), state)|
+    controls.controls.retain(|(changed, state)|
     {
-        if let KeyMapping::Keyboard(KeyCode::ControlLeft) = key
+        if let KeyMapping::Keyboard(KeyCode::ControlLeft) = changed.key
         {
             controls.state.ctrl_held = state.is_down();
             return false;
         }
 
-        if let (Some(logical), ControlState::Pressed) = (logical, state)
+        if let (Some(logical), ControlState::Pressed) = (&changed.logical, state)
         {
-            if let KeyMapping::Keyboard(key) = key
+            if let KeyMapping::Keyboard(key) = changed.key
             {
                 match key
                 {

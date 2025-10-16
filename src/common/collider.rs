@@ -1,5 +1,6 @@
 use std::{
     convert,
+    cmp::Ordering,
     borrow::Borrow,
     num::FpCategory,
     ops::ControlFlow
@@ -7,7 +8,7 @@ use std::{
 
 use serde::{Serialize, Deserialize};
 
-use nalgebra::{Unit, Matrix2, Vector2, Vector3};
+use nalgebra::{vector, Unit, Matrix2, Vector2, Vector3};
 
 use yanyaengine::Transform;
 
@@ -17,7 +18,7 @@ use crate::common::{
     aabb_bounds,
     rectangle_edges,
     is_intersection_lines,
-    ENTITY_SCALE,
+    with_z,
     Line,
     Entity,
     Physical,
@@ -1315,20 +1316,25 @@ impl<'a> CollidingInfoMut<'a>
             return false;
         }
 
-        let direction = next_position - self.transform.position;
+        let direction = next_position.z - self.transform.position.z;
 
-        const MARGIN: Vector3<f32> = Vector3::new(ENTITY_SCALE * 0.1, ENTITY_SCALE * 0.1, 0.0);
+        // make sure that entities cant stick to walls
+        let scale = self.transform.scale - with_z(self.transform.scale.xy() * 0.1, 0.0);
+
+        let transform = Transform{
+            scale,
+            ..self.transform
+        };
+
+        let penetration_maximum = self.transform.scale.z * 0.5;
 
         if let Some((tile_pos, distance)) = swept_aabb_world_with_before(
             world,
-            &Transform{
-                scale: self.transform.scale - MARGIN, // make sure that entities cant stick to walls
-                ..self.transform
-            },
-            Vector3::new(0.0, 0.0, direction.z)
-        ).filter(|(_, x)| *x > -TILE_SIZE * 0.1).min_by(|a, b| a.1.partial_cmp(&b.1).unwrap())
+            &transform,
+            vector![0.0, 0.0, direction]
+        ).filter(|(_, x)| *x > -penetration_maximum).min_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(Ordering::Equal))
         {
-            self.transform.position += Vector3::new(0.0, 0.0, distance * direction.z.signum());
+            self.transform.position += Vector3::new(0.0, 0.0, distance * direction.signum());
             self.collider.push_collided_tile(tile_pos);
 
             return true;

@@ -239,7 +239,10 @@ impl Game
 
         self.player_container(|mut x|
         {
-            controls.into_iter().for_each(|(control, state)| x.on_control(state, control));
+            controls.into_iter().for_each(|(control, state)|
+            {
+                x.on_control(state, control)
+            });
         });
 
         with_game_state(&self.game_state, |game_state|
