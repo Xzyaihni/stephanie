@@ -248,7 +248,7 @@ impl ColliderLayer
             (Damageable, Normal, false),
             (Damageable, Damage, true),
             (Damageable, World, false),
-            (Damageable, Mouse, false),
+            (Damageable, Mouse, true),
             (Damageable, Door, false),
             (Damageable, Player, false),
             (Damageable, NormalEnemy, false),

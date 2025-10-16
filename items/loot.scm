@@ -47,8 +47,8 @@
 
 (define (old)
     (if ((drop-rate 1 6))
-        (standard-drops '(bottle duct_tape heal_pills))
-        '(lamp)))
+        '(lamp)
+        (standard-drops '(bottle duct_tape heal_pills))))
 
 (define (runner)
     (and-maybe
