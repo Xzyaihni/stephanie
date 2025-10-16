@@ -2,6 +2,9 @@
 
 (define else #t)
 
+(define newline-char #\
+)
+
 (define (equal? a b)
     (cond
         ((and (null? a) (pair? b)) #f)
@@ -24,6 +27,24 @@
         xs
         (filter (lambda (v) (not (equal? x v))) xs)))
 
+(define (list->vector xs)
+    (define v (make-vector (length xs) #\ ))
+    (define (inner current i)
+        (if (not (null? current))
+            (begin
+                (vector-set! v i (car current))
+                (inner (cdr current) (+ i 1)))))
+    (inner xs 0)
+    v)
+
+(define (vector->list xs)
+    (define len (vector-length xs))
+    (define (inner i)
+        (if (= i len)
+            '()
+            (cons (vector-ref xs i) (inner (+ i 1)))))
+    (inner 0))
+
 (define (append as bs)
     (fold cons bs (reverse as)))
 
@@ -42,6 +63,9 @@
         start
         (fold f (f (car xs) start) (cdr xs))))
 
+(define (fold1 f xs)
+    (fold f (car xs) (cdr xs)))
+
 (define (reverse xs) (fold cons '() xs))
 
 (define (map f xs)
@@ -53,6 +77,13 @@
     (if (or (null? as) (null? bs))
         '()
         (cons (cons (car as) (car bs)) (zip (cdr as) (cdr bs)))))
+
+(define (find f xs)
+    (if (null? xs)
+        '()
+        (if (f (car xs))
+            (car xs)
+            (find f (cdr xs)))))
 
 (define (for-each f xs)
     (if (null? xs)

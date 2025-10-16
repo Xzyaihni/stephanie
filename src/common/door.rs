@@ -298,11 +298,15 @@ impl Door
                     ..Default::default()
                 }.into()),
                 occluder: door.door_occluder(),
-                named: Some(<&str>::from(door.material).to_owned() + " door"),
                 ..Default::default()
             });
 
-            entities.lazy_setter.borrow_mut().set_sibling_no_change(entity, Some(visible_part));
+            {
+                let mut setter = entities.lazy_setter.borrow_mut();
+
+                setter.set_sibling_no_change(entity, Some(visible_part));
+                setter.set_named_no_change(entity, Some(<&str>::from(door.material).to_owned() + " door"));
+            }
 
             door.update_parent_state(entities, entity);
         } else

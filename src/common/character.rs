@@ -231,6 +231,7 @@ pub struct AfterInfo
     rotation: f32,
     walking: bool,
     sprint_await: bool,
+    last_held_item: Option<Option<ItemId>>,
     buffered: [f32; BufferedAction::COUNT]
 }
 
@@ -370,9 +371,10 @@ impl Character
                         }
                     }),
                     z_level: if held { ZLevel::Held } else { if flip { ZLevel::HandLow } else { ZLevel::HandHigh } },
+                    visible: !held,
                     ..Default::default()
                 }),
-                parent: Some(Parent::new(entity, !held)),
+                parent: Some(Parent::new(entity)),
                 follow_rotation,
                 lazy_transform: Some(LazyTransformInfo{
                     connection: if held { Connection::Ignore } else { Self::default_connection() },
@@ -439,7 +441,7 @@ impl Character
                     inherit_scale: false,
                     ..Default::default()
                 }.into()),
-                parent: Some(Parent::new(entity, true)),
+                parent: Some(Parent::new(entity)),
                 render: Some(RenderInfo{
                     object: Some(RenderObjectKind::TextureId{
                         id: texture
@@ -471,6 +473,7 @@ impl Character
             rotation,
             walking: false,
             sprint_await: false,
+            last_held_item: None,
             buffered: [0.0; BufferedAction::COUNT]
         };
 
@@ -607,15 +610,30 @@ impl Character
         combined_info: CombinedInfo
     )
     {
-        let state = *self.sprite_state.value();
-        if state != SpriteState::Normal && state != SpriteState::Crawling
+        if *self.sprite_state.value() == SpriteState::Lying
         {
             return;
         }
 
-        let entities = &combined_info.entities;
+        let held_item_id = self.held_item(combined_info).map(|x| x.id);
+
+        {
+            let info = some_or_return!(self.info.as_mut());
+
+            if let Some(last_held_item) = info.last_held_item.as_mut()
+            {
+                if *last_held_item == held_item_id
+                {
+                    return;
+                }
+
+                *last_held_item = held_item_id;
+            }
+        }
 
         let info = some_or_return!(self.info.as_ref());
+
+        let entities = &combined_info.entities;
 
         let this_entity = info.this;
         let holding_entity = info.holding;
@@ -632,8 +650,7 @@ impl Character
         let holding_item = self.held_item_info(combined_info);
         let holding_state = holding_item.is_some();
 
-        if !entities.parent_exists(holding_entity) { return; }
-        entities.set_visible(holding_entity, holding_item.is_some());
+        some_or_return!(entities.render_mut_no_change(holding_entity)).visible = self.held_visible(combined_info);
 
         entities.lazy_setter.borrow_mut().set_follow_position_no_change(hand_right, holding_item.map(|_|
         {
@@ -724,6 +741,8 @@ impl Character
         {
             self.forward_point(combined_info);
         }
+
+        some_or_return!(self.info.as_mut()).last_held_item = Some(held_item_id);
 
         self.held_update = false;
     }
@@ -1420,7 +1439,7 @@ impl Character
                     },
                     ..Default::default()
                 }.into()),
-                parent: Some(Parent::new(info.this, true)),
+                parent: Some(Parent::new(info.this)),
                 collider: Some(ColliderInfo{
                     kind: ColliderType::Circle,
                     layer: ColliderLayer::Damage,
@@ -1491,7 +1510,7 @@ impl Character
                     },
                     ..Default::default()
                 }.into()),
-                parent: Some(Parent::new(info.holding, true)),
+                parent: Some(Parent::new(info.holding)),
                 collider: Some(ColliderInfo{
                     kind: ColliderType::Rectangle,
                     layer: ColliderLayer::Damage,
@@ -1577,6 +1596,11 @@ impl Character
         let held = self.holding?;
 
         combined_info.entities.inventory(info.this).and_then(|x| x.get(held).cloned())
+    }
+
+    fn held_visible(&self, combined_info: CombinedInfo) -> bool
+    {
+        self.held_item(combined_info).is_some()
     }
 
     fn held_distance(&self) -> f32
@@ -1826,9 +1850,9 @@ impl Character
 
         let set_visible = |sprite_state: &mut Stateful<_>, entity, is_visible|
         {
-            if entities.parent_exists(entity) || entities.render_exists(entity)
+            if let Some(mut render) = entities.render_mut_no_change(entity)
             {
-                entities.set_visible(entity, is_visible);
+                render.visible = is_visible;
             } else
             {
                 sprite_state.dirty();
@@ -1885,11 +1909,15 @@ impl Character
             let info = self.info.as_ref().unwrap();
 
             {
+                let visible = self.held_visible(combined_info);
+                set_visible(&mut self.sprite_state, info.holding, visible);
+            }
+
+            {
                 let mut set_visible = |entity| set_visible(&mut self.sprite_state, entity, held_visibility);
 
                 set_visible(info.hand_left);
                 set_visible(info.hand_right);
-                set_visible(info.holding);
             }
 
             let set_visible = |entity| set_visible(&mut self.sprite_state, entity, hair_visibility);

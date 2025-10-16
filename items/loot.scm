@@ -87,6 +87,8 @@
 (define (wood_table) (standard-drops '(stick plank)))
 (define (bed) (standard-drops '(stick plank cloth)))
 
+(define (metal_door) (standard-drops '(metal_shard)))
+
 (define (wood) (standard-drops '(stick short_stick plank)))
 
 (define (glass) (standard-drops '(glass_shard)))

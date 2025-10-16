@@ -60,7 +60,7 @@ pub fn update_furniture(entities: &ClientEntities, entity: Entity)
                     },
                     ..Default::default()
                 }.into()),
-                parent: Some(Parent::new(entity, true)),
+                parent: Some(Parent::new(entity)),
                 ..Default::default()
             });
         } else

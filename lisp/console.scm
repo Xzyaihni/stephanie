@@ -68,8 +68,31 @@
 (define (print-component entity component)
     (display (format-component entity component)))
 
+(define (vector->string xs)
+    (cons 'string xs))
+
+(define (list->string xs)
+    (vector->string (list->vector xs)))
+
 (define (string-ref s i)
     (vector-ref (cdr s) i))
+
+(define vector-append (lambda xs
+    (define v (make-vector (fold1 + (map vector-length xs)) 0))
+    (define (inner current limit start i)
+        (if (not (= i limit))
+            (begin
+                (vector-set! v (+ start i) (vector-ref current i))
+                (inner current limit start (+ i 1)))))
+    (fold
+        (lambda (x start)
+            (let ((len (vector-length x)))
+                (begin
+                    (inner x len start 0)
+                    (+ start len))))
+        0
+        xs)
+    v))
 
 (define (vector-prefix? xs other)
     (if (< (vector-length xs) (vector-length other))
@@ -99,6 +122,35 @@
 
 (define (string-infix? xs other)
     (vector-infix? (cdr xs) (cdr other)))
+
+(define (list-trim-start xs)
+    (if (eq? (car xs) #\ )
+        (list-trim-start (cdr xs))
+        xs))
+
+(define (trim-start xs)
+    (list->string (list-trim-start (vector->list (cdr xs)))))
+
+(define (trim-end xs)
+    (list->string (reverse (list-trim-start (reverse (vector->list (cdr xs)))))))
+
+(define (trim xs)
+    (trim-end (trim-start xs)))
+
+(define (lines xs)
+    (define s (cdr xs))
+    (define len (vector-length s))
+    (define (inner current-lines current i)
+        (if (= i len)
+            (cons (list->string (reverse current)) current-lines)
+            (let ((c (vector-ref s i)))
+                (if (eq? c newline-char)
+                    (inner (cons (list->string (reverse current)) current-lines) '() (+ i 1))
+                    (inner current-lines (cons c current) (+ i 1))))))
+    (inner '() '() 0))
+
+(define (unlines xs)
+    (vector->string (fold1 (lambda (x acc) (vector-append acc (make-vector 1 newline-char) x)) (map cdr xs))))
 
 (define (included-with component lst)
     (filter (lambda (x) (has-component x component)) lst))

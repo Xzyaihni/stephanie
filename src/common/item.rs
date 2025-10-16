@@ -14,9 +14,10 @@ use crate::common::{
     physics::*,
     Transform,
     ItemInfo,
-    ItemsInfo,
-    items_info::ItemId
+    ItemsInfo
 };
+
+pub use crate::common::items_info::ItemId;
 
 
 pub fn item_physical(info: &ItemInfo) -> PhysicalProperties

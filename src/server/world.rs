@@ -396,7 +396,7 @@ impl World
                 if let Some(mut parent) = container.parent_mut(*entity)
                 {
                     let matched_entity = container.with_seed(parent.entity().no_seed());
-                    *parent = Parent::new(matched_entity, parent.visible());
+                    *parent = Parent::new(matched_entity);
                 }
             });
         }

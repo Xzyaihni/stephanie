@@ -440,27 +440,18 @@ impl OnSet<ClientEntities> for FurnitureId
 
 // parent must always come before child !! (index wise)
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Parent
-{
-    visible: bool,
-    entity: Entity
-}
+pub struct Parent(Entity);
 
 impl Parent
 {
-    pub fn new(entity: Entity, visible: bool) -> Self
+    pub fn new(entity: Entity) -> Self
     {
-        Self{visible, entity}
+        Self(entity)
     }
 
     pub fn entity(&self) -> Entity
     {
-        self.entity
-    }
-
-    pub fn visible(&self) -> bool
-    {
-        self.visible
+        self.0
     }
 }
 
@@ -484,7 +475,7 @@ impl FullEntityInfo
 
         self.children.into_iter().for_each(|mut child|
         {
-            child.info.parent = Some(Parent::new(this, true));
+            child.info.parent = Some(Parent::new(this));
 
             child.create_inner(f);
         });
@@ -617,7 +608,7 @@ macro_rules! impl_common_systems
             mut info: $this_entity_info
         ) -> Entity
         {
-            let entity = self.push_empty(local, info.parent.as_ref().map(|x| x.entity));
+            let entity = self.push_empty(local, info.parent.as_ref().map(|x| x.0));
 
             info.setup_components(self);
 
@@ -773,7 +764,7 @@ macro_rules! entity_info_common
                     let parent_transform = self.parent.as_ref()
                         .and_then(|x|
                         {
-                            entities.transform(x.entity).as_deref().cloned()
+                            entities.transform(x.0).as_deref().cloned()
                         });
 
                     let new_transform = lazy.target_global(parent_transform.as_ref());
@@ -950,15 +941,9 @@ macro_rules! common_trait_impl
 
         fn visible_target(&self, entity: Entity) -> Option<RefMut<'_, bool>>
         {
-            self.parent_mut(entity).map(|parent|
+            self.render_mut(entity).map(|render|
             {
-                RefMut::map(parent, |x| &mut x.visible)
-            }).or_else(||
-            {
-                self.render_mut(entity).map(|render|
-                {
-                    RefMut::map(render, |x| &mut x.visible)
-                })
+                RefMut::map(render, |x| &mut x.visible)
             })
         }
 
@@ -1650,11 +1635,6 @@ macro_rules! define_entities_both
                         remove_component!(self, entity, $name);
                     }
 
-                    if const { (matches!(Component::$name, Component::parent) || matches!(Component::$name, Component::render)) }
-                    {
-                        self.update_child_visibility(entity);
-                    }
-
                     self.check_all_seeds(entity);
                 }
 
@@ -1862,24 +1842,6 @@ macro_rules! define_entities_both
 
                     ((&*parent).into().entity() == parent_entity).then_some(entity)
                 })
-            }
-
-            fn update_child_visibility(&self, entity: Entity)
-            {
-                if let Some(parent) = self.parent(entity)
-                {
-                    if let Some(mut render) = self.render_mut_no_change(entity)
-                    {
-                        let parent = (&*parent).into();
-
-                        let parent_visible = self.render(parent.entity()).map(|parent_render|
-                        {
-                            parent_render.is_visible()
-                        }).unwrap_or(true);
-
-                        render.set_visible(parent.visible && parent_visible);
-                    }
-                }
             }
 
             pub fn try_remove_sibling(&mut self, entity: Entity)
@@ -2158,21 +2120,6 @@ macro_rules! define_entities_both
                 {
                     action(self, entity);
                 });
-            }
-
-            pub fn set_visible(&self, entity: Entity, is_visible: bool)
-            {
-                if let Some(mut parent) = self.parent_mut_no_change(entity)
-                {
-                    parent.visible = is_visible;
-
-                    drop(parent);
-
-                    self.update_child_visibility(entity);
-                } else if let Some(mut render) = self.render_mut_no_change(entity)
-                {
-                    render.visible = is_visible;
-                }
             }
 
             pub fn is_lootable(&self, entity: Entity) -> bool
@@ -2736,7 +2683,7 @@ macro_rules! define_entities
                     eprintln!("pushing {}", info.compact_format());
                 }
 
-                let entity = self.push_empty(local, info.parent.as_ref().map(|x| x.entity));
+                let entity = self.push_empty(local, info.parent.as_ref().map(|x| x.0));
 
                 self.create_queue.borrow_mut().push((entity, info));
 
@@ -2760,7 +2707,7 @@ macro_rules! define_entities
 
             fn push(&self, local: bool, info: EntityInfo) -> Entity
             {
-                let entity = self.push_empty(local, info.parent.as_ref().map(|x| x.entity));
+                let entity = self.push_empty(local, info.parent.as_ref().map(|x| x.0));
 
                 self.create_queue.borrow_mut().push((entity, info));
 
@@ -2833,7 +2780,7 @@ macro_rules! define_entities
             {
                 self.parent(entity).and_then(|parent|
                 {
-                    self.transform(parent.entity).as_deref().cloned()
+                    self.transform(parent.0).as_deref().cloned()
                 })
             }
 
