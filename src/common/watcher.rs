@@ -4,7 +4,7 @@ use serde::{Serialize, Deserialize};
 
 use crate::common::{
     short_rotation,
-    ENTITY_SCALE,
+    some_or_return,
     particle_creator::*,
     Entity,
     EntityInfo,
@@ -196,7 +196,7 @@ impl Watcher
     {
         Box::new(move |entities, entity|
         {
-            debug_assert!(entities.transform_exists(entity));
+            let transform = some_or_return!(entities.transform(entity)).clone();
 
             let parent_velocity = entities.physical(entity).map(|x| *x.velocity()).unwrap_or_default();
 
@@ -207,11 +207,10 @@ impl Watcher
                 physical
             });
 
-            let transform = entities.transform(entity).as_deref().cloned();
-            let parent_scale = transform.as_ref().map(|x| x.scale).unwrap_or_else(|| Vector3::repeat(ENTITY_SCALE));
+            let parent_scale = transform.scale;
 
             let entity_info = EntityInfo{
-                transform,
+                transform: Some(transform),
                 physical,
                 ..info.prototype
             };

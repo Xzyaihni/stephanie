@@ -37,7 +37,6 @@ use crate::{
         watcher::*,
         damage::*,
         damaging::*,
-        particle_creator::*,
         raycast::*,
         physics::*,
         item::*,
@@ -50,9 +49,9 @@ use crate::{
         CharacterId,
         CharactersInfo,
         Light,
-        ItemsInfo,
         InventoryItem,
         ItemInfo,
+        ItemsInfo,
         Parent,
         Anatomy,
         World,
@@ -849,42 +848,25 @@ impl Character
             };
 
             let throw_projectile_entity = entities.push(true, entity_info);
-
-            entities.add_watcher(throw_projectile_entity, Watcher{
-                kind: WatcherType::Collision,
-                action: Box::new(|entities, entity| entities.set_item(entity, Some(item))),
-                ..Default::default()
-            });
+            let disappear_watcher = item_disappear_watcher(combined_info.common_textures);
 
             entities.add_watcher(throw_projectile_entity, Watcher{
                 kind: WatcherType::Collision,
                 action: Box::new(move |entities, entity|
                 {
+                    entities.set_item(entity, Some(item));
+
                     entities.set_collider(entity, Some(ColliderInfo{
                         layer: ColliderLayer::ThrownDecal,
                         ..collider
                     }.into()));
-                }),
-                ..Default::default()
-            });
 
-            let explode_info = ParticlesKind::Dust.create(combined_info.common_textures, true, 0.0);
-            entities.add_watcher(throw_projectile_entity, Watcher{
-                kind: WatcherType::Collision,
-                action: Box::new(move |entities, entity|
-                {
-                    entities.add_watcher(entity, Watcher{
-                        kind: WatcherType::Lifetime(0.5.into()),
-                        action: Watcher::explode_action(ExplodeInfo{
-                            info: ParticlesInfo{
-                                speed: ParticleSpeed::Random(0.1),
-                                position: ParticlePosition::Spread(1.0),
-                                ..explode_info.info
-                            },
-                            ..explode_info
-                        }),
-                        ..Default::default()
-                    });
+                    entities.add_watcher(entity, disappear_watcher);
+
+                    if let Some(mut render) = entities.render_mut_no_change(entity)
+                    {
+                        render.set_z_level(ZLevel::BelowFeet);
+                    }
                 }),
                 ..Default::default()
             });

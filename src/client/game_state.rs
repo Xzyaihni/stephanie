@@ -185,7 +185,7 @@ impl ClientEntitiesContainer
         world: &mut World,
         passer: &mut ConnectionsHandler,
         loot: &Loot,
-        damage_info: &CommonTextures,
+        common_textures: &CommonTextures,
         _is_trusted: bool,
         dt: f32
     )
@@ -255,7 +255,7 @@ impl ClientEntitiesContainer
 
         crate::frame_time_this!{
             [update, update_pre] -> damaging_system_update,
-            damaging_system::update(&mut self.entities, &space, world, loot, passer, damage_info)
+            damaging_system::update(&mut self.entities, &space, world, loot, passer, common_textures)
         };
 
         crate::frame_time_this!{
@@ -787,7 +787,7 @@ pub struct GameState
     pub data_infos: DataInfos,
     pub user_receiver: Rc<RefCell<UiReceiver>>,
     pub ui: Rc<RefCell<Ui>>,
-    pub common_textures: CommonTextures,
+    pub common_textures: Rc<CommonTextures>,
     pub connected_and_ready: bool,
     pub world: World,
     loot: Loot,
@@ -955,7 +955,7 @@ impl GameState
             rare_timer: 0.0,
             dt: None,
             ui,
-            common_textures: info.common_textures,
+            common_textures: Rc::new(info.common_textures),
             connected_and_ready: false,
             host: info.host,
             is_restart: false,

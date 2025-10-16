@@ -1761,6 +1761,7 @@ macro_rules! define_entities_both
                 self.remove_lazy_components(entity);
                 self.remove_from_remove_queue(entity);
                 self.remove_from_create_queue(entity);
+                self.remove_from_watchers(entity);
 
                 self.remove_children(entity);
                 self.try_remove_sibling(entity);
@@ -1796,6 +1797,11 @@ macro_rules! define_entities_both
                 self.create_render_queue.get_mut().retain(|x| x.0 != entity);
             }
 
+            fn remove_from_watchers(&mut self, entity: Entity)
+            {
+                self.watchers.borrow_mut().retain(|(check, _)| *check != entity);
+            }
+
             pub fn remove(&mut self, entity: Entity)
             {
                 if !self.exists(entity)
@@ -1808,6 +1814,7 @@ macro_rules! define_entities_both
                 self.remove_lazy_components(entity);
                 self.remove_from_remove_queue(entity);
                 self.remove_from_create_queue(entity);
+                self.remove_from_watchers(entity);
 
                 self.remove_children(entity);
                 self.try_remove_sibling(entity);

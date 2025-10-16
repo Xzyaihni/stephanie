@@ -107,6 +107,7 @@
     },
     {
         "name": "cloth",
+        "damage_scale": 0.01,
         "comfort": 0.5,
         "mass": 0.02,
         "groups": ["trash", "utility"]

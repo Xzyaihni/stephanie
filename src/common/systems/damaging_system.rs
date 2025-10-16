@@ -200,7 +200,7 @@ pub fn damager<'a, 'b, 'c>(
                     ParticlesKind::Dust
                 };
 
-                damage_entity(entities, loot, entity, result.other_entity, damage);
+                damage_entity(entities, textures, loot, entity, result.other_entity, damage);
 
                 create_particles(textures, particle, true, result.damage_entry);
                 if let Some(position) = result.damage_exit
@@ -246,8 +246,8 @@ pub fn damager<'a, 'b, 'c>(
 
                 if let Some(name) = destroyed
                 {
-                    destroy_tile_dependent(entities, space, loot, tile_pos);
-                    spawn_items(entities, loot, &transform, &name);
+                    destroy_tile_dependent(entities, textures, space, loot, tile_pos);
+                    spawn_items(entities, textures, loot, &transform, &name);
                 }
 
                 create_particles(textures, ParticlesKind::Dust, true, result.damage_entry);
@@ -559,7 +559,7 @@ fn flash_white_single(entities: &ClientEntities, entity: Entity)
     }
 }
 
-fn spawn_item(entities: &ClientEntities, transform: &Transform, item: &Item)
+fn spawn_item(entities: &ClientEntities, textures: &CommonTextures, transform: &Transform, item: &Item)
 {
     let item_info = entities.infos().items_info.get(item.id);
 
@@ -582,7 +582,7 @@ fn spawn_item(entities: &ClientEntities, transform: &Transform, item: &Item)
 
     let lazy_transform = item_lazy_transform(item_info, position, rotation);
 
-    entities.push(true, EntityInfo{
+    let entity = entities.push(true, EntityInfo{
         render: Some(RenderInfo{
             object: Some(RenderObjectKind::TextureId{
                 id: item_info.texture.unwrap()
@@ -600,17 +600,19 @@ fn spawn_item(entities: &ClientEntities, transform: &Transform, item: &Item)
         item: Some(item.clone()),
         ..Default::default()
     });
+
+    entities.add_watcher(entity, item_disappear_watcher(textures));
 }
 
-fn spawn_items(entities: &ClientEntities, loot: &Loot, transform: &Transform, name: &str)
+fn spawn_items(entities: &ClientEntities, textures: &CommonTextures, loot: &Loot, transform: &Transform, name: &str)
 {
     loot.create(LootState::Destroy, name).into_iter().for_each(|item|
     {
-        spawn_item(entities, &transform, &item)
+        spawn_item(entities, textures, &transform, &item)
     });
 }
 
-fn destroy_entity(entities: &ClientEntities, loot: &Loot, entity: Entity)
+fn destroy_entity(entities: &ClientEntities, textures: &CommonTextures, loot: &Loot, entity: Entity)
 {
     entities.remove_deferred(entity);
 
@@ -620,17 +622,18 @@ fn destroy_entity(entities: &ClientEntities, loot: &Loot, entity: Entity)
     {
         inventory.items().for_each(|item|
         {
-            spawn_item(entities, &transform, item);
+            spawn_item(entities, textures, &transform, item);
         });
     }
 
     let name = some_or_return!(entities.named(entity));
 
-    spawn_items(entities, loot, &transform, &name);
+    spawn_items(entities, textures, loot, &transform, &name);
 }
 
 fn destroy_tile_dependent(
     entities: &ClientEntities,
+    textures: &CommonTextures,
     space: &SpatialGrid,
     loot: &Loot,
     tile_pos: TilePos
@@ -680,7 +683,7 @@ fn destroy_tile_dependent(
 
         if collided
         {
-            destroy_entity(entities, loot, entity);
+            destroy_entity(entities, textures, loot, entity);
         }
     };
 
@@ -738,6 +741,7 @@ fn turn_towards_other(
 
 pub fn damage_entity(
     entities: &ClientEntities,
+    textures: &CommonTextures,
     loot: &Loot,
     entity: Entity,
     other_entity: Entity,
@@ -752,7 +756,7 @@ pub fn damage_entity(
 
         if *health <= 0.0
         {
-            destroy_entity(entities, loot, entity);
+            destroy_entity(entities, textures, loot, entity);
         }
     }
 

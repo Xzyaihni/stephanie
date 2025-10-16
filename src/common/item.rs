@@ -6,19 +6,42 @@ use serde::{Serialize, Deserialize};
 
 use strum::{IntoEnumIterator, EnumIter};
 
-use crate::common::{
-    random_f32,
-    ENTITY_SCALE,
-    collider::*,
-    lazy_transform::*,
-    physics::*,
-    Transform,
-    ItemInfo,
-    ItemsInfo
+use crate::{
+    client::CommonTextures,
+    common::{
+        random_f32,
+        ENTITY_SCALE,
+        watcher::*,
+        collider::*,
+        lazy_transform::*,
+        physics::*,
+        particle_creator::*,
+        Transform,
+        ItemInfo,
+        ItemsInfo
+    }
 };
 
 pub use crate::common::items_info::ItemId;
 
+
+pub fn item_disappear_watcher(textures: &CommonTextures) -> Watcher
+{
+    let explode_info = ParticlesKind::Dust.create(textures, true, 0.0);
+
+    Watcher{
+        kind: WatcherType::Lifetime(60.0.into()),
+        action: Watcher::explode_action(ExplodeInfo{
+            info: ParticlesInfo{
+                speed: ParticleSpeed::Random(0.1),
+                position: ParticlePosition::Spread(1.0),
+                ..explode_info.info
+            },
+            ..explode_info
+        }),
+        ..Default::default()
+    }
+}
 
 pub fn item_physical(info: &ItemInfo) -> PhysicalProperties
 {
