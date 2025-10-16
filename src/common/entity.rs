@@ -2129,38 +2129,6 @@ macro_rules! define_entities_both
                 });
             }
 
-            pub fn is_lootable(&self, entity: Entity) -> bool
-            {
-                if self.player_exists(entity)
-                {
-                    return false;
-                }
-
-                if self.item_exists(entity)
-                {
-                    return true;
-                }
-
-                if let Some(inventory) = self.inventory(entity)
-                {
-                    if !inventory.is_empty()
-                    {
-                        if let Some(anatomy) = self.anatomy(entity)
-                        {
-                            if anatomy.speed() == 0.0
-                            {
-                                return true;
-                            }
-                        } else
-                        {
-                            return true;
-                        }
-                    }
-                }
-
-                false
-            }
-
             pub fn within_interactable_distance(&self, a: Entity, b: Entity) -> bool
             {
                 let interactable_distance = 0.3;

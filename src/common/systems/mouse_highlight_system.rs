@@ -26,6 +26,38 @@ pub fn mouse_selected(entities: &ClientEntities, player: Entity, mouse: Entity) 
     (entities.within_interactable_distance(player, mouse_collided)).then_some(mouse_collided)
 }
 
+pub fn is_lootable(entities: &ClientEntities, entity: Entity) -> bool
+{
+    if entities.player_exists(entity)
+    {
+        return false;
+    }
+
+    if entities.item_exists(entity)
+    {
+        return true;
+    }
+
+    if let Some(inventory) = entities.inventory(entity)
+    {
+        if !inventory.is_empty()
+        {
+            if let Some(anatomy) = entities.anatomy(entity)
+            {
+                if anatomy.is_dead()
+                {
+                    return true;
+                }
+            } else
+            {
+                return true;
+            }
+        }
+    }
+
+    false
+}
+
 pub fn update(
     entities: &ClientEntities,
     player: Entity,
@@ -34,7 +66,7 @@ pub fn update(
 {
     let entity = some_or_return!(mouse_selected(entities, player, mouse));
 
-    if !entities.is_lootable(entity)
+    if !is_lootable(entities, entity)
     {
         return None;
     }

@@ -1805,13 +1805,13 @@ impl Character
                 {
                     let movement_cost = if is_sprinting
                     {
-                        0.5 + anatomy.oxygen_speed().max(0.0)
+                        0.3
                     } else
                     {
-                        0.1
+                        0.03
                     };
 
-                    movement_cost * if anatomy.is_crawling() { 0.5 } else { 1.0 }
+                    movement_cost * if anatomy.is_crawling() { 0.9 } else { 1.0 }
                 } else
                 {
                     0.0
