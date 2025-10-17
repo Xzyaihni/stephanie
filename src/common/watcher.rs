@@ -186,7 +186,7 @@ impl Watcher
     pub fn simple_one_frame() -> Self
     {
         Self{
-            kind: WatcherType::Frames(1.into()),
+            kind: WatcherType::Frames(2.into()),
             action: Box::new(|entities, entity| entities.remove(entity)),
             ..Default::default()
         }

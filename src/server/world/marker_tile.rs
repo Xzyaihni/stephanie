@@ -10,6 +10,7 @@ use yanyaengine::Transform;
 
 use crate::{
     debug_config::*,
+    server::DataInfos,
     common::{
         furniture_creator,
         enemy_creator,
@@ -17,9 +18,7 @@ use crate::{
         collider::*,
         door::*,
         Loot,
-        EnemiesInfo,
         EntityInfo,
-        FurnituresInfo,
         Light,
         lisp::{self, *},
         world::{
@@ -41,8 +40,7 @@ fn parse_enum<T: FromStr<Err=strum::ParseError>>(value: OutputWrapperRef) -> Res
 
 pub struct CreateInfos<'a>
 {
-    pub enemies: &'a EnemiesInfo,
-    pub furnitures: &'a FurnituresInfo
+    pub infos: &'a DataInfos
 }
 
 #[derive(Debug, Clone)]
@@ -57,8 +55,12 @@ impl MarkerTile
     pub fn create(
         self,
         CreateInfos{
-            enemies,
-            furnitures
+            infos: DataInfos{
+                enemies_info,
+                characters_info,
+                furnitures_info,
+                ..
+            }
         }: CreateInfos,
         loot: &Loot,
         chunk_pos: Pos3<f32>
@@ -75,7 +77,7 @@ impl MarkerTile
             {
                 if DebugConfig::is_enabled(DebugTool::NoEnemySpawns) { return None; }
 
-                let id = if let Some(x) = enemies.get_id(&name.replace('_', " "))
+                let id = if let Some(x) = enemies_info.get_id(&name.replace('_', " "))
                 {
                     x
                 } else
@@ -85,7 +87,8 @@ impl MarkerTile
                 };
 
                 Some(enemy_creator::create(
-                    enemies,
+                    enemies_info,
+                    characters_info,
                     loot,
                     id,
                     position
@@ -95,7 +98,7 @@ impl MarkerTile
             {
                 if DebugConfig::is_enabled(DebugTool::NoFurnitureSpawns) { return None; }
 
-                let id = if let Some(x) = furnitures.get_id(&name.replace('_', " "))
+                let id = if let Some(x) = furnitures_info.get_id(&name.replace('_', " "))
                 {
                     x
                 } else
@@ -104,7 +107,7 @@ impl MarkerTile
                     return None;
                 };
 
-                Some(furniture_creator::create(furnitures, loot, id, rotation, position + offset.get(rotation)))
+                Some(furniture_creator::create(furnitures_info, loot, id, rotation, position + offset.get(rotation)))
             },
             MarkerKind::Light{strength, offset} =>
             {

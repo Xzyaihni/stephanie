@@ -14,7 +14,6 @@ use nalgebra::Vector2;
 
 use yanyaengine::{
     FontsContainer,
-    TextureId,
     Assets,
     game_object::*
 };
@@ -39,6 +38,7 @@ use crate::{
         f32_to_range,
         Side1d,
         EaseOut,
+        Sprite,
         Item,
         ItemRarity,
         ItemId,
@@ -430,29 +430,27 @@ fn handle_button(
 
 fn draw_item_image(
     parent: UiParentElement,
-    texture: Option<TextureId>,
-    aspect: Vector2<f32>,
+    sprite: Sprite,
     id: UiId,
     inner_id: UiId,
     size: UiElementSize<UiId>
 )
 {
-    if let Some(texture) = texture
-    {
-        let image = parent.update(id.clone(), UiElement{
-            width: size.clone(),
-            height: size,
-            children_layout: if aspect.x == 1.0 { UiLayout::Horizontal } else { UiLayout::Vertical },
-            ..Default::default()
-        });
+    let aspect = sprite.aspect();
 
-        image.update(inner_id, UiElement{
-            texture: UiTexture::CustomId(texture),
-            width: UiSize::CopyElement(UiDirection::Horizontal, aspect.x, id.clone()).into(),
-            height: UiSize::CopyElement(UiDirection::Vertical, aspect.y, id).into(),
-            ..Default::default()
-        });
-    }
+    let image = parent.update(id.clone(), UiElement{
+        width: size.clone(),
+        height: size,
+        children_layout: if aspect.x == 1.0 { UiLayout::Horizontal } else { UiLayout::Vertical },
+        ..Default::default()
+    });
+
+    image.update(inner_id, UiElement{
+        texture: UiTexture::CustomId(sprite.id),
+        width: UiSize::CopyElement(UiDirection::Horizontal, aspect.x, id.clone()).into(),
+        height: UiSize::CopyElement(UiDirection::Vertical, aspect.y, id).into(),
+        ..Default::default()
+    });
 }
 
 fn single_health_color(fraction: Option<f32>) -> Lcha
@@ -622,8 +620,7 @@ struct UiInventoryItem
     item: InventoryItem,
     name: String,
     rarity: ItemRarity,
-    aspect: Vector2<f32>,
-    texture: Option<TextureId>
+    texture: Sprite
 }
 
 struct UiTitleButton
@@ -662,7 +659,6 @@ impl UiInventory
                 item: index,
                 name: item.name.clone(),
                 rarity: x.rarity,
-                aspect: item.aspect,
                 texture: item.texture
             }
         }).collect()
@@ -914,7 +910,6 @@ impl WindowKind
                     draw_item_image(
                         body,
                         item.texture,
-                        item.aspect,
                         id(ItemPart::Icon(IconPart::Body)),
                         id(ItemPart::Icon(IconPart::Picture)),
                         icon_size.into()
@@ -974,7 +969,7 @@ impl WindowKind
 
                 let mut description = format!("{} weighs around {} kg", item_info.name, item_info.mass);
 
-                description += &format!("\nand is about {} meters in size!", item_info.scale);
+                description += &format!("\nand is about {} meters in size!", item_info.scale_scalar());
 
                 if let Some(rarity_name) = item.rarity.name()
                 {
@@ -993,7 +988,6 @@ impl WindowKind
                 draw_item_image(
                     body,
                     item_info.texture,
-                    item_info.aspect,
                     id(ItemInfoPart::ImageBody),
                     id(ItemInfoPart::Image),
                     size

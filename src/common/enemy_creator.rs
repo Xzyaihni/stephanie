@@ -5,6 +5,7 @@ use nalgebra::Vector3;
 use yanyaengine::Transform;
 
 use crate::common::{
+    with_z,
     random_rotation,
     render_info::*,
     physics::*,
@@ -19,6 +20,7 @@ use crate::common::{
     Enemy,
     EnemyId,
     EnemiesInfo,
+    CharactersInfo,
     EntityInfo,
     lazy_transform::*
 };
@@ -28,6 +30,7 @@ pub const ENEMY_MASS: f32 = 50.0;
 
 pub fn create(
     enemies_info: &EnemiesInfo,
+    characters_info: &CharactersInfo,
     loot: &Loot,
     id: EnemyId,
     pos: Vector3<f32>
@@ -42,6 +45,8 @@ pub fn create(
 
     let character = Character::new(info.character, Faction::Zob);
 
+    let scale = characters_info.get(info.character).normal.scale;
+
     EntityInfo{
         lazy_transform: Some(LazyTransformInfo{
             rotation: Rotation::EaseOut(
@@ -53,7 +58,7 @@ pub fn create(
             ),
             transform: Transform{
                 position: pos,
-                scale: Vector3::repeat(info.scale),
+                scale: with_z(scale, ENTITY_SCALE),
                 rotation: random_rotation(),
                 ..Default::default()
             },
@@ -65,7 +70,7 @@ pub fn create(
             ..Default::default()
         }),
         physical: Some(PhysicalProperties{
-            inverse_mass: (info.scale / ENTITY_SCALE) * ENEMY_MASS.recip(),
+            inverse_mass: (scale.max() / ENTITY_SCALE) * ENEMY_MASS.recip(),
             fixed: PhysicalFixed{rotation: true, ..Default::default()},
             ..Default::default()
         }.into()),

@@ -1,4 +1,4 @@
-use nalgebra::{Vector2, Vector3};
+use nalgebra::{vector, Vector2, Vector3};
 
 use yanyaengine::Transform;
 
@@ -38,7 +38,7 @@ pub fn update_furniture(entities: &ClientEntities, entity: Entity)
         let mut setter = entities.lazy_setter.borrow_mut();
 
         let render = RenderInfo{
-            object: Some(RenderObjectKind::TextureRotating{ids, offset: info.hitbox}.into()),
+            object: Some(RenderObjectKind::TextureRotating{ids: ids.map(|_, x| x.id), offset: info.hitbox}.into()),
             z_level: info.z,
             ..Default::default()
         };
@@ -47,7 +47,8 @@ pub fn update_furniture(entities: &ClientEntities, entity: Entity)
 
         if info.hitbox.is_some()
         {
-            let aspect = info.scale / info.scale.min();
+            let scale = info.textures.up.scale;
+            let aspect = scale / scale.min();
 
             let scale = with_z(aspect, 1.0);
 
@@ -107,7 +108,7 @@ pub fn furniture_position(
 {
     let rotation = -rotation.to_angle();
 
-    rotate_point(Vector2::new(0.0, -(TILE_SIZE - info.scale.y) / 2.0), rotation)
+    rotate_point(Vector2::new(0.0, -(TILE_SIZE - info.textures.up.scale.y) / 2.0), rotation)
 }
 
 pub fn create(
@@ -120,12 +121,13 @@ pub fn create(
 {
     let info = furnitures_info.get(id);
 
+    let scale = info.textures.up.scale;
     let scale = info.hitbox.map(|_x|
     {
-        let s = info.scale.min();
+        let s = scale.min();
 
-        Vector3::new(s, s, ENTITY_SCALE)
-    }).unwrap_or_else(|| Vector3::new(info.scale.x, info.scale.y, ENTITY_SCALE));
+        vector![s, s, ENTITY_SCALE]
+    }).unwrap_or_else(|| with_z(scale, ENTITY_SCALE));
 
     let position = pos + with_z(furniture_position(info, rotation), 0.0);
 

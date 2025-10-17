@@ -26,6 +26,7 @@ pub use crate::{
     some_or_value,
     some_or_false,
     some_or_return,
+    some_or_unexpected_return,
     common::{
         ENTITY_SCALE,
         watcher::*,
@@ -106,6 +107,25 @@ macro_rules! some_or_return
     ($value:expr) =>
     {
         $crate::some_or_value!{$value, Default::default()}
+    }
+}
+
+#[macro_export]
+macro_rules! some_or_unexpected_return
+{
+    ($value:expr) =>
+    {
+        {
+            match $value
+            {
+                Some(x) => x,
+                None =>
+                {
+                    eprintln!("{}:{}:{} unexpected return", file!(), line!(), column!());
+                    return Default::default();
+                }
+            }
+        }
     }
 }
 

@@ -478,7 +478,7 @@ impl World
                 let entities = entities.into_inner();
                 if !entities.is_empty()
                 {
-                    Self::chunked_entities(delayed_messages, entities.clone(), |entities| Message::EntityRemoveManyRaw(entities));
+                    Self::chunked_entities(delayed_messages, entities.clone(), Message::EntityRemoveManyRaw);
                 }
 
                 if is_trusted

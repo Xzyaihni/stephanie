@@ -16,8 +16,10 @@ use crate::{
     server,
     client,
     common::{
+        with_z,
         some_or_return,
         write_log,
+        ENTITY_SCALE,
         render_info::*,
         collider::*,
         watcher::*,
@@ -34,7 +36,6 @@ use crate::{
         EntityPasser,
         Inventory,
         Anatomy,
-        CharactersInfo,
         Character,
         Player,
         Enemy,
@@ -2233,10 +2234,16 @@ macro_rules! define_entities_both
                             dt,
                             |texture|
                             {
-                                let mut render = self.render_mut(entity).unwrap();
-                                let transform = self.target_ref(entity).unwrap();
+                                {
+                                    let mut render = self.render_mut(entity).unwrap();
+                                    let mut target = self.target(entity).unwrap();
 
-                                render.set_sprite(create_info, Some(&transform), texture);
+                                    target.scale = with_z(texture.scale, ENTITY_SCALE);
+
+                                    render.set_sprite(create_info, Some(&target), texture.id);
+                                }
+
+                                self.end_sync(entity, |mut transform, end| transform.scale = end.scale);
                             }
                         );
                     }
@@ -2277,17 +2284,6 @@ macro_rules! define_entities_both
                     {
                         *transform = end;
                     }
-                });
-            }
-
-            pub fn update_sprites(
-                &mut self,
-                characters_info: &CharactersInfo
-            )
-            {
-                for_each_component!(self, character, |_entity, character: &RefCell<Character>|
-                {
-                    character.borrow_mut().update_common(characters_info, self);
                 });
             }
 

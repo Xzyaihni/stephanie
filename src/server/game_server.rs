@@ -278,11 +278,6 @@ impl GameServer
         };
 
         crate::frame_time_this!{
-            [server_update] -> update_sprites,
-            self.entities.update_sprites(&self.data_infos.characters_info)
-        };
-
-        crate::frame_time_this!{
             [server_update] -> create_queued,
             {
                 let mut writer = self.connection_handler.lock();

@@ -11,9 +11,11 @@ use std::sync::LazyLock;
 #[allow(unused_imports)]
 use parking_lot::Mutex;
 
+use nalgebra::Vector2;
+
 use message::Message;
 
-pub use yanyaengine::{Transform, TransformContainer};
+pub use yanyaengine::{Transform, TransformContainer, object::Texture};
 
 pub use objects_store::ObjectsStore;
 
@@ -67,6 +69,8 @@ pub use player::{Player, OnConnectInfo};
 
 pub use enemy::{EnemyBehavior, Enemy};
 pub use enemies_info::{EnemyId, EnemyInfo, EnemiesInfo};
+
+pub use generic_info::Sprite;
 
 pub use chunk_saver::{SaveLoad, WorldChunksBlock, WorldChunkSaver, ChunkSaver, EntitiesSaver};
 
@@ -514,6 +518,11 @@ macro_rules! frame_time_this
 
 pub const ENTITY_SCALE: f32 = TILE_SIZE * 0.9;
 pub const ENTITY_PIXEL_SCALE: u32 = 32;
+
+pub fn texture_scale(texture: &Texture) -> Vector2<f32>
+{
+    texture.size() / ENTITY_PIXEL_SCALE as f32 * ENTITY_SCALE
+}
 
 #[derive(Clone)]
 pub struct DataInfos

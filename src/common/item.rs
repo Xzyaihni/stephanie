@@ -10,7 +10,6 @@ use crate::{
     client::CommonTextures,
     common::{
         random_f32,
-        ENTITY_SCALE,
         watcher::*,
         collider::*,
         lazy_transform::*,
@@ -75,7 +74,7 @@ pub fn item_lazy_transform(
         transform: Transform{
             position,
             rotation,
-            scale: info.scale3() * ENTITY_SCALE,
+            scale: info.scale3(),
             ..Default::default()
         },
         ..Default::default()

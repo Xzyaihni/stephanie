@@ -372,7 +372,7 @@ impl ClientEntitiesContainer
                         {
                             let render_transform = render.object.as_ref().unwrap().transform().unwrap();
 
-                            occluded_checker.debug_touched_tiles(&self.entities, world.visual_global_mapper(), &render_transform);
+                            occluded_checker.debug_touched_tiles(&self.entities, world.visual_global_mapper(), render_transform);
                         }
                     }
 

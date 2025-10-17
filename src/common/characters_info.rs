@@ -1,17 +1,18 @@
 use serde::Deserialize;
 
-use yanyaengine::{Assets, TextureId};
+use yanyaengine::Assets;
 
 use crate::common::{
-    ENTITY_SCALE,
-    generic_info::define_info_id
+    ItemId,
+    ItemsInfo,
+    generic_info::{define_info_id, Sprite}
 };
 
 
 define_info_id!{CharacterId}
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
-pub enum Hairstyle<T=TextureId>
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
+pub enum Hairstyle<T=Sprite>
 {
     None,
     Pons(T)
@@ -39,25 +40,31 @@ impl<T> Hairstyle<T>
 
 pub struct CharacterInfo
 {
-    pub scale: f32,
+    pub hand: ItemId,
     pub hairstyle: Hairstyle,
-    pub normal: TextureId,
-    pub crawling: TextureId,
-    pub lying: TextureId,
-    pub hand: TextureId
+    pub normal: Sprite,
+    pub crawling: Sprite,
+    pub lying: Sprite
 }
 
 impl CharacterInfo
 {
-    pub fn player(assets: &Assets) -> Self
+    pub fn player(
+        assets: &Assets,
+        items_info: &ItemsInfo
+    ) -> Self
     {
+        let f = |texture|
+        {
+            Sprite::new(assets, texture)
+        };
+
         Self{
-            scale: ENTITY_SCALE,
-            hairstyle: Hairstyle::Pons(assets.texture_id("player/pon.png")),
-            normal: assets.texture_id("player/body.png"),
-            crawling: assets.texture_id("player/crawling.png"),
-            lying: assets.texture_id("player/lying.png"),
-            hand: assets.texture_id("player/hand.png")
+            hand: items_info.id("hand"),
+            hairstyle: Hairstyle::Pons(f(assets.texture_id("player/pon.png"))),
+            normal: f(assets.texture_id("player/body.png")),
+            crawling: f(assets.texture_id("player/crawling.png")),
+            lying: f(assets.texture_id("player/lying.png"))
         }
     }
 }

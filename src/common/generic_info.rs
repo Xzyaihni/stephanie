@@ -5,11 +5,13 @@ use std::{
 
 use serde::Deserialize;
 
+use nalgebra::Vector2;
+
 use yanyaengine::{Assets, TextureId};
 
 pub use crate::{
     define_info_id,
-    common::normalize_path
+    common::{texture_scale, normalize_path}
 };
 
 
@@ -39,6 +41,29 @@ macro_rules! define_info_id
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
+pub struct Sprite
+{
+    pub id: TextureId,
+    pub scale: Vector2<f32>
+}
+
+impl Sprite
+{
+    pub fn new(assets: &Assets, texture: TextureId) -> Self
+    {
+        Sprite{
+            id: texture,
+            scale: texture_scale(&assets.texture(texture).lock())
+        }
+    }
+
+    pub fn aspect(&self) -> Vector2<f32>
+    {
+        self.scale / self.scale.max()
+    }
+}
+
 pub fn load_texture_path(root: impl AsRef<Path>, name: &str) -> String
 {
     let formatted_name = name.replace(' ', "_") + ".png";
@@ -47,11 +72,11 @@ pub fn load_texture_path(root: impl AsRef<Path>, name: &str) -> String
     normalize_path(path)
 }
 
-pub fn load_texture(assets: &Assets, root: &Path, name: &str) -> TextureId
+pub fn load_texture(assets: &Assets, root: &Path, name: &str) -> Sprite
 {
     let name = load_texture_path(root, name);
 
-    assets.texture_id(&name)
+    Sprite::new(assets, assets.texture_id(&name))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]

@@ -563,10 +563,12 @@ fn spawn_item(entities: &ClientEntities, textures: &CommonTextures, transform: &
 {
     let item_info = entities.infos().items_info.get(item.id);
 
+    let texture_id = item_info.texture.id;
+
     let rotation = random_rotation();
 
     let item_scale = aabb_bounds(&Transform{
-        scale: item_info.scale3() * ENTITY_SCALE,
+        scale: item_info.scale3(),
         rotation,
         ..Default::default()
     });
@@ -585,7 +587,7 @@ fn spawn_item(entities: &ClientEntities, textures: &CommonTextures, transform: &
     let entity = entities.push(true, EntityInfo{
         render: Some(RenderInfo{
             object: Some(RenderObjectKind::TextureId{
-                id: item_info.texture.unwrap()
+                id: texture_id
             }.into()),
             z_level: ZLevel::BelowFeet,
             ..Default::default()
@@ -608,7 +610,7 @@ fn spawn_items(entities: &ClientEntities, textures: &CommonTextures, loot: &Loot
 {
     loot.create(LootState::Destroy, name).into_iter().for_each(|item|
     {
-        spawn_item(entities, textures, &transform, &item)
+        spawn_item(entities, textures, transform, &item)
     });
 }
 
@@ -708,7 +710,11 @@ fn flash_white(entities: &ClientEntities, entity: Entity)
 {
     let flash_single = |entity| flash_white_single(entities, entity);
 
-    entities.sibling(entity).map(|x| flash_single(*x));
+    if let Some(sibling) = entities.sibling(entity)
+    {
+        flash_single(*sibling);
+    }
+
     entities.for_every_child(entity, flash_single);
 }
 

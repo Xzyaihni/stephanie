@@ -8,15 +8,14 @@ use nalgebra::{Vector2, Vector3};
 
 use serde::Deserialize;
 
-use yanyaengine::{Assets, TextureId};
+use yanyaengine::Assets;
 
 use crate::{
     client::game_state::UsageKind,
     common::{
-        ENTITY_PIXEL_SCALE,
-        lerp,
+        with_z,
+        ENTITY_SCALE,
         generic_info::*,
-        character::HAND_SCALE,
         Drug,
         DamageType,
         Item,
@@ -103,11 +102,9 @@ pub struct ItemInfo
     pub comfort: f32,
     pub sharpness: f32,
     pub side_sharpness: f32,
-    pub scale: f32,
-    pub aspect: Vector2<f32>,
     pub mass: f32,
     pub lighting: Light,
-    pub texture: Option<TextureId>
+    pub texture: Sprite
 }
 
 impl GenericItem for ItemInfo
@@ -135,19 +132,12 @@ impl ItemInfo
             path.to_string_lossy().into_owned()
         });
 
-        let (aspect, scale, texture) = assets.map(|assets|
+        let texture = assets.map(|assets|
         {
-            let image_texture = load_texture(assets, textures_root, &texture_name);
-
-            let texture = assets.texture(image_texture).lock();
-
-            let aspect = texture.aspect_min();
-            let scale = texture.size().max() / ENTITY_PIXEL_SCALE as f32;
-
-            (aspect, scale, Some(image_texture))
+            load_texture(assets, textures_root, &texture_name)
         }).unwrap_or_else(||
         {
-            (Vector2::repeat(1.0), 1.0, None)
+            Sprite{id: 0.into(), scale: Vector2::repeat(ENTITY_SCALE)}
         });
 
         Self{
@@ -159,30 +149,9 @@ impl ItemInfo
             comfort: raw.comfort.unwrap_or(1.0),
             sharpness: raw.sharpness.unwrap_or(0.0),
             side_sharpness: raw.side_sharpness.unwrap_or(0.0),
-            scale,
-            aspect,
             mass: raw.mass.unwrap_or(1.0),
             lighting: raw.lighting.map(|strength| Light{strength, ..Default::default()}).unwrap_or_default(),
             texture
-        }
-    }
-
-    pub fn hand() -> Self
-    {
-        Self{
-            name: "hand".to_owned(),
-            ranged: None,
-            drug: None,
-            rarity_rolls: false,
-            damage_scale: 0.5,
-            comfort: 2.0,
-            sharpness: 0.0,
-            side_sharpness: 0.0,
-            scale: HAND_SCALE,
-            aspect: Vector2::repeat(1.0),
-            mass: 0.3,
-            lighting: Light::default(),
-            texture: None
         }
     }
 
@@ -227,9 +196,19 @@ impl ItemInfo
         0.3 + raw_use / self.comfort
     }
 
+    pub fn aspect(&self) -> Vector2<f32>
+    {
+        self.texture.aspect()
+    }
+
+    pub fn scale_scalar(&self) -> f32
+    {
+        self.texture.scale.max() / ENTITY_SCALE
+    }
+
     pub fn scale3(&self) -> Vector3<f32>
     {
-        (self.aspect * lerp(self.scale, 1.0, 0.2)).xyx()
+        with_z(self.texture.scale, ENTITY_SCALE * 0.1)
     }
 
     pub fn usage(&self) -> Option<UsageKind>

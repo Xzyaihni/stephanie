@@ -2,7 +2,6 @@ use std::{
     f32,
     mem,
     cell::Ref,
-    borrow::Cow,
     sync::Arc
 };
 
@@ -14,7 +13,7 @@ use strum::{IntoEnumIterator, EnumIter, EnumCount};
 
 use nalgebra::{Unit, Vector2, Vector3};
 
-use yanyaengine::{Assets, Transform, TextureId};
+use yanyaengine::{Assets, Transform};
 
 use crate::{
     client::{
@@ -22,6 +21,7 @@ use crate::{
         ConnectionsHandler
     },
     common::{
+        with_z,
         some_or_return,
         some_or_value,
         some_or_false,
@@ -40,6 +40,7 @@ use crate::{
         raycast::*,
         physics::*,
         item::*,
+        Sprite,
         Hairstyle,
         Side1d,
         Side2d,
@@ -158,9 +159,6 @@ pub enum CharacterAction
 pub const DEFAULT_HELD_DISTANCE: f32 = 0.1;
 pub const POKE_DISTANCE: f32 = 0.75;
 
-// hands r actually 0.1 meters in size but they look too small that way
-pub const HAND_SCALE: f32 = 0.3;
-
 #[derive(Clone, Copy)]
 pub struct PartialCombinedInfo<'a>
 {
@@ -237,7 +235,7 @@ pub struct AfterInfo
 #[derive(Default, Debug, Clone)]
 struct CachedInfo
 {
-    pub bash_distance: Option<f32>
+    pub bash_distance: f32
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -342,11 +340,15 @@ impl Character
 
         let is_player = entities.player_exists(entity);
 
-        let character_info = entities.infos().characters_info.get(self.id);
+        let data_infos = entities.infos();
+
+        let character_info = data_infos.characters_info.get(self.id);
+
+        let hand_item = data_infos.items_info.get(character_info.hand);
 
         let held_item = |parent: Option<Entity>, flip: bool|
         {
-            let mut scale = Vector3::repeat(HAND_SCALE);
+            let mut scale = hand_item.scale3();
 
             if flip
             {
@@ -366,7 +368,7 @@ impl Character
                 render: Some(RenderInfo{
                     object: Some(RenderObject{
                         kind: RenderObjectKind::TextureId{
-                            id: character_info.hand
+                            id: hand_item.texture.id
                         }
                     }),
                     z_level: if held { ZLevel::Held } else { if flip { ZLevel::HandLow } else { ZLevel::HandHigh } },
@@ -393,6 +395,8 @@ impl Character
                         scale,
                         ..Default::default()
                     },
+                    unscaled_position: true,
+                    inherit_scale: false,
                     ..Default::default()
                 }.into()),
                 ..Default::default()
@@ -401,7 +405,7 @@ impl Character
 
         let mut hair = Vec::new();
 
-        let pon = |texture, position: Vector3<f32>|
+        let pon = |texture: Sprite, position: Vector3<f32>|
         {
             EntityInfo{
                 lazy_transform: Some(LazyTransformInfo{
@@ -433,7 +437,7 @@ impl Character
                         }
                     ),
                     transform: Transform{
-                        scale: Vector3::repeat(0.4 * character_info.scale),
+                        scale: with_z(texture.scale, ENTITY_SCALE * 0.1),
                         position,
                         ..Default::default()
                     },
@@ -443,7 +447,7 @@ impl Character
                 parent: Some(Parent::new(entity)),
                 render: Some(RenderInfo{
                     object: Some(RenderObjectKind::TextureId{
-                        id: texture
+                        id: texture.id
                     }.into()),
                     z_level: if is_player { ZLevel::PlayerHair } else { ZLevel::Hair },
                     ..Default::default()
@@ -563,15 +567,14 @@ impl Character
         other: &Vector3<f32>
     ) -> bool
     {
-        let bash_distance = some_or_value!(self.cached.bash_distance, false);
-        let bash_distance = bash_distance * this.scale.x;
+        let bash_distance = this.scale.xy().max() + self.cached.bash_distance;
 
         let distance = this.position.metric_distance(other);
 
         distance <= bash_distance
     }
 
-    fn bash_distance_parentless(&self, combined_info: CombinedInfo) -> f32
+    fn bash_distance(&self, combined_info: CombinedInfo) -> f32
     {
         let item_info = self.held_info(combined_info);
 
@@ -579,29 +582,23 @@ impl Character
         self.held_distance() + item_scale
     }
 
-    fn bash_distance(&self, combined_info: CombinedInfo) -> Option<f32>
+    fn this_scale(&self, characters_info: &CharactersInfo) -> Vector2<f32>
     {
-        self.scale_ratio(combined_info).map(|scale|
+        let info = characters_info.get(self.id);
+
+        let sprite = match *self.sprite_state.value()
         {
-            scale + self.bash_distance_parentless(combined_info) * 2.0
-        })
+            SpriteState::Normal => info.normal,
+            SpriteState::Crawling => info.crawling,
+            SpriteState::Lying => info.lying
+        };
+
+        sprite.scale
     }
 
     fn update_cached(&mut self, combined_info: CombinedInfo)
     {
-        self.cached.bash_distance = self.scale_ratio(combined_info).map(|scale|
-        {
-            scale + self.bash_distance_parentless(combined_info)
-        });
-    }
-
-    fn held_scale(&self) -> f32
-    {
-        match self.sprite_state.value()
-        {
-            SpriteState::Crawling => 1.0 / 1.5,
-            _ => 1.0
-        }
+        self.cached.bash_distance = self.bash_distance(combined_info);
     }
 
     fn update_held(
@@ -667,11 +664,11 @@ impl Character
 
             let mut lazy_transform = entities.lazy_transform_mut_no_change(holding_entity).unwrap();
 
-            let texture = get_texture(item.texture.unwrap());
+            let texture = get_texture(item.texture.id);
 
             let target = lazy_transform.target();
 
-            target.scale = item.scale3() * self.held_scale();
+            target.scale = item.scale3();
 
             drop(lazy_transform);
 
@@ -704,12 +701,8 @@ impl Character
             let mut lazy = entities.lazy_transform_mut_no_change(entity).unwrap();
             let target = lazy.target();
 
-            let x_sign = target.scale.x.signum();
-            target.scale = Vector3::repeat(HAND_SCALE) * self.held_scale();
-            target.scale.x *= x_sign;
-
-            target.position = self.held_position(target.scale);
-            target.position.y = y;
+            target.position = self.held_position(combined_info.characters_info, target.scale);
+            target.position.y = y * self.this_scale(combined_info.characters_info).max();
         };
 
         set_for(hand_left, -0.3);
@@ -831,7 +824,7 @@ impl Character
                     lazy_transform: Some(item_lazy_transform(item_info, holding_transform.position, holding_transform.rotation).into()),
                     render: Some(RenderInfo{
                         object: Some(RenderObjectKind::TextureId{
-                            id: item_info.texture.unwrap()
+                            id: item_info.texture.id
                         }.into()),
                         z_level: ZLevel::Elbow,
                         ..Default::default()
@@ -1204,47 +1197,28 @@ impl Character
 
         let target = lazy.target();
 
-        let item_position = self.held_position(target.scale);
+        let item_position = self.held_position(combined_info.characters_info, target.scale);
         let held_position = Vector3::new(item_position.x, target.position.y, 0.0);
 
-        target.position.x = item_position.x + POKE_DISTANCE;
+        target.position.x = item_position.x + POKE_DISTANCE * ENTITY_SCALE;
         target.rotation = start_rotation;
 
         let rotation = start_rotation - current_hand_rotation;
 
         let end = extend_time + extend_time;
-        let kind = WatcherType::Lifetime(end.into());
 
         entities.add_watcher(info.hand_left, Watcher{
-            kind: kind.clone(),
-            action: Box::new(|entities, entity|
+            kind: WatcherType::Lifetime(end.into()),
+            action: Box::new(move |entities, entity|
             {
                 if let Some(mut lazy) = entities.lazy_transform_mut(entity)
                 {
                     lazy.rotation = Self::default_lazy_rotation();
                 }
-            }),
-            ..Default::default()
-        });
 
-        entities.add_watcher(info.hand_left, Watcher{
-            kind: kind.clone(),
-            action: Box::new(move |entities, entity|
-            {
                 if let Some(mut target) = entities.target(entity)
                 {
                     target.rotation = rotation;
-                }
-            }),
-            ..Default::default()
-        });
-
-        entities.add_watcher(info.hand_left, Watcher{
-            kind,
-            action: Box::new(move |entities, entity|
-            {
-                if let Some(mut target) = entities.target(entity)
-                {
                     target.position = held_position;
                 }
             }),
@@ -1389,9 +1363,7 @@ impl Character
     {
         let info = some_or_return!(self.info.as_ref());
 
-        let scale = some_or_return!(self.bash_distance(combined_info));
-
-        let hand_mass = ItemInfo::hand().mass;
+        let hand_mass = self.hand_item_info(combined_info).mass;
         let item_info = self.held_info(combined_info);
 
         let damage_buff = self.held_item(combined_info)
@@ -1411,14 +1383,16 @@ impl Character
         let angle = short_rotation(opposite_angle(self.bash_side.opposite().to_angle() - f32::consts::FRAC_PI_2)) * 0.6;
         let minimum_distance = some_or_return!(combined_info.entities.transform(info.this)).scale.xy().max();
 
+        let scale = self.this_scale(combined_info.characters_info) + Vector2::repeat(self.cached.bash_distance * 2.0);
         let projectile_entity = combined_info.entities.push(
             true,
             EntityInfo{
                 lazy_transform: Some(LazyTransformInfo{
                     transform: Transform{
-                        scale: Vector3::repeat(scale),
+                        scale: with_z(scale, ENTITY_SCALE),
                         ..Default::default()
                     },
+                    inherit_scale: false,
                     ..Default::default()
                 }.into()),
                 parent: Some(Parent::new(info.this)),
@@ -1453,12 +1427,11 @@ impl Character
     {
         let info = some_or_return!(self.info.as_ref());
 
-        let hand_mass = ItemInfo::hand().mass;
+        let hand_mass = self.hand_item_info(combined_info).mass;
         let item_info = combined_info.items_info.get(item.id);
-        let item_scale = item_info.scale3().y;
         let mut scale = Vector3::repeat(1.0);
 
-        let projectile_scale = POKE_DISTANCE / item_scale;
+        let projectile_scale = POKE_DISTANCE * ENTITY_SCALE / item_info.scale3().y;
         scale.y += projectile_scale;
 
         let offset = projectile_scale / 2.0;
@@ -1565,11 +1538,19 @@ impl Character
         self.held_item(combined_info).map(|x| combined_info.items_info.get(x.id))
     }
 
-    fn held_info<'a>(&'a self, combined_info: CombinedInfo<'a>) -> Cow<'a, ItemInfo>
+    fn hand_item_info<'a>(&self, combined_info: CombinedInfo<'a>) -> &'a ItemInfo
     {
-        self.held_item_info(combined_info)
-            .map(Cow::Borrowed)
-            .unwrap_or_else(move || Cow::Owned(ItemInfo::hand()))
+        let info = combined_info.characters_info.get(self.id);
+
+        combined_info.items_info.get(info.hand)
+    }
+
+    fn held_info<'a>(&'a self, combined_info: CombinedInfo<'a>) -> &'a ItemInfo
+    {
+        self.held_item_info(combined_info).unwrap_or_else(move ||
+        {
+            self.hand_item_info(combined_info)
+        })
     }
 
     fn held_item(&self, combined_info: CombinedInfo) -> Option<Item>
@@ -1587,18 +1568,20 @@ impl Character
 
     fn held_distance(&self) -> f32
     {
-        if *self.sprite_state.value() == SpriteState::Crawling
+        let value = if *self.sprite_state.value() == SpriteState::Crawling
         {
             DEFAULT_HELD_DISTANCE - 0.1
         } else
         {
             DEFAULT_HELD_DISTANCE
-        }
+        };
+
+        value * ENTITY_SCALE
     }
 
-    fn held_position(&self, scale: Vector3<f32>) -> Vector3<f32>
+    fn held_position(&self, characters_info: &CharactersInfo, scale: Vector3<f32>) -> Vector3<f32>
     {
-        let offset = scale.y / 2.0 + 0.5 + self.held_distance();
+        let offset = (self.this_scale(characters_info).y + scale.y) * 0.5 + self.held_distance();
 
         Vector3::new(offset, 0.0, 0.0)
     }
@@ -1658,60 +1641,6 @@ impl Character
         }
     }
 
-    pub fn scale_ratio(&self, combined_info: CombinedInfo) -> Option<f32>
-    {
-        let info = combined_info.characters_info.get(self.id);
-        self.info.as_ref().and_then(|this_info|
-        {
-            combined_info.entities.transform(this_info.this).map(|transform|
-            {
-                info.scale / transform.scale.x
-            })
-        })
-    }
-
-    pub fn update_common(
-        &mut self,
-        characters_info: &CharactersInfo,
-        entities: &impl AnyEntities
-    ) -> bool
-    {
-        if !self.sprite_state.changed()
-        {
-            return false;
-        }
-
-        let set_scale = |scale: Vector3<f32>|
-        {
-            let info = some_or_return!(&self.info);
-
-            entities.target(info.this).unwrap().scale = scale;
-
-            if let Some(end) = entities.lazy_target_end(info.this)
-            {
-                let mut transform = entities.transform_mut(info.this)
-                    .unwrap();
-
-                transform.scale = end.scale;
-            }
-        };
-
-        let info = characters_info.get(self.id);
-        match self.sprite_state.value()
-        {
-            SpriteState::Normal =>
-            {
-                set_scale(Vector3::repeat(info.scale));
-            },
-            SpriteState::Crawling | SpriteState::Lying =>
-            {
-                set_scale(Vector3::repeat(info.scale * 1.5));
-            }
-        }
-
-        true
-    }
-
     pub fn collider_with_state(
         state: SpriteState,
         is_player: bool
@@ -1757,10 +1686,7 @@ impl Character
         if self.info.is_none()
         {
             self.initialize(entities, entity);
-            if self.info.is_none()
-            {
-                return None;
-            }
+            self.info.as_ref()?;
 
             Some(true)
         } else
@@ -1774,7 +1700,7 @@ impl Character
         combined_info: CombinedInfo,
         entity: Entity,
         dt: f32,
-        set_sprite: impl FnOnce(TextureId)
+        set_sprite: impl FnOnce(Sprite)
     )
     {
         let entities = combined_info.entities;
@@ -1805,7 +1731,7 @@ impl Character
                 {
                     let movement_cost = if is_sprinting
                     {
-                        0.3
+                        0.6
                     } else
                     {
                         0.03
@@ -1823,7 +1749,7 @@ impl Character
             }
         }
 
-        if !self.update_common(combined_info.characters_info, combined_info.entities)
+        if !self.sprite_state.changed()
         {
             return;
         }

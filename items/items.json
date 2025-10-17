@@ -1,5 +1,21 @@
 [
     {
+        "name": "hand",
+        "rarity_rolls": false,
+        "damage_scale": 0.5,
+        "comfort": 2.0,
+        "mass": 0.3,
+        "groups": ["special"]
+    },
+    {
+        "name": "zob hand",
+        "rarity_rolls": false,
+        "damage_scale": 1.0,
+        "comfort": 2.0,
+        "mass": 0.3,
+        "groups": ["special"]
+    },
+    {
         "name": "branch",
         "comfort": 0.5,
         "sharpness": 0.1,
@@ -107,6 +123,7 @@
     },
     {
         "name": "cloth",
+        "rarity_rolls": false,
         "damage_scale": 0.01,
         "comfort": 0.5,
         "mass": 0.02,

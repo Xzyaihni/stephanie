@@ -376,7 +376,7 @@ impl Pathfinder<'_>
 
             let this_transform = some_or_value!(self.entities.transform(entity), ControlFlow::Continue(()));
 
-            let this = CollidingInfoRef::new(this_transform.clone(), &this_collider);
+            let this = CollidingInfoRef::new(this_transform.clone(), this_collider);
 
             let is_colliding = this.collide_immutable(&tile_checker, |_| {});
 

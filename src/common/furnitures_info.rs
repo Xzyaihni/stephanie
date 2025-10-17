@@ -5,13 +5,9 @@ use std::{
 
 use serde::Deserialize;
 
-use nalgebra::Vector2;
-
-use yanyaengine::{Assets, TextureId};
+use yanyaengine::Assets;
 
 use crate::common::{
-    ENTITY_SCALE,
-    ENTITY_PIXEL_SCALE,
     with_error,
     some_or_value,
     generic_info::*,
@@ -42,11 +38,10 @@ pub struct FurnitureInfo
 {
     pub name: String,
     pub z: ZLevel,
-    pub scale: Vector2<f32>,
     pub container: bool,
     pub attached: bool,
     pub colliding: bool,
-    pub textures: DirectionsGroup<TextureId>,
+    pub textures: DirectionsGroup<Sprite>,
     pub hitbox: Option<f32>,
     pub health: f32
 }
@@ -117,12 +112,9 @@ impl FurnitureInfo
             Symmetry::All => DirectionsGroup::repeat(t(""))
         };
 
-        let scale = assets.texture(textures.up).lock().size() / ENTITY_PIXEL_SCALE as f32 * ENTITY_SCALE;
-
         Self{
             name: raw.name,
             z: raw.z.unwrap_or(ZLevel::Hips),
-            scale,
             container: raw.container.unwrap_or(false),
             attached: raw.attached.unwrap_or(false),
             colliding: raw.colliding.unwrap_or(true),

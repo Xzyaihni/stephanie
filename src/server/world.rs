@@ -18,8 +18,6 @@ use crate::{
         WorldChunkSaver,
         ChunkSaver,
         EntitiesSaver,
-        EnemiesInfo,
-        FurnituresInfo,
         SaveLoad,
         AnyEntities,
         EntityPasser,
@@ -145,8 +143,7 @@ pub struct World
     world_generator: Rc<RefCell<WorldGenerator<WorldChunkSaver>>>,
     chunk_saver: ChunkSaver,
     pub entities_saver: EntitiesSaver,
-    enemies_info: Arc<EnemiesInfo>,
-    furnitures_info: Arc<FurnituresInfo>,
+    data_infos: DataInfos,
     loot: Loot,
     overmaps: OvermapsType,
     client_indexers: HashMap<ConnectionId, EntitiesTracker>,
@@ -162,7 +159,7 @@ impl World
         world_name: String
     ) -> Result<Self, ParseError>
     {
-        let loot = Loot::new(data_infos.items_info, "items/loot.scm")?;
+        let loot = Loot::new(data_infos.items_info.clone(), "items/loot.scm")?;
 
         let world_path = Self::world_path_associated(&world_name);
         let chunk_saver = ChunkSaver::new(world_path.join("chunks"), 100);
@@ -206,8 +203,7 @@ impl World
             world_generator,
             chunk_saver,
             entities_saver,
-            enemies_info: data_infos.enemies_info,
-            furnitures_info: data_infos.furnitures_info,
+            data_infos,
             loot,
             overmaps,
             client_indexers,
@@ -428,8 +424,7 @@ impl World
                 .generate_chunk(pos, |marker|
                 {
                     let create_infos = marker_tile::CreateInfos{
-                        enemies: &self.enemies_info,
-                        furnitures: &self.furnitures_info
+                        infos: &self.data_infos
                     };
 
                     if let Some(info) = marker.create(create_infos, &self.loot, chunk_pos)

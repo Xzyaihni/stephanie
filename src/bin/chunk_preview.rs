@@ -63,8 +63,10 @@ use stephanie::{
         some_or_return,
         render_info::*,
         lisp::*,
+        Sprite,
         TileMap,
         TileMapWithTextures,
+        ItemsInfo,
         FurnituresInfo,
         CharactersInfo,
         EnemiesInfo,
@@ -459,10 +461,11 @@ impl AssetsDependent
         };
 
         let furniture = FurnituresInfo::parse(&info.assets.lock(), "normal/furniture", "info/furnitures.json");
+        let items = ItemsInfo::parse(Some(&info.assets.lock()), "normal/items", "items/items.json");
 
         let enemies = {
             let mut characters = CharactersInfo::new();
-            let enemies = EnemiesInfo::parse(&info.assets.lock(), &mut characters, "normal/enemy", "info/enemies.json");
+            let enemies = EnemiesInfo::parse(&info.assets.lock(), &mut characters, &items, "normal/enemy", "info/enemies.json");
 
             (characters, enemies)
         };
@@ -921,7 +924,7 @@ impl YanyaApp for ChunkPreviewer
                                 let enemies = &self.assets_dependent.enemies;
                                 let texture = enemies.1.get_id(&name.replace('_', "")).map(|id|
                                 {
-                                    enemies.0.get(enemies.1.get(id).character).normal
+                                    enemies.0.get(enemies.1.get(id).character).normal.id
                                 }).unwrap_or(default_texture);
 
                                 (texture, None, 0.0)
@@ -935,16 +938,16 @@ impl YanyaApp for ChunkPreviewer
 
                                     let transform = Transform{
                                         rotation: tile_rotation.flip_y().to_angle(),
-                                        scale: with_z(furniture.scale, 1.0),
+                                        scale: with_z(furniture.textures.up.scale, 1.0),
                                         ..Default::default()
                                     };
 
                                     pos += furniture_creator::furniture_position(furniture, tile_rotation) + offset.get(tile_rotation).xy();
 
-                                    let size_of = |t|
+                                    let size_of = |t: Sprite|
                                     {
                                         let assets = info.partial.assets.lock();
-                                        let texture = assets.texture(t);
+                                        let texture = assets.texture(t.id);
                                         let texture = texture.lock();
 
                                         texture.size()
@@ -969,7 +972,7 @@ impl YanyaApp for ChunkPreviewer
 
                                     let ((factor, closest), transform) = rotating_info(transform, furniture.hitbox, &textures);
 
-                                    (closest, transform.scale.xy().component_mul(&factor), transform.rotation)
+                                    (closest.id, transform.scale.xy().component_mul(&factor), transform.rotation)
                                 }).unwrap_or((default_texture, Vector2::repeat(TILE_SIZE), 0.0));
 
                                 (texture, Some(scale), rotation)

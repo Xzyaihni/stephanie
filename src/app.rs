@@ -343,12 +343,14 @@ impl YanyaApp for App
         let mut characters_info = CharactersInfo::new();
 
         let player_character = characters_info.push(CharacterInfo::player(
-            &partial_info.object_info.assets.lock()
+            &partial_info.object_info.assets.lock(),
+            &items_info
         ));
 
         let enemies_info = EnemiesInfo::parse(
             &partial_info.object_info.assets.lock(),
             &mut characters_info,
+            &items_info,
             "enemy",
             "info/enemies.json"
         );

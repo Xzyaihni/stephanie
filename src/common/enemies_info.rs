@@ -8,12 +8,11 @@ use serde::Deserialize;
 use yanyaengine::Assets;
 
 use crate::common::{
-    ENTITY_SCALE,
-    ENTITY_PIXEL_SCALE,
     with_error,
     some_or_value,
     generic_info::*,
     Hairstyle,
+    ItemsInfo,
     CharactersInfo,
     CharacterInfo,
     CharacterId,
@@ -47,8 +46,7 @@ pub struct EnemyInfo
     pub name: String,
     pub anatomy: HumanAnatomyInfo,
     pub behavior: EnemyBehavior,
-    pub character: CharacterId,
-    pub scale: f32
+    pub character: CharacterId
 }
 
 impl GenericItem for EnemyInfo
@@ -64,6 +62,7 @@ impl EnemyInfo
     fn from_raw(
         assets: &Assets,
         characters_info: &mut CharactersInfo,
+        items_info: &ItemsInfo,
         textures_root: &Path,
         raw: EnemyInfoRaw
     ) -> Self
@@ -80,25 +79,31 @@ impl EnemyInfo
                 })
         };
 
-        let normal = get_texture("body", raw.normal);
+        let hand = raw.hand.and_then(|x|
+        {
+            let info = items_info.get_id(&x);
 
-        let scale = assets.texture(normal).lock().size().max() / ENTITY_PIXEL_SCALE as f32 * ENTITY_SCALE;
+            if info.is_none()
+            {
+                eprintln!("item named `{x}` not found, using default hand");
+            }
+
+            info
+        }).unwrap_or_else(|| items_info.id("hand"));
 
         let character = characters_info.push(CharacterInfo{
-            scale,
+            hand,
             hairstyle: raw.hairstyle.map(|x| load_texture(assets, textures_root, &x)),
-            normal,
+            normal: get_texture("body", raw.normal),
             crawling: get_texture("crawling", raw.crawling),
-            lying: get_texture("lying", raw.lying),
-            hand: get_texture("hand", raw.hand)
+            lying: get_texture("lying", raw.lying)
         });
 
         Self{
             name: raw.name,
             anatomy: raw.anatomy,
             behavior: raw.behavior.unwrap_or(EnemyBehavior::Melee),
-            character,
-            scale
+            character
         }
     }
 }
@@ -115,6 +120,7 @@ impl EnemiesInfo
     pub fn parse(
         assets: &Assets,
         characters_info: &mut CharactersInfo,
+        items_info: &ItemsInfo,
         textures_root: impl AsRef<Path>,
         info: impl AsRef<Path>
     ) -> Self
@@ -126,7 +132,7 @@ impl EnemiesInfo
         let textures_root = textures_root.as_ref();
         let enemies: Vec<_> = enemies.into_iter().map(|info_raw|
         {
-            EnemyInfo::from_raw(assets, characters_info, textures_root, info_raw)
+            EnemyInfo::from_raw(assets, characters_info, items_info, textures_root, info_raw)
         }).collect();
 
         GenericInfo::new(enemies)
