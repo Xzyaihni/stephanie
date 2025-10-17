@@ -1582,7 +1582,7 @@ impl Character
 
     fn held_visible(&self, combined_info: CombinedInfo) -> bool
     {
-        self.held_item(combined_info).is_some()
+        *self.sprite_state.value() != SpriteState::Lying && self.held_item(combined_info).is_some()
     }
 
     fn held_distance(&self) -> f32
