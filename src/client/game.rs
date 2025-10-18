@@ -1510,7 +1510,7 @@ impl<'a> PlayerContainer<'a>
 
     pub fn this_update(&mut self, dt: f32) -> bool
     {
-        if !self.exists()
+        if !self.exists() || self.game_state.is_paused()
         {
             return true;
         }
