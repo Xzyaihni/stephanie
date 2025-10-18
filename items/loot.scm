@@ -97,6 +97,7 @@
 (define (bed) (points-drops '((cloth 2) (stick 2) (plank 3)) 8))
 
 (define (metal_door) (standard-drops '(metal_shard)))
+(define (wood_door) (points-drops '((stick 2) (plank 3)) 6))
 
 (define (wood) (points-drops '((short_stick 2) (stick 2) (plank 3)) 7))
 

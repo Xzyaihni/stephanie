@@ -125,11 +125,11 @@
                             this-chunk
                             (area-of (make-area (make-point 2 9) (make-point 4 1)))
                             wall-material)
-                        (door (x-of 3) 9 (if flip side-left side-right) 'metal)
+                        (door (x-of 3) 9 (if flip side-left side-right) 'wood)
                         (maybe-light (make-point (x-of 3) 4) 0.7 '(0.0 0.0 0.0))
                         (maybe-light (make-point (x-of 3) 7) 0.7 (list (if flip -0.5 0.5) 0.0 0.0))
                         (maybe-light (make-point (x-of 3) 12) 0.8 (list (if flip -0.5 0.5) 0.0 0.0))
-                        (door (x-of 2) 5 (if flip side-left side-right) 'metal)
+                        (door (x-of 2) 5 (if flip side-left side-right) 'wood)
                         (if (random-bool)
                             (begin
                                 (place-furniture (make-point (x-of 4) 11) 'wood_table side-up)
@@ -168,7 +168,7 @@
                             wall-material)
                         (maybe-light (make-point (x-of 3) 3) 0.8 '(0.0 0.0 0.0))
                         (maybe-light (make-point (x-of 4) 9) 1.2 (list (if flip -0.5 0.5) 0.5 0.0))
-                        (door (x-of 2) 5 (if flip side-left side-right) 'metal)
+                        (door (x-of 2) 5 (if flip side-left side-right) 'wood)
                         (place-furniture
                             (make-point (x-of 5) 9)
                             'wood_table
@@ -193,7 +193,7 @@
                         (maybe-light (make-point (x-of 4) 4) 1.2 '(0.0 0.5 0.0))
                         (maybe-light (make-point (x-of 2) 12) 0.5 (list (if flip -0.5 0.5) 0.0 0.0))
                         (maybe-light (make-point (x-of 5) 12) 0.6 '(0.0 0.0 0.0))
-                        (door (x-of 4) 12 side-up 'metal)
+                        (door (x-of 4) 12 side-up 'wood)
                         (place-furniture (make-point (x-of 3) 7) 'wood_table side-up)
                         (place-furniture (make-point (x-of 2) 7) 'wood_chair (side-of side-left))
                         (place-furniture (make-point (x-of 2) 8) 'wood_chair (side-of side-left))

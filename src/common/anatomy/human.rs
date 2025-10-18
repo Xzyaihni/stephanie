@@ -10,6 +10,7 @@ use crate::{
     debug_config::*,
     common::{
         some_or_return,
+        some_or_unexpected_return,
         TILE_SIZE,
         damage::*,
         Side1d,
@@ -993,6 +994,17 @@ impl HumanAnatomy
 
     fn on_damage(&mut self)
     {
+        HumanPartId::iter().for_each(|id|
+        {
+            if let Some(muscle) = self.this.body.get_part::<MuscleHealthGetter>(id)
+            {
+                if muscle.is_zero()
+                {
+                    some_or_unexpected_return!(self.this.body.get_part_mut::<SkinHealthGetter>(id)).health.current = 0.0;
+                }
+            }
+        });
+
         self.this.body.detach_broken(|id| { self.this.broken.push(id); });
         self.update_cache();
     }

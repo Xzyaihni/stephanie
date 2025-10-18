@@ -172,7 +172,7 @@ pub fn chunk_difficulty(pos: GlobalPos) -> f32
     let mut p: Vector3<f32> = Vector3::from(pos.0).cast();
     p.z = 0.0;
 
-    p.magnitude() * 0.01
+    p.magnitude() * 0.003
 }
 
 pub enum ChunkGenerationError
