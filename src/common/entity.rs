@@ -1807,14 +1807,19 @@ macro_rules! define_entities_both
 
             pub fn remove(&mut self, entity: Entity)
             {
-                if !self.exists(entity)
-                {
-                    return;
-                }
-
                 if !Self::IS_SERVER && !entity.local
                 {
                     self.removed_sync.push(entity);
+                }
+
+                self.remove_inner(entity);
+            }
+
+            pub fn remove_inner(&mut self, entity: Entity)
+            {
+                if !self.exists(entity)
+                {
+                    return;
                 }
 
                 self.on_remove.clone().borrow_mut().iter_mut().for_each(|x| x(self, entity));
@@ -1863,7 +1868,7 @@ macro_rules! define_entities_both
             {
                 let sibling = *some_or_return!(<Self as AnyEntities>::sibling(self, entity));
 
-                self.remove(sibling);
+                self.remove_inner(sibling);
             }
 
             pub fn remove_children(&mut self, parent_entity: Entity)
@@ -1904,7 +1909,7 @@ macro_rules! define_entities_both
 
                 remove_list.into_iter().for_each(|entity|
                 {
-                    self.remove(entity);
+                    self.remove_inner(entity);
                 });
             }
 
@@ -2374,7 +2379,7 @@ macro_rules! define_entities_both
             {
                 self.remove_awaiting_entity(entity);
 
-                self.remove(entity);
+                self.remove_inner(entity);
             }
 
             pub fn handle_message(
@@ -2430,7 +2435,7 @@ macro_rules! define_entities_both
 
                         entities.into_iter().for_each(|entity|
                         {
-                            self.remove(entity);
+                            self.remove_inner(entity);
                         });
 
                         None
@@ -2899,7 +2904,7 @@ macro_rules! define_entities
             {
                 debug_assert!(!entity.local, "{entity:?} {info:#?}");
 
-                self.remove(entity.no_seed());
+                self.remove_inner(entity.no_seed());
 
                 info.setup_components(self);
 
@@ -2944,7 +2949,7 @@ macro_rules! define_entities
                     {
                         entities.iter().for_each(|entity|
                         {
-                            self.remove(*entity);
+                            self.remove_inner(*entity);
                         });
                     }
                 };
@@ -3002,7 +3007,7 @@ macro_rules! define_entities
                         crate::frame_time_this!{
                             [update, game_state_update, process_messages] -> entity_remove,
                             {
-                                self.remove(entity);
+                                self.remove_inner(entity);
 
                                 if is_trusted { passer.send_message(Message::EntityRemoveFinished{entity}); }
                             }

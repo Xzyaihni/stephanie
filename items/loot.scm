@@ -33,6 +33,15 @@
 (define (standard-drops items)
     (maybe-multiple (lambda () (any-of items)) (drop-rate 1 3) 3))
 
+(define (points-drops items points)
+    (define item-name car)
+    (define (item-cost x) (car (cdr x)))
+    (let ((possible (filter (lambda (x) (<= (item-cost x) points)) items)))
+        (if (null? possible)
+            '()
+            (let ((picked (any-of possible)))
+                (cons (item-name picked) (points-drops possible (- points (item-cost picked))))))))
+
 (define (zob)
     (and-maybe
         (standard-drops '(hammer scissors kitchen_knife))
@@ -71,29 +80,29 @@
 (define (crate)
     (cond
         ((eq? state 'create) (standard-drops (trash)))
-        ((eq? state 'destroy) (standard-drops '(stick short_stick plank)))))
+        ((eq? state 'destroy) (points-drops '((short_stick 2) (stick 2) (plank 3)) 4))))
 
 (define (sink)
     (cond
         ((eq? state 'create) '(bottle))
-        ((eq? state 'destroy) (standard-drops '(pipe short_stick plank ceramic_shard)))))
+        ((eq? state 'destroy) (points-drops '((short_stick 1) (pipe 2) (ceramic_shard 2) (plank 3)) 4))))
 
 (define (cabinet)
     (cond
         ((eq? state 'create) '(heal_pills))
         ((eq? state 'destroy) (standard-drops '(metal_shard glass_shard)))))
 
-(define (wood_chair) (standard-drops '(stick short_stick plank)))
-(define (wood_table) (standard-drops '(stick plank)))
-(define (bed) (standard-drops '(stick plank cloth)))
+(define (wood_chair) (points-drops '((short_stick 1) (stick 2) (plank 3)) 3))
+(define (wood_table) (points-drops '((stick 2) (plank 3)) 6))
+(define (bed) (points-drops '((cloth 2) (stick 2) (plank 3)) 8))
 
 (define (metal_door) (standard-drops '(metal_shard)))
 
-(define (wood) (standard-drops '(stick short_stick plank)))
+(define (wood) (points-drops '((short_stick 2) (stick 2) (plank 3)) 7))
 
 (define (glass) (standard-drops '(glass_shard)))
 
-(define (concrete) (if ((drop-rate 1 3)) '(boulder) (drop-between-less (lambda () 'rock) 2 4 (drop-rate 1 3))))
-(define (asphalt) (if ((drop-rate 1 3)) '(boulder) (drop-between-less (lambda () 'rock) 2 4 (drop-rate 1 3))))
+(define (concrete) (points-drops '((rock 1) (boulder 3)) (random-integer-between 2 5)))
+(define (asphalt) (points-drops '((rock 1) (boulder 3)) (random-integer-between 2 5)))
 
 ((eval name))
