@@ -328,18 +328,22 @@ impl ClientEntitiesContainer
             for_each,
             |entity, render_ref: Ref<ClientRenderInfo>, render_cell: &RefCell<ClientRenderInfo>, transform: &RefCell<Transform>|
             {
-                let transform = transform.borrow();
-
-                if !render_ref.visible_narrow(visibility, &transform)
-                {
-                    return;
-                }
-
                 drop(render_ref);
 
                 let mut render = render_cell.borrow_mut();
 
+                let transform = transform.borrow();
                 render.set_transform(transform.clone());
+
+                let render_transform = some_or_return!(some_or_return!(render.object.as_ref()).transform());
+
+                if DebugConfig::is_disabled(DebugTool::NoVisibleNarrowCheck)
+                {
+                    if !render.visible_narrow(visibility, render_transform)
+                    {
+                        return;
+                    }
+                }
 
                 let is_render_above = render.above_world;
 
@@ -362,8 +366,6 @@ impl ClientEntitiesContainer
                             || (visibility.world_position.local.pos().z != to_tile_single(z))
                     };
 
-                    let render_transform = some_or_return!(some_or_return!(render.object.as_ref()).transform());
-
                     let occluded_checker = world.occluded_checker(render_transform);
 
                     if DebugConfig::is_enabled(DebugTool::DisplayTouchedTiles)
@@ -379,9 +381,12 @@ impl ClientEntitiesContainer
                     let sky_occluded = below_player
                         && occluded_checker.sky_occluded(world.visual_chunks(), occluded_checker_info);
 
-                    if sky_occluded
+                    if DebugConfig::is_disabled(DebugTool::NoSkyOccludedCheck)
                     {
-                        return;
+                        if sky_occluded
+                        {
+                            return;
+                        }
                     }
 
                     let occluder_mut = self.entities.occluder_mut_no_change(entity);
@@ -426,6 +431,11 @@ impl ClientEntitiesContainer
             with_ref_early_exit,
             |render: &ClientRenderInfo|
             {
+                if DebugConfig::is_enabled(DebugTool::NoVisibleBroadCheck)
+                {
+                    return false;
+                }
+
                 !render.visible_broad()
             });
 
