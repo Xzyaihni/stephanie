@@ -16,6 +16,16 @@
         "groups": ["special"]
     },
     {
+        "name": "bigy hand",
+        "rarity_rolls": false,
+        "damage_scale": 1.0,
+        "comfort": 2.0,
+        "sharpness": 0.1,
+        "side_sharpness": 0.1,
+        "mass": 0.3,
+        "groups": ["special"]
+    },
+    {
         "name": "branch",
         "comfort": 0.5,
         "sharpness": 0.1,
