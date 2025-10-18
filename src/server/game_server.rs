@@ -739,9 +739,11 @@ impl GameServer
             message
         )};
 
-        let message = some_or_return!{
-            self.entities.handle_message(&mut self.world.as_mut().unwrap().entities_saver, message)
-        };
+        let message = some_or_return!{self.entities.handle_message(
+            &mut self.connection_handler.lock(),
+            &mut self.world.as_mut().unwrap().entities_saver,
+            message
+        )};
 
         match message
         {

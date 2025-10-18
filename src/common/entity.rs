@@ -1331,6 +1331,7 @@ macro_rules! define_entities_both
             create_render_queue: RefCell<Vec<(Entity, RenderComponent)>>,
             changed_entities: RefCell<ChangedEntities>,
             side_sync: RefCell<SideSyncEntities>,
+            removed_sync: Vec<Entity>,
             watchers: RefCell<Vec<(Entity, Watcher)>>,
             on_remove: Rc<RefCell<Vec<Box<dyn FnMut(&mut Self, Entity)>>>>,
             $($on_name: Rc<RefCell<Vec<OnComponentChange>>>,)+
@@ -1396,6 +1397,7 @@ macro_rules! define_entities_both
                     create_render_queue: RefCell::new(Vec::new()),
                     changed_entities: RefCell::new(Default::default()),
                     side_sync: RefCell::new(Default::default()),
+                    removed_sync: Vec::new(),
                     watchers: RefCell::new(Vec::new()),
                     on_remove: Rc::new(RefCell::new(Vec::new())),
                     $($on_name: Rc::new(RefCell::new(Vec::new())),)+
@@ -1808,6 +1810,11 @@ macro_rules! define_entities_both
                 if !self.exists(entity)
                 {
                     return;
+                }
+
+                if !Self::IS_SERVER && !entity.local
+                {
+                    self.removed_sync.push(entity);
                 }
 
                 self.on_remove.clone().borrow_mut().iter_mut().for_each(|x| x(self, entity));
@@ -2372,6 +2379,7 @@ macro_rules! define_entities_both
 
             pub fn handle_message(
                 &mut self,
+                passer: &mut server::ConnectionsHandler,
                 saver: &mut EntitiesSaver,
                 message: Message
             ) -> Option<Message>
@@ -2400,6 +2408,12 @@ macro_rules! define_entities_both
                         {
                             self.handle_entity_remove_finished(entity);
                         });
+
+                        None
+                    },
+                    Message::EntityRemoveManyRequest(entities) =>
+                    {
+                        passer.send_message(Message::EntityRemoveMany(self.send_remove_many::<false>(entities)));
 
                         None
                     },
@@ -2821,10 +2835,10 @@ macro_rules! define_entities
 
         impl ClientEntities
         {
-            pub fn sync_changed(&self, passer: &mut client::ConnectionsHandler)
+            pub fn sync_changed(&mut self, passer: &mut client::ConnectionsHandler)
             {
                 {
-                    let mut side_sync = self.side_sync.borrow_mut();
+                    let side_sync = self.side_sync.get_mut();
                     if side_sync.changed
                     {
                         side_sync.changed = false;
@@ -2838,6 +2852,14 @@ macro_rules! define_entities
                                 });
                             });
                         )+
+                    }
+                }
+
+                {
+                    let removed = mem::take(&mut self.removed_sync);
+                    if !removed.is_empty()
+                    {
+                        passer.send_message(Message::EntityRemoveManyRequest(removed));
                     }
                 }
 

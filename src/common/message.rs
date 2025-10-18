@@ -51,6 +51,7 @@ pub enum Message
     EntityRemoveManyRaw(Vec<Entity>),
     EntityRemoveMany(EntityRemoveMany),
     EntityRemoveManyFinished{entities: Vec<Entity>},
+    EntityRemoveManyRequest(Vec<Entity>),
     EntityRemoveChunk{pos: GlobalPos, entities: EntityRemoveMany},
     EntityRemoveChunkFinished{pos: GlobalPos, entities: Vec<Entity>},
     SetParent{entity: Entity, component: Option<Box<Parent>>},
