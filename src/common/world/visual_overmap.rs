@@ -848,7 +848,7 @@ impl VisualOvermap
         }
     }
 
-    pub fn update(&mut self, _dt: f32)
+    pub fn update(&mut self)
     {
         self.process_message();
     }

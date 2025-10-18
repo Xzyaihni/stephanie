@@ -564,10 +564,11 @@ impl Character
     pub fn bash_reachable(
         &self,
         this: &Transform,
+        other_scale: &Vector3<f32>,
         other: &Vector3<f32>
     ) -> bool
     {
-        let bash_distance = this.scale.xy().max() + self.cached.bash_distance;
+        let bash_distance = (this.scale.xy().max() + other_scale.xy().max()) * 0.5 + self.cached.bash_distance;
 
         let distance = this.position.metric_distance(other);
 
@@ -1383,13 +1384,13 @@ impl Character
         let angle = short_rotation(opposite_angle(self.bash_side.opposite().to_angle() - f32::consts::FRAC_PI_2)) * 0.6;
         let minimum_distance = some_or_return!(combined_info.entities.transform(info.this)).scale.xy().max();
 
-        let scale = self.this_scale(combined_info.characters_info) + Vector2::repeat(self.cached.bash_distance * 2.0);
+        let scale = self.this_scale(combined_info.characters_info).max() + self.cached.bash_distance * 2.0;
         let projectile_entity = combined_info.entities.push(
             true,
             EntityInfo{
                 lazy_transform: Some(LazyTransformInfo{
                     transform: Transform{
-                        scale: with_z(scale, ENTITY_SCALE),
+                        scale: with_z(Vector2::repeat(scale), ENTITY_SCALE),
                         ..Default::default()
                     },
                     inherit_scale: false,
@@ -1834,6 +1835,7 @@ impl Character
         }
 
         self.update_held(combined_info);
+        self.update_cached(combined_info);
 
         set_sprite(texture);
     }

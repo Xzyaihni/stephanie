@@ -1204,7 +1204,7 @@ impl<'a> PlayerContainer<'a>
 
         let is_animating = self.info.animation.is_some();
 
-        if state.is_down() && is_animating
+        if (state.is_down() && is_animating) || self.game_state.is_paused()
         {
             return;
         }

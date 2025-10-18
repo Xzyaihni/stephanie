@@ -1504,8 +1504,13 @@ impl GameState
 
         crate::frame_time_this!{
             [update, update_pre] -> world_update,
-            self.world.update(&mut self.connections_handler, dt)
+            self.world.update(&mut self.connections_handler)
         };
+
+        if !self.is_paused
+        {
+            self.world.update_time(dt);
+        }
 
         if self.connected_and_ready && !self.is_paused
         {

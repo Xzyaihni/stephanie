@@ -452,7 +452,7 @@ impl Enemy
                                 character.look_at(entities, entity, other_transform.position.xy());
                             }
 
-                            if character.bash_reachable(&transform, &target)
+                            if character.bash_reachable(&transform, &other_transform.scale, &target)
                             {
                                 character.push_action(CharacterAction::Bash);
                             }

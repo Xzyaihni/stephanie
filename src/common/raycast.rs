@@ -203,6 +203,8 @@ pub fn raycast_world<'a, Exit: FnMut(&TileInfo, &TilePos, &RaycastResult) -> boo
         })
     }
 
+    let direction_inv = direction.map(|x| x.recip());
+
     (0..).scan((TilePos::from(Pos3::from(start)), inside_tile_pos(start)), move |(current_pos, current), _| -> Option<Option<_>>
     {
         let tile = *world.tile(*current_pos)?;
@@ -221,7 +223,7 @@ pub fn raycast_world<'a, Exit: FnMut(&TileInfo, &TilePos, &RaycastResult) -> boo
             }
         });
 
-        let axis_amounts = axis_distances.component_div(&direction);
+        let axis_amounts = axis_distances.component_mul(&direction_inv);
 
         let change_index = axis_amounts.iamin();
         let change: Pos3<i32> = {

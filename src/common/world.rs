@@ -403,14 +403,15 @@ impl World
         }
     }
 
-    pub fn update(&mut self, passer: &mut ConnectionsHandler, dt: f32)
+    pub fn update_time(&mut self, dt: f32)
     {
-        {
-            let time = self.time() + dt as f64 * self.time_speed;
-            self.set_time(time);
-        }
+        let time = self.time() + dt as f64 * self.time_speed;
+        self.set_time(time);
+    }
 
-        self.overmap.update(passer, dt);
+    pub fn update(&mut self, passer: &mut ConnectionsHandler)
+    {
+        self.overmap.update(passer);
     }
 
     pub fn rescale(&mut self, size: Vector2<f32>)

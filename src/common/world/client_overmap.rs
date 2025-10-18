@@ -373,7 +373,7 @@ impl ClientOvermap
         }).unwrap_or_default()
     }
 
-    pub fn update(&mut self, passer: &mut ConnectionsHandler, dt: f32)
+    pub fn update(&mut self, passer: &mut ConnectionsHandler)
     {
         crate::frame_time_this!{
             [update, update_pre, world_update] -> world_receiver,
@@ -382,7 +382,7 @@ impl ClientOvermap
 
         crate::frame_time_this!{
             [update, update_pre, world_update] -> visual_overmap,
-            self.visual_overmap.update(dt)
+            self.visual_overmap.update()
         };
     }
 
