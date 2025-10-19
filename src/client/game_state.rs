@@ -230,7 +230,7 @@ impl ClientEntitiesContainer
 
         let contacts = crate::frame_time_this!{
             [update, update_pre] -> collider_system_update,
-            collider_system::update(&mut self.entities, world, &space)
+            collider_system::update(&mut self.entities, world, &space, common_textures, loot)
         };
 
         crate::frame_time_this!{

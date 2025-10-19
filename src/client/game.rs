@@ -1626,6 +1626,56 @@ impl<'a> PlayerContainer<'a>
             }
         }
 
+        if able_to_move
+        {
+            self.update_tile_actions();
+        }
+
+        if self.info.animation.is_some()
+        {
+            if let Some(mut physical) = self.game_state.entities().physical_mut(self.info.entity)
+            {
+                physical.set_velocity_raw(Vector3::zeros());
+            }
+        }
+
+        self.game_state.ui.borrow_mut().set_fade(self.info.animation.is_some());
+
+        if self.info.animation.is_some()
+        {
+            {
+                let animation = self.info.animation.as_mut().unwrap();
+                animation.duration -= dt;
+
+                if animation.action.is_some()
+                {
+                    let action = animation.action.as_mut().unwrap();
+                    action.0 -= dt;
+
+                    if action.0 <= 0.0
+                    {
+                        (animation.action.take().unwrap().1)(self);
+                    }
+                }
+            }
+
+            let animation = self.info.animation.as_mut().unwrap();
+            if animation.duration <= 0.0
+            {
+                let animation = self.info.animation.take();
+                debug_assert!(animation.unwrap().action.is_none());
+            }
+        }
+
+        self.game_state.sync_character(self.info.entity);
+
+        self.info.interacted = false;
+
+        true
+    }
+
+    fn update_tile_actions(&mut self)
+    {
         let interact_button = ||
         {
             self.game_state.controls.key_name(&Control::Interact)
@@ -1792,51 +1842,15 @@ impl<'a> PlayerContainer<'a>
         if new_animation.is_some()
         {
             self.info.animation = new_animation;
-            if let Some(mut physical) = self.game_state.entities().physical_mut(self.info.entity)
-            {
-                physical.set_velocity_raw(Vector3::zeros());
-            }
         }
 
-        self.game_state.ui.borrow_mut().set_fade(self.info.animation.is_some());
-
-        if self.info.animation.is_some()
-        {
-            {
-                let animation = self.info.animation.as_mut().unwrap();
-                animation.duration -= dt;
-
-                if animation.action.is_some()
-                {
-                    let action = animation.action.as_mut().unwrap();
-                    action.0 -= dt;
-
-                    if action.0 <= 0.0
-                    {
-                        (animation.action.take().unwrap().1)(self);
-                    }
-                }
-            }
-
-            let animation = self.info.animation.as_mut().unwrap();
-            if animation.duration <= 0.0
-            {
-                let animation = self.info.animation.take();
-                debug_assert!(animation.unwrap().action.is_none());
-            }
-        } else
+        if self.info.animation.is_none()
         {
             if let Some((icon, text)) = tile_info
             {
                 self.show_tile_tooltip(icon, text);
             }
         }
-
-        self.game_state.sync_character(self.info.entity);
-
-        self.info.interacted = false;
-
-        true
     }
 
     fn show_tile_tooltip(&mut self, icon: NotificationIcon, text: String)

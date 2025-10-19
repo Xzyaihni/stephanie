@@ -368,22 +368,14 @@ impl HumanAnatomyValues
             })
         };
 
-        let spine = {
-            // the spine is very complex sizing wise so im just gonna pick a low-ish number
-            let mut x = HumanPart::new(
-                DebugName::new("spine"),
-                BodyPartInfo{
-                    bone: part.bone * 34.0,
-                    ..part
-                },
-                0.25,
-                SpinalCord::new(1.0)
-            );
-
-            x.muscle = Health::zero().into();
-
-            x
-        };
+        let spine = HumanPart::new_full(
+            DebugName::new("spine"),
+            Health::new(0.999, part.bone * 40.0),
+            Health::new(0.5, part.skin * 10.0),
+            Health::new(0.0, 0.0),
+            0.1,
+            SpinalCord::new(1.0)
+        );
 
         let head = {
             let mut head = HumanPart::new(
@@ -998,7 +990,17 @@ impl HumanAnatomy
         {
             if let Some(muscle) = self.this.body.get_part::<MuscleHealthGetter>(id)
             {
-                if muscle.is_zero()
+                let has_muscle = muscle.health.max != 0.0;
+
+                let remove_skin = if has_muscle
+                {
+                    muscle.is_zero()
+                } else
+                {
+                    some_or_unexpected_return!(self.this.body.get_part::<BoneHealthGetter>(id)).is_zero()
+                };
+
+                if remove_skin
                 {
                     some_or_unexpected_return!(self.this.body.get_part_mut::<SkinHealthGetter>(id)).health.current = 0.0;
                 }
@@ -1029,7 +1031,7 @@ impl Damageable for HumanAnatomy
     fn fall_damage(&mut self, damage: f32)
     {
         let start_damage = Damage{
-            data: DamageType::Blunt((damage * 5.0 + 1.0).powi(2) - 1.0),
+            data: DamageType::Blunt(damage),
             direction: DamageDirection{
                 side: Side2d::random(),
                 height: DamageHeight::Bottom

@@ -9,6 +9,7 @@ use yanyaengine::Transform;
 
 use crate::{
     debug_config::*,
+    client::CommonTextures,
     common::{
         line_info,
         some_or_return,
@@ -19,10 +20,11 @@ use crate::{
         Entity,
         SpatialGrid,
         Joint,
+        Loot,
         EntityInfo,
         AnyEntities,
-        Damageable,
         Parent,
+        systems::damaging_system,
         anatomy::FALL_VELOCITY,
         world::World,
         entity::{
@@ -114,7 +116,9 @@ pub fn update_sleeping(
 pub fn update(
     entities: &mut ClientEntities,
     world: &World,
-    space: &SpatialGrid
+    space: &SpatialGrid,
+    textures: &CommonTextures,
+    loot: &Loot
 ) -> Vec<Contact>
 {
     macro_rules! maybe_colliding_info
@@ -183,10 +187,8 @@ pub fn update(
 
                             if hit_velocity < -FALL_VELOCITY
                             {
-                                if let Some(mut anatomy) = entities.anatomy_mut(entity)
-                                {
-                                    anatomy.fall_damage(-hit_velocity - FALL_VELOCITY);
-                                }
+                                let damage = ((-hit_velocity - FALL_VELOCITY) * 5.0 + 1.0).powi(2) - 1.0;
+                                damaging_system::fall_damage(entities, textures, loot, entity, damage);
                             }
                         }
                     }

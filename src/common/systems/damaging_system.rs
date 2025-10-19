@@ -50,6 +50,30 @@ use crate::{
 
 const HIGHLIGHT_DURATION: f32 = 0.2;
 
+pub fn fall_damage(
+    entities: &ClientEntities,
+    textures: &CommonTextures,
+    loot: &Loot,
+    entity: Entity,
+    damage: f32
+)
+{
+    if let Some(mut anatomy) = entities.anatomy_mut(entity)
+    {
+        anatomy.fall_damage(damage);
+    }
+
+    if let Some(mut health) = entities.health_mut(entity)
+    {
+        *health -= damage;
+
+        if *health <= 0.0
+        {
+            destroy_entity(entities, textures, loot, entity);
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum DamagingKind
 {
