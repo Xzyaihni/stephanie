@@ -1069,7 +1069,7 @@ impl Pelvis
     {
         self.legs.as_mut().map_sides(|side, leg|
         {
-            remove_broken!(leg.as_mut(), || on_break(AnatomyId::Part(HumanPartId::Thigh(side))), upper);
+            remove_broken!(leg, || on_break(AnatomyId::Part(HumanPartId::Thigh(side))), upper);
 
             if let Some(leg) = leg.as_mut()
             {
@@ -1130,7 +1130,7 @@ impl Spine
 
         self.arms.as_mut().map_sides(|side, arm|
         {
-            remove_broken!(arm.as_mut(), || on_break(AnatomyId::Part(HumanPartId::Arm(side))), upper);
+            remove_broken!(arm, || on_break(AnatomyId::Part(HumanPartId::Arm(side))), upper);
 
             if let Some(arm) = arm.as_mut()
             {

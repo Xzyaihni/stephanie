@@ -17,6 +17,8 @@ layout(push_constant) uniform OutlineInfo{
 
 const vec3 background_color = vec3(0.831, 0.941, 0.988);
 
+const float line_width = 0.5;
+
 vec4 with_mix(vec4 color)
 {
     vec4 other_color = outline.keep_transparency ? vec4(outline.other_color.rgb, min(color.a, outline.other_color.a)) : outline.other_color;
@@ -30,9 +32,10 @@ void main()
 
     color = with_mix(color);
 
-    vec3 animation_color = sin(vec3(3.0, 4.0, 2.0) * outline.animation) * vec3(0.5, 0.1, 0.3);
-    vec3 outline_color = tex_coords.xyx + animation_color + vec3(0.3, 0.4, 0.2);
-    color = mix(color, vec4(outline_color, color.w), outline.outlined * 0.5);
+    float coord = gl_FragCoord.x + gl_FragCoord.y;
+    float outline_lines = mod(coord * 0.02 + outline.animation * 0.5, line_width);
+    float outline_mask = outline_lines > (line_width * 0.5) ? 0.5 : 0.0;
+    color = mix(color, vec4(vec3(outline_mask), color.a), outline.outlined * 0.5);
 
     f_color = vec4(mix(color.xyz, background_color, depth), color.w);
 }

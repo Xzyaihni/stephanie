@@ -263,7 +263,7 @@ impl ClientEntitiesContainer
             ContactResolver::resolve(&self.entities, contacts, dt)
         };
 
-        self.animation = (self.animation + dt) % (f32::consts::PI * 2.0);
+        self.animation = (self.animation + dt).fract();
     }
 
     pub fn update_resize(&mut self, size: Vector2<f32>)
@@ -1393,7 +1393,7 @@ impl GameState
 
     pub fn draw(&self, info: &mut DrawInfo)
     {
-        let animation = self.entities.animation.sin();
+        let animation = self.entities.animation;
 
         let draw_entities = render_system::DrawEntities{
             solid: &self.screen_object,
