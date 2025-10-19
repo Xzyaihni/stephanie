@@ -597,7 +597,7 @@ fn spawn_item(entities: &ClientEntities, textures: &CommonTextures, transform: &
         ..Default::default()
     });
 
-    let scale = transform.scale.xy() - item_scale.xy();
+    let scale = (transform.scale.xy() - item_scale.xy()).map(|x| x.max(0.0));
 
     let position = transform.position.xy() + scale.map(|limit|
     {

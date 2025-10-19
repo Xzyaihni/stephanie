@@ -370,7 +370,7 @@ impl HumanAnatomyValues
 
         let spine = HumanPart::new_full(
             DebugName::new("spine"),
-            Health::new(0.999, part.bone * 40.0),
+            Health::new(0.999, part.bone * 40.0 * 10.0), // * 10 for missing muscle protection
             Health::new(0.5, part.skin * 10.0),
             Health::new(0.0, 0.0),
             0.1,

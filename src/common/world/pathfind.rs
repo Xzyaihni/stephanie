@@ -196,6 +196,36 @@ pub struct Pathfinder<'a>
 
 impl Pathfinder<'_>
 {
+    pub fn pathfind_straight(
+        &self,
+        entity: Entity,
+        start: Vector3<f32>,
+        end: Vector3<f32>
+    ) -> Option<WorldPath>
+    {
+        let layer = self.pathfind_layer(entity);
+        let scale = self.pathfind_scale(entity);
+
+        self.pathfind_straight_inner(entity, layer, scale, start, end)
+    }
+
+    fn pathfind_straight_inner(
+        &self,
+        entity: Entity,
+        layer: Option<ColliderLayer>,
+        scale: Vector3<f32>,
+        start: Vector3<f32>,
+        end: Vector3<f32>
+    ) -> Option<WorldPath>
+    {
+        let direction = end - start;
+
+        self.straight_line_free(entity, start, direction, scale, layer).then(||
+        {
+            WorldPath::new(vec![end, start])
+        })
+    }
+
     pub fn pathfind(
         &self,
         entity: Entity,
@@ -204,17 +234,11 @@ impl Pathfinder<'_>
     ) -> Option<WorldPath>
     {
         let layer = self.pathfind_layer(entity);
+        let scale = self.pathfind_scale(entity);
 
-        let scale = self.entities.collider(entity)
-            .and_then(|x| x.override_transform.as_ref().map(|x| x.transform.scale))
-            .or_else(|| self.entities.transform(entity).map(|x| x.scale))
-            .unwrap_or_else(Vector3::zeros);
-
-        let direction = end - start;
-
-        if self.straight_line_free(entity, start, direction, scale, layer)
+        if let Some(path) = self.pathfind_straight_inner(entity, layer, scale, start, end)
         {
-            return Some(WorldPath::new(vec![end, start]));
+            return Some(path);
         }
 
         crate::debug_time_this!{"pathfind-full", self.pathfind_full(entity, layer, scale, start, end)}
@@ -512,6 +536,14 @@ impl Pathfinder<'_>
         };
 
         !collides_world && !collides_entities()
+    }
+
+    fn pathfind_scale(&self, entity: Entity) -> Vector3<f32>
+    {
+        self.entities.collider(entity)
+            .and_then(|x| x.override_transform.as_ref().map(|x| x.transform.scale))
+            .or_else(|| self.entities.transform(entity).map(|x| x.scale))
+            .unwrap_or_else(Vector3::zeros)
     }
 
     fn pathfind_layer(&self, entity: Entity) -> Option<ColliderLayer>

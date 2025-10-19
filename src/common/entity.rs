@@ -1361,15 +1361,9 @@ macro_rules! define_entities_both
                         }
                     )+
 
-                    if seed.is_none()
+                    if let Some(seed) = seed
                     {
-                        if DebugConfig::is_disabled(DebugTool::AllowSeedMismatch)
-                        {
-                            panic!("{entity:?} {:#?} {:#?}", &self.local_components, &self.components);
-                        }
-                    } else
-                    {
-                        *entity.seed_mut() = Some(seed.unwrap());
+                        *entity.seed_mut() = Some(seed);
                     }
                 }
 

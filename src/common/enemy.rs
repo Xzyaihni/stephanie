@@ -219,7 +219,7 @@ fn close_enough(other: &Transform, this: &Transform) -> bool
 {
     let close_angle = f32::consts::FRAC_PI_2;
 
-    let minimum_distance = (other.scale + this.scale).min() / 2.0;
+    let minimum_distance = (other.scale + this.scale).min() * 0.5;
 
     let is_close_distance = this.position.metric_distance(&other.position) <= minimum_distance;
     let angle_between = short_rotation(angle_between(this.position, other.position) + this.rotation);
@@ -286,7 +286,23 @@ impl Enemy
 
                         let direction = Unit::new_normalize(Vector3::new(x, y, 0.0));
 
-                        BehaviorState::MoveDirection(direction)
+                        let this_transform = some_or_value!(entities.transform(this_entity), BehaviorState::Wait);
+
+                        let start = this_transform.position;
+                        let end = start + *direction * (fastrand::f32() * 0.5 + 0.5 * TILE_SIZE * 5.0);
+
+                        let path = pathfinder.pathfind_straight(
+                            this_entity,
+                            start,
+                            end
+                        );
+
+                        let transform = Transform{
+                            position: end,
+                            ..this_transform.clone()
+                        };
+
+                        BehaviorState::MoveTo(some_or_value!(path, BehaviorState::Wait), transform)
                     },
                     BehaviorState::MoveDirection(_) => BehaviorState::Wait,
                     BehaviorState::MoveTo(_, _) => BehaviorState::Wait,
