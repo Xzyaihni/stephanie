@@ -460,7 +460,7 @@ fn single_health_color(fraction: Option<f32>) -> Lcha
 {
     fraction.map(|x|
     {
-        let range = 0.9..=2.15;
+        let range = 0.8..=2.15;
         let h = f32_to_range(range, x);
 
         Lcha{l: 50.0, c: 100.0, h, a: 1.0}
