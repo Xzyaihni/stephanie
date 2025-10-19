@@ -17,6 +17,7 @@ use crate::{
 
 pub const GRAVITY: Vector3<f32> = Vector3::new(0.0, 0.0, -9.81 * ENTITY_SCALE);
 pub const MAX_VELOCITY: f32 = 10.0;
+pub const SLEEPING_VELOCITY: f32 = 0.1;
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct PhysicalFixed

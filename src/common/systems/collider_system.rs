@@ -25,6 +25,7 @@ use crate::{
         AnyEntities,
         Parent,
         systems::damaging_system,
+        physics::SLEEPING_VELOCITY,
         anatomy::FALL_VELOCITY,
         world::World,
         entity::{
@@ -108,6 +109,14 @@ pub fn update_sleeping(
 
             space.inside_simulated(other_transform.position, other_transform.scale.x.hypot(other_transform.scale.y))
         };
+
+        if !collider.sleeping && !inside_simulated
+        {
+            if entities.physical(entity).map(|x| x.velocity().magnitude() > SLEEPING_VELOCITY).unwrap_or(false)
+            {
+                return;
+            }
+        }
 
         collider.sleeping = !inside_simulated;
     });
