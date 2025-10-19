@@ -10,6 +10,8 @@ use std::{
 
 use parking_lot::Mutex;
 
+use image::RgbImage;
+
 use nalgebra::Vector2;
 
 use yanyaengine::{
@@ -19,6 +21,7 @@ use yanyaengine::{
 };
 
 use crate::{
+    debug_config::*,
     client::game_state::{
         GameState,
         UiAnatomyLocations,
@@ -457,8 +460,8 @@ fn single_health_color(fraction: Option<f32>) -> Lcha
 {
     fraction.map(|x|
     {
-        let range = 0.7..=2.6;
-        let h = f32_to_range(range, x.powi(3));
+        let range = 0.9..=2.15;
+        let h = f32_to_range(range, x);
 
         Lcha{l: 50.0, c: 100.0, h, a: 1.0}
     }).unwrap_or(MISSING_PART_COLOR)
@@ -1485,6 +1488,24 @@ impl Ui
                     ui.borrow_mut().seen_notifications.insert(entity, 1.0);
                 }
             }));
+        }
+
+        if DebugConfig::is_enabled(DebugTool::SaveAnatomyColors)
+        {
+            let width = 640;
+            RgbImage::from_fn(width, 200, |x, _y|
+            {
+                let fraction = x as f32 / (width - 1) as f32;
+
+                let color: [f32; 4] = single_health_color(Some(fraction)).into();
+                let color: [u8; 3] = color.into_iter().map(|x| (x.clamp(0.0, 1.0) * 255.0) as u8)
+                    .take(3)
+                    .collect::<Vec<_>>()
+                    .try_into()
+                    .unwrap();
+
+                color.into()
+            }).save("anatomy_colors.png").unwrap();
         }
 
         this
