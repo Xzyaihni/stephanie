@@ -30,6 +30,7 @@ use crate::{
         opposite_angle,
         short_rotation,
         angle_to_direction_3d,
+        ease_out,
         ENTITY_SCALE,
         render_info::*,
         lazy_transform::*,
@@ -226,7 +227,7 @@ pub struct AfterInfo
     holding: Entity,
     hair: Vec<Entity>,
     rotation: f32,
-    walking: bool,
+    moving: bool,
     sprint_await: bool,
     last_held_item: Option<Option<ItemId>>,
     buffered: [f32; BufferedAction::COUNT]
@@ -474,7 +475,7 @@ impl Character
             holding: inserter(held_item(Some(hand_left), false)),
             hair,
             rotation,
-            walking: false,
+            moving: false,
             sprint_await: false,
             last_held_item: None,
             buffered: [0.0; BufferedAction::COUNT]
@@ -1728,7 +1729,7 @@ impl Character
             let info = some_or_return!(self.info.as_mut());
             if let Some(mut anatomy) = combined_info.entities.anatomy_mut_no_change(info.this)
             {
-                let movement_drain = if info.walking
+                let movement_drain = if info.moving
                 {
                     let movement_cost = if is_sprinting
                     {
@@ -1746,7 +1747,7 @@ impl Character
 
                 *anatomy.external_oxygen_change_mut() = -(movement_drain + knockback_drain * 0.1);
 
-                info.walking = false;
+                info.moving = false;
             }
         }
 
@@ -1901,6 +1902,11 @@ impl Character
 
         self.jiggle = (self.jiggle + dt * speed) % (2.0 * f32::consts::PI);
 
+        if !info.moving
+        {
+            self.jiggle = ease_out(self.jiggle, 0.0, 10.0, dt);
+        }
+
         let mut target = some_or_return!(combined_info.entities.target(info.this));
 
         target.rotation = if *self.sprite_state.value() == SpriteState::Crawling
@@ -1977,7 +1983,7 @@ impl Character
             return;
         }
 
-        some_or_return!(self.info.as_mut()).walking = true;
+        some_or_return!(self.info.as_mut()).moving = true;
 
         let speed = if is_sprinting
         {
