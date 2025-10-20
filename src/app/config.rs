@@ -614,33 +614,25 @@ impl<T: ParsableInner + DisplayableDefault> ArgParsable for Option<T>
 
 pub struct Config
 {
-    pub name: String,
     pub listen_outside: bool,
     pub address: Option<String>,
-    pub port: Option<u32>,
-    pub debug: bool
+    pub port: Option<u32>
 }
 
 impl Config
 {
     pub fn parse(args: impl Iterator<Item=String>) -> Self
     {
-        let mut name = "player_name".to_owned();
-
         let mut listen_outside = false;
 
         let mut address = None;
         let mut port = None;
 
-        let mut debug = false;
-
         let mut parser = ArgParser::new();
 
-        parser.push(&mut name, 'n', "name", "player name");
         parser.push_flag(&mut listen_outside, 'L', "listen-outside", "allow incoming connections from outside the local network", true);
         parser.push(&mut address, 'a', "address", "connection address");
         parser.push(&mut port, 'p', "port", "hosting port");
-        parser.push_flag(&mut debug, 'd', "debug", "enable debug mode", true);
 
         if let Err(err) = parser.parse(args)
         {
@@ -648,11 +640,9 @@ impl Config
         }
 
         Self{
-            name,
             listen_outside,
             address,
-            port,
-            debug
+            port
         }
     }
 }

@@ -89,7 +89,8 @@ use crate::{
 use super::{
     ConnectionsHandler,
     TilesFactory,
-    VisibilityChecker
+    VisibilityChecker,
+    ClientInfo
 };
 
 pub use controls_controller::{ControlsController, UiControls, Control, ControlState, KeyMapping, ChangedKey};
@@ -549,10 +550,7 @@ pub struct GameStateInfo
     pub loot: Loot,
     pub tiles_factory: TilesFactory,
     pub anatomy_locations: Rc<RefCell<dyn FnMut(&mut ObjectCreateInfo, &str) -> UiAnatomyLocations>>,
-    pub common_textures: CommonTextures,
-    pub player_name: String,
-    pub debug_mode: bool,
-    pub host: bool
+    pub common_textures: CommonTextures
 }
 
 pub struct PartCreator<'a, 'b>
@@ -854,7 +852,8 @@ impl GameState
     pub fn new(
         object_info: &mut ObjectCreateInfo,
         message_passer: MessagePasser,
-        info: GameStateInfo
+        info: GameStateInfo,
+        client_info: ClientInfo
     ) -> Rc<RefCell<Self>>
     {
         let mouse_position = Vector2::zeros();
@@ -868,8 +867,8 @@ impl GameState
 
         let OnConnectInfo{player_entity, player_position, time} = Self::connect_to_server(
             &mut handler,
-            &info.player_name,
-            info.host
+            &client_info.name,
+            client_info.host
         );
 
         let mut entities = ClientEntitiesContainer::new(
@@ -958,7 +957,7 @@ impl GameState
             shaders: info.shaders,
             world,
             loot: info.loot,
-            debug_mode: info.debug_mode,
+            debug_mode: client_info.debug,
             tilemap,
             camera_scale: 1.0,
             sync_character_delay: 0.0,
@@ -967,7 +966,7 @@ impl GameState
             ui,
             common_textures: Rc::new(info.common_textures),
             connected_and_ready: false,
-            host: info.host,
+            host: client_info.host,
             is_restart: false,
             is_trusted: false,
             is_loading: true,

@@ -30,26 +30,23 @@ use yanyaengine::{
 
 use crate::{
     LONGEST_FRAME,
-    debug_config::*
-};
-
-use crate::common::{
-    TileMap,
-    DataInfos,
-    ItemsInfo,
-    EnemiesInfo,
-    FurnituresInfo,
-    CharactersInfo,
-    CharacterInfo,
-    sender_loop::{waiting_loop, DELTA_TIME}
-};
-
-use crate::server::Server;
-
-use crate::client::{
-    Client,
-    ClientInitInfo,
-    ClientInfo
+    debug_config::*,
+    main_menu::MainMenu,
+    server::Server,
+    client::{
+        Client,
+        ClientInitInfo
+    },
+    common::{
+        TileMap,
+        DataInfos,
+        ItemsInfo,
+        EnemiesInfo,
+        FurnituresInfo,
+        CharactersInfo,
+        CharacterInfo,
+        sender_loop::{waiting_loop, DELTA_TIME}
+    }
 };
 
 use config::Config;
@@ -300,9 +297,16 @@ impl SlowModeTrait for SlowModeFalse
     fn as_bool() -> bool { false }
 }
 
+enum Scene
+{
+    Game,
+    Menu(MainMenu)
+}
+
 pub struct App
 {
     client: Client,
+    scene: Scene,
     server_handle: Option<JoinHandle<()>>,
     slow_mode: <SlowMode as SlowModeTrait>::State
 }
@@ -332,7 +336,7 @@ impl YanyaApp for App
         let deferred_parse = || TileMap::parse("info/tiles.json", "textures/tiles/");
         let app_info = app_info.unwrap();
 
-        let Config{name, listen_outside, address, port, debug} = Config::parse(env::args().skip(1));
+        let Config{listen_outside, address, port} = Config::parse(env::args().skip(1));
 
         let items_info = Arc::new(ItemsInfo::parse(
             Some(&partial_info.object_info.assets.lock()),
@@ -427,22 +431,21 @@ impl YanyaApp for App
             (true, format!("127.0.0.1:{port}"))
         };
 
-        let client_init_info = ClientInitInfo{
-            client_info: ClientInfo{
-                address: client_address,
-                name,
-                debug
-            },
+        let init_info = ClientInitInfo{
             app_info,
             tilemap: deferred_parse().unwrap(),
-            data_infos,
-            host
+            data_infos
         };
 
         DebugConfig::on_start();
 
+        let client = Client::new(partial_info, init_info).unwrap();
+
+        let scene = Scene::Menu(MainMenu::new(client_address, host));
+
         Self{
-            client: Client::new(partial_info, client_init_info).unwrap(),
+            client,
+            scene,
             server_handle,
             slow_mode: Default::default()
         }
@@ -450,57 +453,80 @@ impl YanyaApp for App
 
     fn update(&mut self, partial_info: UpdateBuffersPartialInfo, dt: f32)
     {
-        let mut info = partial_info.to_full(&self.client.camera.read());
-
-        let dt = dt.min(LONGEST_FRAME as f32);
-
-        if SlowMode::as_bool()
+        match &mut self.scene
         {
-            if self.slow_mode.running()
+            Scene::Game =>
             {
-                self.client.update(&mut info, dt);
-            } else if self.slow_mode.run_frame()
+                let mut info = partial_info.to_full(&self.client.camera.read());
+
+                self.update_game(&mut info, dt);
+            },
+            Scene::Menu(x) =>
             {
-                self.client.update(&mut info, 1.0 / 60.0);
-            } else
-            {
-                self.client.no_update();
+                if let Some((partial_info, client_info)) = x.update(partial_info, dt)
+                {
+                    let mut info = partial_info.to_full(&self.client.camera.read());
+
+                    self.client.initialize(&mut info, client_info);
+                    self.scene = Scene::Game;
+
+                    self.update_game(&mut info, dt);
+                }
             }
-        } else
-        {
-            self.client.update(&mut info, dt);
         }
-
-        info.update_camera(&self.client.camera.read());
-
-        self.client.update_buffers(&mut info);
     }
 
     fn input(&mut self, control: Control)
     {
-        if self.client.input(control.clone()) { return };
+        match &mut self.scene
+        {
+            Scene::Game =>
+            {
+                if self.client.input(control.clone())
+                {
+                    return
+                }
 
-        self.slow_mode.input(control);
+                self.slow_mode.input(control);
+            },
+            Scene::Menu(x) => x.input(control)
+        }
     }
 
     fn mouse_move(&mut self, position: (f64, f64))
     {
-        self.client.mouse_move(position);
+        match &mut self.scene
+        {
+            Scene::Game => self.client.mouse_move(position),
+            Scene::Menu(x) => x.mouse_move(position)
+        }
     }
 
     fn draw(&mut self, info: DrawInfo)
     {
-        self.client.draw(info);
+        match &mut self.scene
+        {
+            Scene::Game => self.client.draw(info),
+            Scene::Menu(x) => x.draw(info)
+        }
     }
 
     fn resize(&mut self, aspect: f32)
     {
-        self.client.resize(aspect);
+        match &mut self.scene
+        {
+            Scene::Game => self.client.resize(aspect),
+            Scene::Menu(x) => x.resize(aspect)
+        }
     }
 
     fn render_pass_ended(&mut self, _builder: &mut CommandBuilderType)
     {
-        self.client.render_pass_ended();
+        match &mut self.scene
+        {
+            Scene::Game => self.client.render_pass_ended(),
+            Scene::Menu(_) => ()
+        }
     }
 }
 
@@ -509,5 +535,31 @@ impl App
     pub fn client(&self) -> &Client
     {
         &self.client
+    }
+
+    fn update_game(&mut self, info: &mut UpdateBuffersInfo, dt: f32)
+    {
+        let dt = dt.min(LONGEST_FRAME as f32);
+
+        if SlowMode::as_bool()
+        {
+            if self.slow_mode.running()
+            {
+                self.client.update(info, dt);
+            } else if self.slow_mode.run_frame()
+            {
+                self.client.update(info, 1.0 / 60.0);
+            } else
+            {
+                self.client.no_update();
+            }
+        } else
+        {
+            self.client.update(info, dt);
+        }
+
+        info.update_camera(&self.client.camera.read());
+
+        self.client.update_buffers(info);
     }
 }

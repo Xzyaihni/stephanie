@@ -27,6 +27,8 @@ pub mod common;
 pub mod server;
 pub mod client;
 
+pub mod main_menu;
+
 pub mod app;
 
 pub mod debug_config;

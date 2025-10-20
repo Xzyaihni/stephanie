@@ -65,17 +65,17 @@ pub mod world_receiver;
 
 pub struct ClientInitInfo
 {
-    pub client_info: ClientInfo,
     pub app_info: AppInfo,
     pub tilemap: TileMapWithTextures,
-    pub data_infos: DataInfos,
-    pub host: bool
+    pub data_infos: DataInfos
 }
 
+#[derive(Clone)]
 pub struct ClientInfo
 {
     pub address: String,
     pub name: String,
+    pub host: bool,
     pub debug: bool
 }
 
@@ -89,11 +89,11 @@ fn create_message_passer(address: &str) -> io::Result<MessagePasser>
 
 pub struct Client
 {
-    client_info: ClientInfo,
-    info: Option<GameStateInfo>,
+    pub client_info: Option<ClientInfo>,
     pub camera: Arc<RwLock<Camera>>,
+    info: Option<GameStateInfo>,
     game_state: Option<Rc<RefCell<GameState>>>,
-    game: Game
+    game: Option<Game>
 }
 
 impl Client
@@ -130,8 +130,6 @@ impl Client
             client_init_info.tilemap
         )?;
 
-        let message_passer = create_message_passer(&client_init_info.client_info.address)?;
-
         let assets = &info.partial.assets;
         let anatomy_locations = {
             let assets = assets.clone();
@@ -156,7 +154,6 @@ impl Client
 
         let common_textures = CommonTextures::new(&mut assets.lock());
 
-        let mut object_info = info;
         let info = GameStateInfo{
             shaders: client_init_info.app_info.shaders,
             camera: camera.clone(),
@@ -165,23 +162,54 @@ impl Client
             loot,
             tiles_factory,
             anatomy_locations,
-            common_textures,
-            player_name: client_init_info.client_info.name.clone(),
-            debug_mode: client_init_info.client_info.debug,
-            host: client_init_info.host
+            common_textures
         };
 
-        let game_state = GameState::new(&mut object_info, message_passer, info.clone());
-
-        let game = Game::new(Rc::downgrade(&game_state));
-
         Ok(Self{
-            client_info: client_init_info.client_info,
-            info: Some(info),
-            game_state: Some(game_state),
+            client_info: None,
             camera,
-            game
+            info: Some(info),
+            game_state: None,
+            game: None
         })
+    }
+
+    pub fn initialize(
+        &mut self,
+        info: &mut UpdateBuffersInfo,
+        client_info: ClientInfo
+    )
+    {
+        self.client_info = Some(client_info.clone());
+
+        self.initialize_with(info, client_info)
+    }
+
+    fn initialize_with(
+        &mut self,
+        info: &mut UpdateBuffersInfo,
+        client_info: ClientInfo
+    )
+    {
+        let message_passer = match create_message_passer(&client_info.address)
+        {
+            Ok(x) => x,
+            Err(err) =>
+            {
+                self.exit();
+                panic!("error starting the game: {err}")
+            }
+        };
+
+        let new_game_state = GameState::new(
+            info,
+            message_passer,
+            self.info.clone().unwrap(),
+            client_info
+        );
+
+        self.game = Some(Game::new(Rc::downgrade(&new_game_state)));
+        self.game_state = Some(new_game_state);
     }
 
     pub fn exit(&mut self)
@@ -214,27 +242,14 @@ impl Client
         crate::frame_time_this!{
             [] -> update,
             {
-                if !self.game.update(info, dt)
+                if !self.game.as_mut().unwrap().update(info, dt)
                 {
                     {
                         let game_state = self.game_state.take().unwrap();
                         game_state.borrow_mut().restart();
                     }
 
-                    let message_passer = match create_message_passer(&self.client_info.address)
-                    {
-                        Ok(x) => x,
-                        Err(err) =>
-                        {
-                            self.exit();
-                            panic!("error restarting the game: {err}")
-                        }
-                    };
-
-                    let game_state = GameState::new(info, message_passer, self.info.as_ref().unwrap().clone());
-
-                    self.game = Game::new(Rc::downgrade(&game_state));
-                    self.game_state = Some(game_state);
+                    self.initialize_with(info, self.client_info.clone().unwrap());
 
                     return self.update(info, dt);
                 }
@@ -243,11 +258,11 @@ impl Client
 
                 game_state.borrow_mut().update_loading();
 
-                if self.game.player_exists()
+                if self.game.as_mut().unwrap().player_exists()
                 {
                     if game_state.borrow_mut().player_connected()
                     {
-                        self.game.on_player_connected();
+                        self.game.as_mut().unwrap().on_player_connected();
 
                         game_state.borrow_mut().on_player_connected();
                     }
@@ -286,7 +301,7 @@ impl Client
         {
             if let Some(ChangedKey{key: KeyMapping::Keyboard(key), ..}) = KeyMapping::from_control(control.clone())
             {
-                if self.game.on_key_state(key, state == ElementState::Pressed)
+                if self.game.as_mut().unwrap().on_key_state(key, state == ElementState::Pressed)
                 {
                     return true;
                 }
