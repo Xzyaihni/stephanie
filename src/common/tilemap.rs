@@ -169,6 +169,7 @@ impl TileInfo
     }
 }
 
+#[derive(Clone)]
 pub struct TileMapWithTextures
 {
     pub tilemap: TileMap,
@@ -225,7 +226,7 @@ impl From<io::Error> for TileMapError
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct TileMap
 {
     air: TileInfo,

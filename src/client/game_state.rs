@@ -29,7 +29,6 @@ use yanyaengine::{
     TextureId,
     SolidObject,
     DefaultTexture,
-    DefaultModel,
     object::{texture::SimpleImage, Texture},
     camera::Camera,
     game_object::*
@@ -38,6 +37,7 @@ use yanyaengine::{
 use crate::{
     debug_config::*,
     app::{ProgramShaders, TimestampQuery},
+    client,
     common::{
         some_or_value,
         some_or_return,
@@ -853,7 +853,7 @@ impl GameState
         object_info: &mut ObjectCreateInfo,
         message_passer: MessagePasser,
         info: GameStateInfo,
-        client_info: ClientInfo
+        client_info: &ClientInfo
     ) -> Rc<RefCell<Self>>
     {
         let mouse_position = Vector2::zeros();
@@ -910,14 +910,7 @@ impl GameState
 
         let assets = object_info.partial.assets.clone();
 
-        let screen_object = {
-            let assets = assets.lock();
-
-            object_info.partial.object_factory.create_solid(
-                assets.model(assets.default_model(DefaultModel::Square)).clone(),
-                Transform{scale: Vector3::repeat(2.0), ..Default::default()}
-            )
-        };
+        let screen_object = client::create_screen_object(&object_info.partial);
 
         let ui = {
             let mut anatomy_locations = info.anatomy_locations.borrow_mut();
@@ -1338,14 +1331,10 @@ impl GameState
         info: &mut UpdateBuffersInfo
     )
     {
+        info.with_projection(Matrix4::identity(), |info|
         {
-            let projection = info.projection_view;
-
-            info.projection_view = Matrix4::identity();
             self.screen_object.update_buffers(info);
-
-            info.projection_view = projection;
-        }
+        });
 
         self.debug_visibility.update(&self.camera.read());
 

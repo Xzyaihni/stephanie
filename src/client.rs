@@ -7,14 +7,17 @@ use std::{
     net::TcpStream
 };
 
-use nalgebra::Vector2;
+use nalgebra::{Vector2, Vector3};
 
 use parking_lot::RwLock;
 
 use image::error::ImageError;
 
 use yanyaengine::{
+    Transform,
     ElementState,
+    SolidObject,
+    DefaultModel,
     camera::Camera,
     game_object::*
 };
@@ -70,7 +73,6 @@ pub struct ClientInitInfo
     pub data_infos: DataInfos
 }
 
-#[derive(Clone)]
 pub struct ClientInfo
 {
     pub address: String,
@@ -85,6 +87,16 @@ fn create_message_passer(address: &str) -> io::Result<MessagePasser>
     stream.set_nodelay(true).unwrap();
 
     Ok(MessagePasser::new(stream))
+}
+
+pub fn create_screen_object(info: &ObjectCreatePartialInfo) -> SolidObject
+{
+    let assets = info.assets.lock();
+
+    info.object_factory.create_solid(
+        assets.model(assets.default_model(DefaultModel::Square)).clone(),
+        Transform{scale: Vector3::repeat(2.0), ..Default::default()}
+    )
 }
 
 pub struct Client
@@ -180,17 +192,18 @@ impl Client
         client_info: ClientInfo
     )
     {
-        self.client_info = Some(client_info.clone());
+        self.client_info = Some(client_info);
 
-        self.initialize_with(info, client_info)
+        self.initialize_inner(info)
     }
 
-    fn initialize_with(
+    fn initialize_inner(
         &mut self,
-        info: &mut UpdateBuffersInfo,
-        client_info: ClientInfo
+        info: &mut UpdateBuffersInfo
     )
     {
+        let client_info = self.client_info.as_ref().unwrap();
+
         let message_passer = match create_message_passer(&client_info.address)
         {
             Ok(x) => x,
@@ -249,7 +262,7 @@ impl Client
                         game_state.borrow_mut().restart();
                     }
 
-                    self.initialize_with(info, self.client_info.clone().unwrap());
+                    self.initialize_inner(info);
 
                     return self.update(info, dt);
                 }

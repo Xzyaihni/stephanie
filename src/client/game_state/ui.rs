@@ -82,7 +82,7 @@ const SMALLEST_TEXT_SIZE: u32 = 15;
 
 const WHITE_COLOR: Lcha = Lcha{l: 100.0, c: 0.0, h: 0.0, a: 1.0};
 const GRAY_COLOR: Lcha = Lcha{l: 5.0, c: 0.0, h: 0.0, a: 1.0};
-const BLACK_COLOR: Lcha = Lcha{l: 0.0, c: 0.0, h: 0.0, a: 1.0};
+pub const BLACK_COLOR: Lcha = Lcha{l: 0.0, c: 0.0, h: 0.0, a: 1.0};
 
 const BACKGROUND_COLOR: Lcha = BLACK_COLOR;
 const ACCENT_COLOR: Lcha = Lcha{h: HIGHLIGHTED_COLOR.h, ..WHITE_COLOR};

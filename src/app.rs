@@ -1,5 +1,4 @@
 use std::{
-    env,
     thread::{self, JoinHandle},
     sync::{mpsc, Arc}
 };
@@ -31,14 +30,16 @@ use yanyaengine::{
 use crate::{
     LONGEST_FRAME,
     debug_config::*,
-    main_menu::MainMenu,
+    main_menu::{MainMenu, MenuAction},
     server::Server,
     client::{
         Client,
+        ClientInfo,
         ClientInitInfo
     },
     common::{
         TileMap,
+        TileMapWithTextures,
         DataInfos,
         ItemsInfo,
         EnemiesInfo,
@@ -48,10 +49,6 @@ use crate::{
         sender_loop::{waiting_loop, DELTA_TIME}
     }
 };
-
-use config::Config;
-
-mod config;
 
 
 #[allow(dead_code)]
@@ -307,6 +304,9 @@ pub struct App
 {
     client: Client,
     scene: Scene,
+    data_infos: DataInfos,
+    tilemap: TileMapWithTextures,
+    exit: bool,
     server_handle: Option<JoinHandle<()>>,
     slow_mode: <SlowMode as SlowModeTrait>::State
 }
@@ -333,10 +333,7 @@ impl YanyaApp for App
 
     fn init(partial_info: InitPartialInfo<Self::SetupInfo>, app_info: Self::AppInfo) -> Self
     {
-        let deferred_parse = || TileMap::parse("info/tiles.json", "textures/tiles/");
         let app_info = app_info.unwrap();
-
-        let Config{listen_outside, address, port} = Config::parse(env::args().skip(1));
 
         let items_info = Arc::new(ItemsInfo::parse(
             Some(&partial_info.object_info.assets.lock()),
@@ -373,86 +370,40 @@ impl YanyaApp for App
             player_character
         };
 
-        let mut server_handle = None;
-        let (host, client_address) = if let Some(address) = address
-        {
-            (false, address)
-        } else
-        {
-            let (tx, rx) = mpsc::channel();
-
-            let data_infos = data_infos.clone();
-            server_handle = Some(thread::spawn(move ||
-            {
-                match deferred_parse()
-                {
-                    Ok(tilemap) =>
-                    {
-                        let port = port.unwrap_or(0);
-
-                        let listen_address = format!("{}:{port}", if listen_outside { "0.0.0.0" } else { "127.0.0.1" });
-
-                        let x = Server::new(
-                            tilemap,
-                            data_infos,
-                            &listen_address,
-                            16
-                        );
-
-                        let (mut game_server, mut server) = match x
-                        {
-                            Ok(x) => x,
-                            Err(err) => panic!("{err}")
-                        };
-
-                        let port = server.port();
-                        tx.send(port).unwrap();
-
-                        thread::spawn(move ||
-                        {
-                            server.run();
-                        });
-
-                        waiting_loop(||
-                        {
-                            crate::frame_time_this!{
-                                [] -> server_update,
-                                game_server.update(DELTA_TIME as f32)
-                            }
-                        });
-                    },
-                    Err(err) => panic!("error parsing tilemap: {err}")
-                }
-            }));
-
-            let port = rx.recv().unwrap();
-
-            println!("listening on port {port}");
-            (true, format!("127.0.0.1:{port}"))
-        };
+        let tilemap = TileMap::parse("info/tiles.json", "textures/tiles/").unwrap();
 
         let init_info = ClientInitInfo{
             app_info,
-            tilemap: deferred_parse().unwrap(),
-            data_infos
+            tilemap: tilemap.clone(),
+            data_infos: data_infos.clone()
         };
 
         DebugConfig::on_start();
 
-        let client = Client::new(partial_info, init_info).unwrap();
+        let scene = Scene::Menu(MainMenu::new(
+            &partial_info.object_info,
+            init_info.app_info.shaders.clone()
+        ));
 
-        let scene = Scene::Menu(MainMenu::new(client_address, host));
+        let client = Client::new(partial_info, init_info).unwrap();
 
         Self{
             client,
             scene,
-            server_handle,
+            data_infos,
+            tilemap,
+            exit: false,
+            server_handle: None,
             slow_mode: Default::default()
         }
     }
 
+    fn early_exit(&self) -> bool { self.exit }
+
     fn update(&mut self, partial_info: UpdateBuffersPartialInfo, dt: f32)
     {
+        let dt = dt.min(LONGEST_FRAME as f32);
+
         match &mut self.scene
         {
             Scene::Game =>
@@ -463,14 +414,73 @@ impl YanyaApp for App
             },
             Scene::Menu(x) =>
             {
-                if let Some((partial_info, client_info)) = x.update(partial_info, dt)
+                let (partial_info, action) = x.update(partial_info, dt);
+
+                match action
                 {
-                    let mut info = partial_info.to_full(&self.client.camera.read());
+                    MenuAction::None => (),
+                    MenuAction::Quit => self.exit = true,
+                    MenuAction::Start(client_info) =>
+                    {
+                        let (tx, rx) = mpsc::channel();
 
-                    self.client.initialize(&mut info, client_info);
-                    self.scene = Scene::Game;
+                        let listen_outside = false;
 
-                    self.update_game(&mut info, dt);
+                        let tilemap = self.tilemap.clone();
+                        let data_infos = self.data_infos.clone();
+
+                        self.server_handle = Some(thread::spawn(move ||
+                        {
+                            let port = None.unwrap_or(0);
+
+                            let listen_address = format!("{}:{port}", if listen_outside { "0.0.0.0" } else { "127.0.0.1" });
+
+                            let x = Server::new(
+                                tilemap,
+                                data_infos,
+                                &listen_address,
+                                16
+                            );
+
+                            let (mut game_server, mut server) = match x
+                            {
+                                Ok(x) => x,
+                                Err(err) => panic!("{err}")
+                            };
+
+                            let port = server.port();
+                            tx.send(port).unwrap();
+
+                            thread::spawn(move ||
+                            {
+                                server.run();
+                            });
+
+                            waiting_loop(||
+                            {
+                                crate::frame_time_this!{
+                                    [] -> server_update,
+                                    game_server.update(DELTA_TIME as f32)
+                                }
+                            });
+                        }));
+
+                        let port = rx.recv().unwrap();
+
+                        let mut info = partial_info.to_full(&self.client.camera.read());
+
+                        let client_info = ClientInfo{
+                            address: client_info.address.unwrap_or_else(|| format!("127.0.0.1:{port}")),
+                            name: client_info.name,
+                            host: client_info.host,
+                            debug: client_info.debug
+                        };
+
+                        self.client.initialize(&mut info, client_info);
+                        self.scene = Scene::Game;
+
+                        self.update_game(&mut info, dt);
+                    }
                 }
             }
         }
@@ -539,8 +549,6 @@ impl App
 
     fn update_game(&mut self, info: &mut UpdateBuffersInfo, dt: f32)
     {
-        let dt = dt.min(LONGEST_FRAME as f32);
-
         if SlowMode::as_bool()
         {
             if self.slow_mode.running()

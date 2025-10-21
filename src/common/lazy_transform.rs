@@ -462,15 +462,23 @@ pub struct SpringScalingInfo
     pub strength: f32
 }
 
-impl SpringScaling
+impl From<SpringScalingInfo> for SpringScaling
 {
-    pub fn new(info: SpringScalingInfo) -> Self
+    fn from(info: SpringScalingInfo) -> Self
     {
         Self{
             velocity: Vector3::new(info.start_velocity.x, info.start_velocity.y, 0.0),
             damping: info.damping,
             strength: info.strength
         }
+    }
+}
+
+impl SpringScaling
+{
+    pub fn new(info: SpringScalingInfo) -> Self
+    {
+        info.into()
     }
 }
 
