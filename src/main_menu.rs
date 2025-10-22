@@ -11,12 +11,11 @@ use crate::{
         game_state::{
             UiControls,
             ControlsController,
-            ui::{BLACK_COLOR, controller::*}
+            ui::{BACKGROUND_COLOR, ACCENT_COLOR, controller::*}
         }
     },
     common::{
         render_info::*,
-        colors::*,
         lazy_transform::SpringScalingInfo
     }
 };
@@ -136,15 +135,15 @@ impl MainMenu
             ..Default::default()
         });
 
-        let button_scaling = Scaling::EaseOut{decay: 16.0};
         let body = panel.update(id(ButtonPartId::Body), UiElement{
             texture: UiTexture::Solid,
-            mix: Some(MixColorLch::color(Lcha{a: 0.5, ..BLACK_COLOR})),
-            width: UiSize::Pixels(BUTTON_SIZE * 4.0).into(),
+            mix: Some(MixColorLch::color(BACKGROUND_COLOR)),
+            width: UiSize::Pixels(BUTTON_SIZE * 3.0).into(),
             height: UiSize::Rest(1.0).into(),
             animation: Animation{
                 scaling: Some(ScalingAnimation{
-                    start_mode: button_scaling.clone(),
+                    start_scaling: vector![0.0, 1.0],
+                    start_mode: Scaling::EaseOut{decay: 16.0},
                     ..Default::default()
                 }),
                 ..Default::default()
@@ -153,8 +152,9 @@ impl MainMenu
             ..Default::default()
         });
 
-        body.update(id(ButtonPartId::Text), UiElement{
+        let text = body.update(id(ButtonPartId::Text), UiElement{
             texture: UiTexture::Text{text: name.to_owned(), font_size: 30},
+            mix: Some(MixColorLch{keep_transparency: true, ..MixColorLch::color(ACCENT_COLOR)}),
             ..UiElement::fit_content()
         });
 
@@ -162,20 +162,23 @@ impl MainMenu
 
         if inside_button
         {
-            body.element().width = UiSize::Rest(1.0).into();
+            {
+                let mut element = body.element();
+                element.width = UiSize::Pixels(BUTTON_SIZE * 4.0).into();
+                element.mix = Some(MixColorLch::color(ACCENT_COLOR));
+            }
+
+            text.element().mix = Some(MixColorLch{keep_transparency: true, ..MixColorLch::color(BACKGROUND_COLOR)});
         }
 
-        body.element().animation.scaling.as_mut().unwrap().start_mode = if inside_button
+        if !inside_button
         {
-            button_scaling
-        } else
-        {
-            Scaling::Spring(SpringScalingInfo{
-                start_velocity: vector![0.0, 1.0],
+            body.element().animation.scaling.as_mut().unwrap().start_mode = Scaling::Spring(SpringScalingInfo{
+                start_velocity: vector![0.0, 0.0],
                 damping: 0.0001,
                 strength: 200.0
-            }.into())
-        };
+            }.into());
+        }
 
         inside_button && controls.take_click_down()
     }
@@ -187,6 +190,7 @@ impl MainMenu
     ) -> (MenuState, MenuAction)
     {
         let mut state = self.state;
+        let mut action = MenuAction::None;
 
         add_padding_vertical(menu, UiSize::Rest(0.25).into());
 
@@ -221,7 +225,7 @@ impl MainMenu
 
         if self.update_button(controls, buttons_panel, |part| MainMenuId::Start(part), "start")
         {
-            return (state, MenuAction::Start(self.info.clone()));
+            action = MenuAction::Start(self.info.clone());
         }
 
         button_pad();
@@ -235,12 +239,12 @@ impl MainMenu
 
         if self.update_button(controls, buttons_panel, |part| MainMenuId::Quit(part), "quit")
         {
-            return (state, MenuAction::Quit);
+            action = MenuAction::Quit;
         }
 
         add_padding_vertical(menu, UiSize::Rest(0.5).into());
 
-        (state, MenuAction::None)
+        (state, action)
     }
 
     fn update_options(

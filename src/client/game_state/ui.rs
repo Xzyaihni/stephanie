@@ -82,11 +82,11 @@ const SMALLEST_TEXT_SIZE: u32 = 15;
 
 const WHITE_COLOR: Lcha = Lcha{l: 100.0, c: 0.0, h: 0.0, a: 1.0};
 const GRAY_COLOR: Lcha = Lcha{l: 5.0, c: 0.0, h: 0.0, a: 1.0};
-pub const BLACK_COLOR: Lcha = Lcha{l: 0.0, c: 0.0, h: 0.0, a: 1.0};
+const BLACK_COLOR: Lcha = Lcha{l: 0.0, c: 0.0, h: 0.0, a: 1.0};
 
-const BACKGROUND_COLOR: Lcha = BLACK_COLOR;
-const ACCENT_COLOR: Lcha = Lcha{h: HIGHLIGHTED_COLOR.h, ..WHITE_COLOR};
-const HIGHLIGHTED_COLOR: Lcha = Lcha{l: 70.0, c: 90.0, h: 6.0, a: 1.0};
+pub const BACKGROUND_COLOR: Lcha = WHITE_COLOR;
+pub const ACCENT_COLOR: Lcha = Lcha{l: 70.0, c: 90.0, h: 6.0, a: 1.0};
+pub const HIGHLIGHTED_COLOR: Lcha = Lcha{l: 80.0, c: 40.0, h: 6.0, a: 1.0};
 
 const MISSING_PART_COLOR: Lcha = Lcha{l: 50.0, a: 0.3, ..BLACK_COLOR};
 
@@ -303,6 +303,7 @@ pub enum InventoryPart
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ItemPart
 {
+    Indicator,
     Body,
     Icon(IconPart),
     Name
@@ -877,12 +878,11 @@ impl WindowKind
 
                     let rarity_hue_chroma = item.rarity.hue_chroma();
 
-                    let rarity_color = rarity_hue_chroma.map(|(h, c)| Lcha{l: 100.0, c, h, a: 1.0})
-                        .unwrap_or(WHITE_COLOR);
+                    let rarity_color = rarity_hue_chroma.map(|(h, c)| Lcha{l: 80.0, c, h, a: 1.0});
 
                     let body_color = Lcha{
-                        a: if is_picked { 0.5 } else if is_selected { 0.3 } else { 0.0 },
-                        ..rarity_color
+                        a: if is_picked { 0.15 } else if is_selected { 0.1 } else { 0.0 },
+                        ..BLACK_COLOR
                     };
 
                     let body = parent.update(id(ItemPart::Body), UiElement{
@@ -906,7 +906,23 @@ impl WindowKind
                         ..Default::default()
                     });
 
-                    add_padding_horizontal(body, UiSize::Pixels(ITEM_PADDING).into());
+                    if let Some(color) = rarity_color
+                    {
+                        let half_padding = ITEM_PADDING * 0.5;
+
+                        body.update(id(ItemPart::Indicator), UiElement{
+                            texture: UiTexture::Solid,
+                            mix: Some(MixColorLch::color(color)),
+                            width: UiSize::Pixels(half_padding).into(),
+                            height: UiSize::Rest(1.0).into(),
+                            ..Default::default()
+                        });
+
+                        add_padding_horizontal(body, UiSize::Pixels(half_padding).into());
+                    } else
+                    {
+                        add_padding_horizontal(body, UiSize::Pixels(ITEM_PADDING).into());
+                    }
 
                     let icon_size = item_height * 0.9;
 
@@ -920,17 +936,9 @@ impl WindowKind
 
                     add_padding_horizontal(body, UiSize::Pixels(ITEM_PADDING / 2.0).into());
 
-                    let text_color = if let Some((_h, c)) = rarity_hue_chroma
-                    {
-                        Lcha{c: c + 40.0, ..rarity_color}
-                    } else
-                    {
-                        WHITE_COLOR
-                    };
-
                     body.update(id(ItemPart::Name), UiElement{
                         texture: UiTexture::Text{text: item.name.clone(), font_size},
-                        mix: Some(MixColorLch{keep_transparency: true, ..MixColorLch::color(text_color)}),
+                        mix: Some(MixColorLch{keep_transparency: true, ..MixColorLch::color(ACCENT_COLOR)}),
                         ..UiElement::fit_content()
                     });
                 });
@@ -1981,7 +1989,7 @@ impl Ui
 
             let panel_vertical = health_inner.update(UiId::Health(HealthPart::PanelVertical), UiElement{
                 texture: UiTexture::Custom("ui/health_panel.png".into()),
-                mix: Some(MixColorLch{keep_transparency: true, ..MixColorLch::color(Lcha{a: 0.5, ..BACKGROUND_COLOR})}),
+                mix: Some(MixColorLch{keep_transparency: true, ..MixColorLch::color(Lcha{a: 0.5, ..BLACK_COLOR})}),
                 children_layout: UiLayout::Vertical,
                 ..UiElement::fit_content()
             });
