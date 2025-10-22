@@ -146,6 +146,7 @@ impl MainMenu
                     start_mode: Scaling::EaseOut{decay: 16.0},
                     ..Default::default()
                 }),
+                mix: Some(MixAnimation::default()),
                 ..Default::default()
             },
             children_layout: UiLayout::Vertical,
@@ -155,6 +156,10 @@ impl MainMenu
         let text = body.update(id(ButtonPartId::Text), UiElement{
             texture: UiTexture::Text{text: name.to_owned(), font_size: 30},
             mix: Some(MixColorLch{keep_transparency: true, ..MixColorLch::color(ACCENT_COLOR)}),
+            animation: Animation{
+                mix: Some(MixAnimation::default()),
+                ..Default::default()
+            },
             ..UiElement::fit_content()
         });
 
