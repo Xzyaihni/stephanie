@@ -150,7 +150,7 @@ pub fn damager<'a, 'b, 'c>(
                         object: Some(RenderObjectKind::Texture{
                             name: "circle.png".into()
                         }.into()),
-                        mix: Some(MixColor{keep_transparency: true, ..MixColor::color(color)}),
+                        mix: Some(MixColor::color(color)),
                         above_world: true,
                         ..Default::default()
                     }),

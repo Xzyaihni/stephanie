@@ -19,17 +19,13 @@ use nalgebra::{Vector2, Vector3, Matrix4};
 
 use serde::{Serialize, Deserialize};
 
-use image::RgbaImage;
-
 use yanyaengine::{
-    ResourceUploader,
     Assets,
     ObjectFactory,
     Transform,
     TextureId,
     SolidObject,
     DefaultTexture,
-    object::{texture::SimpleImage, Texture},
     camera::Camera,
     game_object::*
 };
@@ -37,7 +33,7 @@ use yanyaengine::{
 use crate::{
     debug_config::*,
     app::{ProgramShaders, TimestampQuery},
-    client,
+    client::{self, PartCreator},
     common::{
         some_or_value,
         some_or_return,
@@ -551,25 +547,6 @@ pub struct GameStateInfo
     pub tiles_factory: TilesFactory,
     pub anatomy_locations: Rc<RefCell<dyn FnMut(&mut ObjectCreateInfo, &str) -> UiAnatomyLocations>>,
     pub common_textures: CommonTextures
-}
-
-pub struct PartCreator<'a, 'b>
-{
-    pub resource_uploader: &'a mut ResourceUploader<'b>,
-    pub assets: &'a mut Assets
-}
-
-impl PartCreator<'_, '_>
-{
-    pub fn create(&mut self, image: RgbaImage) -> TextureId
-    {
-        let texture = Texture::new(
-            self.resource_uploader,
-            SimpleImage::from(image).into()
-        );
-
-        self.assets.push_texture(texture)
-    }
 }
 
 #[derive(Clone)]

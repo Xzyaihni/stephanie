@@ -201,7 +201,7 @@ pub fn raycast(
                             name: "circle.png".into()
                         }.into()),
                         above_world: true,
-                        mix: Some(MixColor{keep_transparency: true, ..MixColor::color(color)}),
+                        mix: Some(MixColor::color(color)),
                         ..Default::default()
                     }),
                     ..Default::default()
@@ -226,7 +226,7 @@ pub fn raycast(
                             name: "arrow.png".into()
                         }.into()),
                         above_world: true,
-                        mix: Some(MixColor{keep_transparency: true, ..MixColor::color(color)}),
+                        mix: Some(MixColor::color(color)),
                         ..Default::default()
                     }),
                     ..Default::default()

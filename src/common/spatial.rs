@@ -421,7 +421,7 @@ impl KNode
                                 object: Some(RenderObjectKind::Texture{
                                     name: "solid.png".into()
                                 }.into()),
-                                mix: Some(MixColor{keep_transparency: true, ..MixColor::color([1.0, 0.0, 0.0, 0.3])}),
+                                mix: Some(MixColor::color([1.0, 0.0, 0.0, 0.3])),
                                 above_world: true,
                                 z_level: ZLevel::BelowFeet,
                                 ..Default::default()
@@ -603,7 +603,7 @@ impl SpatialGrid
                                 object: Some(RenderObjectKind::Texture{
                                     name: "solid.png".into()
                                 }.into()),
-                                mix: Some(MixColor{keep_transparency: true, ..MixColor::color([1.0, 1.0, 0.0, 0.3])}),
+                                mix: Some(MixColor::color([1.0, 1.0, 0.0, 0.3])),
                                 above_world: true,
                                 z_level: ZLevel::BelowFeet,
                                 ..Default::default()

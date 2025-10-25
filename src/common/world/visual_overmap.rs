@@ -507,7 +507,7 @@ impl OccludedChecker
                     object: Some(RenderObjectKind::Texture{
                         name: "circle.png".into()
                     }.into()),
-                    mix: Some(MixColor{keep_transparency: true, ..MixColor::color([0.0, 1.0, 0.0, 0.5])}),
+                    mix: Some(MixColor::color([0.0, 1.0, 0.0, 0.5])),
                     above_world: true,
                     ..Default::default()
                 }),
@@ -546,7 +546,7 @@ impl OccludedChecker
                             object: Some(RenderObjectKind::Texture{
                                 name: "solid.png".into()
                             }.into()),
-                            mix: Some(MixColor{keep_transparency: true, ..MixColor::color([0.0, 0.0, 1.0, 0.1])}),
+                            mix: Some(MixColor::color([0.0, 0.0, 1.0, 0.1])),
                             above_world: true,
                             ..Default::default()
                         }),

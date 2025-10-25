@@ -19,6 +19,7 @@ use yanyaengine::{
     TextObject,
     TextInfo,
     DefaultTexture,
+    TextureId,
     game_object::*
 };
 
@@ -235,6 +236,7 @@ struct UiElementCached
     scale: Vector2<f32>,
     parental_position: Vector2<f32>,
     position: Vector2<f32>,
+    inherit_animation: bool,
     mix: Option<MixColorLch>,
     last_scissor: Option<UiScissor>,
     scissor: Option<VulkanoScissor>,
@@ -282,41 +284,7 @@ impl UiElementCached
             deferred.position.unwrap() + offset - parental_position
         };
 
-        let transform = Transform::default();
-
-        let object = match &element.texture
-        {
-            UiTexture::None => None,
-            UiTexture::Text{text, font_size} =>
-            {
-                RenderObject{
-                    kind: RenderObjectKind::Text{
-                        text: text.clone(),
-                        font_size: *font_size
-                    }
-                }.into_client(transform, create_info)
-            },
-            UiTexture::Solid =>
-            {
-                let id = create_info.partial.assets.lock().default_texture(DefaultTexture::Solid);
-
-                RenderObject{
-                    kind: RenderObjectKind::TextureId{id}
-                }.into_client(transform, create_info)
-            },
-            UiTexture::Custom(name) =>
-            {
-                RenderObject{
-                    kind: RenderObjectKind::Texture{name: name.clone()}
-                }.into_client(transform, create_info)
-            },
-            UiTexture::CustomId(id) =>
-            {
-                RenderObject{
-                    kind: RenderObjectKind::TextureId{id: *id}
-                }.into_client(transform, create_info)
-            }
-        };
+        let object = Self::create_object(create_info, &element.texture);
 
         let mix = element.mix.map(|mix|
         {
@@ -330,6 +298,7 @@ impl UiElementCached
             scale,
             position,
             parental_position,
+            inherit_animation: element.inherit_animation,
             mix,
             last_scissor,
             scissor,
@@ -341,13 +310,57 @@ impl UiElementCached
         this
     }
 
+    fn create_object(
+        create_info: &mut UpdateBuffersInfo,
+        texture: &UiTexture
+    ) -> Option<ClientRenderObject>
+    {
+        let kind = match texture
+        {
+            UiTexture::None => None,
+            UiTexture::Text{text, font_size} =>
+            {
+                Some(RenderObjectKind::Text{
+                    text: text.clone(),
+                    font_size: *font_size
+                })
+            },
+            UiTexture::Solid =>
+            {
+                let id = create_info.partial.assets.lock().default_texture(DefaultTexture::Solid);
+
+                Some(RenderObjectKind::TextureId{id})
+            },
+            UiTexture::Custom(name) =>
+            {
+                Some(RenderObjectKind::Texture{name: name.clone()})
+            },
+            UiTexture::CustomId(id) =>
+            {
+                Some(RenderObjectKind::TextureId{id: *id})
+            },
+            UiTexture::Sliced(sliced) =>
+            {
+                let normal_scale = texture_screen_size(&create_info.partial.assets.lock(), create_info.partial.size.into(), sliced.id);
+                Some(RenderObjectKind::TextureSliced{texture: *sliced, normal_scale})
+            }
+        };
+
+        kind.and_then(|kind|
+        {
+            RenderObject{
+                kind
+            }.into_client(Transform::default(), create_info)
+        })
+    }
+
     fn update_fraction<Id>(
         &mut self,
         parent_fraction: &Fractions,
         deferred: &UiDeferredInfo<Id>
     )
     {
-        self.fractions.scale = parent_fraction.scale_inherit;
+        self.fractions.scale = if self.inherit_animation { parent_fraction.scale_inherit } else { Vector2::repeat(1.0) };
         self.fractions.position = parent_fraction.position_inherit;
 
         {
@@ -1111,6 +1124,18 @@ impl<Id: Idable> TreeElement<Id>
     }
 }
 
+pub fn texture_screen_size(
+    assets: &Assets,
+    size: Vector2<f32>,
+    texture: TextureId
+) -> Vector2<f32>
+{
+    let texture = assets.texture(texture);
+
+    let this_size = texture.lock().size();
+    this_size / size.max()
+}
+
 pub struct TextureSizer
 {
     fonts: Rc<FontsContainer>,
@@ -1148,28 +1173,27 @@ impl TextureSizer
             },
             UiTexture::Solid
             | UiTexture::Custom(_)
-            | UiTexture::CustomId(_) =>
+            | UiTexture::CustomId(_)
+            | UiTexture::Sliced(_) =>
             {
                 let assets = self.assets.lock();
-                let size = match texture
+
+                let texture_id = match texture
                 {
-                    UiTexture::CustomId(id) =>
-                    {
-                        assets.texture(*id)
-                    },
+                    UiTexture::Sliced(sliced) => sliced.id,
+                    UiTexture::CustomId(id) => *id,
                     UiTexture::Solid =>
                     {
-                        assets.texture(assets.default_texture(DefaultTexture::Solid))
+                        assets.default_texture(DefaultTexture::Solid)
                     },
                     UiTexture::Custom(name) =>
                     {
-                        assets.texture_by_name(name)
+                        assets.texture_id(name)
                     },
                     _ => unreachable!()
                 };
 
-                let this_size = size.lock().size();
-                this_size / self.size.max()
+                texture_screen_size(&assets, self.size, texture_id)
             }
         }
     }
@@ -1634,14 +1658,29 @@ impl<Id: Idable> Controller<Id>
         info: &mut UpdateBuffersInfo
     )
     {
-        self.set_screen_size(Vector2::from(info.partial.size));
+        let old_screen_size = self.shared.borrow().screen_size;
+        let new_screen_size = Vector2::from(info.partial.size);
+
+        let screen_size_changed = old_screen_size != new_screen_size;
+
+        if screen_size_changed
+        {
+            self.set_screen_size(new_screen_size);
+        }
 
         let mut shared = self.shared.borrow_mut();
         let shared: &mut SharedInfo<Id> = &mut shared;
 
         shared.tree.for_each(|_, id|
         {
-            if let Some(object) = shared.elements.get_mut(id).unwrap().cached.object.as_mut()
+            let element = shared.elements.get_mut(id).unwrap();
+
+            if screen_size_changed && matches!(element.element.texture, UiTexture::Sliced(_))
+            {
+                element.cached.object = UiElementCached::create_object(info, &element.element.texture);
+            }
+
+            if let Some(object) = element.cached.object.as_mut()
             {
                 object.update_buffers(info)
             }

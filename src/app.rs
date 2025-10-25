@@ -1,6 +1,9 @@
 use std::{
+    fs,
+    rc::Rc,
     thread::{self, JoinHandle},
-    sync::{mpsc, Arc}
+    sync::{mpsc, Arc},
+    collections::HashMap
 };
 
 use vulkano::device::Device;
@@ -35,7 +38,9 @@ use crate::{
     client::{
         Client,
         ClientInfo,
-        ClientInitInfo
+        ClientInitInfo,
+        SlicedTexture,
+        PartCreator
     },
     common::{
         TileMap,
@@ -331,7 +336,7 @@ impl YanyaApp for App
     type SetupInfo = TimestampQuery;
     type AppInfo = Option<AppInfo>;
 
-    fn init(partial_info: InitPartialInfo<Self::SetupInfo>, app_info: Self::AppInfo) -> Self
+    fn init(mut partial_info: InitPartialInfo<Self::SetupInfo>, app_info: Self::AppInfo) -> Self
     {
         let app_info = app_info.unwrap();
 
@@ -372,8 +377,40 @@ impl YanyaApp for App
 
         let tilemap = TileMap::parse("info/tiles.json", "textures/tiles/").unwrap();
 
+        let sliced_textures = {
+            let mut assets = partial_info.object_info.assets.lock();
+
+            let mut part_creator = PartCreator{
+                assets: &mut assets,
+                resource_uploader: partial_info.object_info.builder_wrapper.resource_uploader_mut()
+            };
+
+            let textures: HashMap<String, SlicedTexture> = fs::read_dir("textures/special/sliced/").map(|dir_iter|
+            {
+                dir_iter.filter_map(|path|
+                {
+                    match path
+                    {
+                        Ok(path) =>
+                        {
+                            let path = path.path();
+                            SlicedTexture::new(&mut part_creator, &path)
+                        },
+                        Err(err) =>
+                        {
+                            eprintln!("error opening sliced texture file: {err}");
+                            None
+                        }
+                    }
+                }).collect()
+            }).unwrap_or_default();
+
+            Rc::new(textures)
+        };
+
         let init_info = ClientInitInfo{
             app_info,
+            sliced_textures,
             tilemap: tilemap.clone(),
             data_infos: data_infos.clone()
         };
@@ -382,7 +419,8 @@ impl YanyaApp for App
 
         let scene = Scene::Menu(MainMenu::new(
             &partial_info.object_info,
-            init_info.app_info.shaders.clone()
+            init_info.app_info.shaders.clone(),
+            init_info.sliced_textures.clone()
         ));
 
         let client = Client::new(partial_info, init_info).unwrap();

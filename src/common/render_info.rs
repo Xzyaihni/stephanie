@@ -7,7 +7,7 @@ use std::{
 
 use strum::FromRepr;
 
-use parking_lot::Mutex;
+use parking_lot::{Mutex, RwLock};
 
 use nalgebra::Vector2;
 
@@ -24,7 +24,7 @@ use yanyaengine::{
     Transform,
     TransformContainer,
     TextInfo,
-    object::Texture,
+    object::{Model, Texture},
     game_object::*
 };
 
@@ -33,7 +33,7 @@ pub use yanyaengine::{TextCreateInfo, object::model::Uvs};
 pub use vulkano::pipeline::graphics::viewport::Scissor as VulkanoScissor;
 
 use crate::{
-    client::VisibilityChecker,
+    client::{SlicedTexture, VisibilityChecker},
     common::{
         lerp,
         with_z,
@@ -74,7 +74,7 @@ impl<T> MixColorGeneric<T>
 {
     pub fn color(color: T) -> Self
     {
-        Self{color, amount: 1.0, keep_transparency: false}
+        Self{color, amount: 1.0, keep_transparency: true}
     }
 }
 
@@ -245,12 +245,108 @@ fn rotating_scale(transform: Transform, texture_scale: Vector2<f32>) -> Transfor
     Transform{scale: with_z(transform.scale.xy().component_mul(&texture_scale), transform.scale.z), ..transform}
 }
 
+fn sliced_model(
+    width_unscaled: f32,
+    height_unscaled: f32,
+    scale: Vector2<f32>
+) -> Model
+{
+    let w = width_unscaled / scale.x;
+    let h = height_unscaled / scale.y;
+
+    let sx = -0.5;
+    let sy = -0.5;
+
+    let ex = 0.5;
+    let ey = 0.5;
+
+    let vertices = vec![
+        [sx, sy, 0.0],
+        [sx, sy + h, 0.0],
+        [sx + w, sy, 0.0],
+        [sx + w, sy + h, 0.0],
+
+        [ex - w, sy, 0.0],
+        [ex - w, sy + h, 0.0],
+        [ex, sy, 0.0],
+        [ex, sy + h, 0.0],
+
+        [sx, ey - h, 0.0],
+        [sx, ey, 0.0],
+        [sx + w, ey - h, 0.0],
+        [sx + w, ey, 0.0],
+
+        [ex - w, ey - h, 0.0],
+        [ex - w, ey, 0.0],
+        [ex, ey - h, 0.0],
+        [ex, ey, 0.0]
+    ];
+
+    let indices = vec![
+        0, 1, 2, // bottom left
+        2, 1, 3,
+
+        2, 3, 4, // bottom
+        4, 3, 5,
+
+        4, 5, 6, // bottom right
+        6, 5, 7,
+
+        3, 1, 8, // left
+        3, 8, 10,
+
+        8, 9, 10, // top left
+        10, 9, 11,
+
+        12, 10, 11, // top
+        12, 11, 13,
+
+        12, 13, 14, // top right
+        14, 13, 15,
+
+        7, 5, 12, // right
+        7, 12, 14,
+
+        5, 3, 10, // middle
+        5, 10, 12
+    ];
+
+    let uvs = vec![
+        [0.0, 0.0],
+        [0.0, height_unscaled],
+        [width_unscaled, 0.0],
+        [width_unscaled, height_unscaled],
+
+        [1.0 - width_unscaled, 0.0],
+        [1.0 - width_unscaled, height_unscaled],
+        [1.0, 0.0],
+        [1.0, height_unscaled],
+
+        [0.0, 1.0 - height_unscaled],
+        [0.0, 1.0],
+        [width_unscaled, 1.0 - height_unscaled],
+        [width_unscaled, 1.0],
+
+        [1.0 - width_unscaled, 1.0 - height_unscaled],
+        [1.0 - width_unscaled, 1.0],
+        [1.0, 1.0 - height_unscaled],
+        [1.0, 1.0]
+    ];
+
+    Model{
+        vertices,
+        indices,
+        uvs
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum RenderObjectKind
 {
     Texture{name: Cow<'static, str>},
     TextureId{id: TextureId},
     TextureRotating{ids: DirectionsGroup<TextureId>, offset: Option<f32>},
+    TextureSliced{texture: SlicedTexture, normal_scale: Vector2<f32>},
     Text{text: String, font_size: u32}
 }
 
@@ -266,6 +362,22 @@ impl RenderObjectKind
 
         match self
         {
+            Self::TextureSliced{texture: sliced, normal_scale} =>
+            {
+                let texture = assets.texture(sliced.id).clone();
+
+                let model = sliced_model(sliced.width, sliced.height, transform.scale.xy().component_div(&normal_scale));
+
+                let object = create_info.partial.object_factory.create(ObjectInfo{
+                    model: Arc::new(RwLock::new(model)),
+                    texture,
+                    transform
+                });
+
+                Some(ClientRenderObject{
+                    kind: ClientObjectType::NormalSliced{object, width: sliced.width, height: sliced.height, normal_scale}
+                })
+            },
             Self::TextureRotating{ids, offset} =>
             {
                 let textures = ids.map(|_, id| assets.texture(id).clone());
@@ -509,6 +621,7 @@ pub enum ClientObjectType
 {
     Normal(Object),
     NormalRotating{object: Object, offset: Option<f32>, textures: DirectionsGroup<(Vector2<f32>, Arc<Mutex<Texture>>)>},
+    NormalSliced{object: Object, width: f32, height: f32, normal_scale: Vector2<f32>},
     Text(TextObject)
 }
 
@@ -531,6 +644,11 @@ impl ClientRenderObject
 
                 object.set_texture(closest);
                 object.set_transform(rotating_scale(object_transform, scale));
+            },
+            ClientObjectType::NormalSliced{object, width, height, normal_scale} =>
+            {
+                object.set_inplace_model_same_sized(sliced_model(*width, *height, transform.scale.xy().component_div(normal_scale)));
+                object.set_transform(transform);
             },
             ClientObjectType::Text(x) =>
             {
@@ -558,6 +676,7 @@ impl ClientRenderObject
         {
             ClientObjectType::Normal(x) => Some(x.transform_ref()),
             ClientObjectType::NormalRotating{object, ..} => Some(object.transform_ref()),
+            ClientObjectType::NormalSliced{object, ..} => Some(object.transform_ref()),
             ClientObjectType::Text(x) => x.transform()
         }
     }
@@ -568,6 +687,7 @@ impl ClientRenderObject
         {
             ClientObjectType::Normal(x) => x.update_buffers(info),
             ClientObjectType::NormalRotating{object, ..} => object.update_buffers(info),
+            ClientObjectType::NormalSliced{object, ..} => object.update_buffers(info),
             ClientObjectType::Text(x) => x.update_buffers(info)
         }
     }
@@ -578,6 +698,7 @@ impl ClientRenderObject
         {
             ClientObjectType::Normal(x) => x.draw(info),
             ClientObjectType::NormalRotating{object, ..} => object.draw(info),
+            ClientObjectType::NormalSliced{object, ..} => object.draw(info),
             ClientObjectType::Text(x) => x.draw(info)
         }
     }

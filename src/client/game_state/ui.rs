@@ -754,7 +754,7 @@ impl WindowKind
 
                 let close_button = titlebar.update(id(WindowPart::Title(TitlePart::Button(button_id))), UiElement{
                     texture: UiTexture::Custom(texture.into()),
-                    mix: Some(MixColorLch{keep_transparency: true, ..MixColorLch::color(ACCENT_COLOR)}),
+                    mix: Some(MixColorLch::color(ACCENT_COLOR)),
                     animation: Animation::button(),
                     width: size.clone(),
                     height: size,
@@ -780,7 +780,7 @@ impl WindowKind
             add_padding_horizontal(titlebar, padding_size.clone());
             titlebar.update(id(WindowPart::Title(TitlePart::Text)), UiElement{
                 texture: UiTexture::Text{text: title, font_size: 25},
-                mix: Some(MixColorLch{keep_transparency: true, ..MixColorLch::color(ACCENT_COLOR)}),
+                mix: Some(MixColorLch::color(ACCENT_COLOR)),
                 ..UiElement::fit_content()
             });
             add_padding_horizontal(titlebar, padding_size);
@@ -938,7 +938,7 @@ impl WindowKind
 
                     body.update(id(ItemPart::Name), UiElement{
                         texture: UiTexture::Text{text: item.name.clone(), font_size},
-                        mix: Some(MixColorLch{keep_transparency: true, ..MixColorLch::color(ACCENT_COLOR)}),
+                        mix: Some(MixColorLch::color(ACCENT_COLOR)),
                         ..UiElement::fit_content()
                     });
                 });
@@ -1008,7 +1008,7 @@ impl WindowKind
 
                 body.update(id(ItemInfoPart::Text), UiElement{
                     texture: UiTexture::Text{text: description, font_size: SMALL_TEXT_SIZE},
-                    mix: Some(MixColorLch{keep_transparency: true, ..MixColorLch::color(ACCENT_COLOR)}),
+                    mix: Some(MixColorLch::color(ACCENT_COLOR)),
                     ..UiElement::fit_content()
                 });
 
@@ -1035,7 +1035,7 @@ impl WindowKind
 
                 body.update(UiId::Window(window_id, WindowPart::Stats), UiElement{
                     texture: UiTexture::Text{text: kills_text, font_size: SMALL_TEXT_SIZE},
-                    mix: Some(MixColorLch{keep_transparency: true, ..MixColorLch::color(ACCENT_COLOR)}),
+                    mix: Some(MixColorLch::color(ACCENT_COLOR)),
                     ..UiElement::fit_content()
                 });
 
@@ -1086,7 +1086,7 @@ impl WindowKind
                     let twice_size: UiElementSize<_> = UiSize::FitContent(2.0).into();
                     body.update(id(AnatomyPart::BodyPart(*part_id)), UiElement{
                         texture: UiTexture::CustomId(location.id),
-                        mix: Some(MixColorLch{keep_transparency: true, ..MixColorLch::color(health_color)}),
+                        mix: Some(MixColorLch::color(health_color)),
                         position: UiPosition::Inherit,
                         width: twice_size.clone(),
                         height: twice_size,
@@ -1131,7 +1131,7 @@ impl WindowKind
 
                     title.update(id(AnatomyTooltipPart::Name), UiElement{
                         texture: UiTexture::Text{text: part_id.to_string(), font_size: SMALL_TEXT_SIZE},
-                        mix: Some(MixColorLch{keep_transparency: true, ..MixColorLch::color(ACCENT_COLOR)}),
+                        mix: Some(MixColorLch::color(ACCENT_COLOR)),
                         ..UiElement::fit_content()
                     });
 
@@ -1207,7 +1207,7 @@ impl WindowKind
 
                         body.update(text_id, UiElement{
                             texture: UiTexture::Text{text: bar_id.to_string(), font_size: SMALLEST_TEXT_SIZE},
-                            mix: Some(MixColorLch{keep_transparency: true, ..MixColorLch::color(WHITE_COLOR)}),
+                            mix: Some(MixColorLch::color(WHITE_COLOR)),
                             position: UiPosition::Inherit,
                             ..UiElement::fit_content()
                         });
@@ -1742,7 +1742,7 @@ impl Ui
 
                 body.update(id(PopupButtonPart::Text), UiElement{
                     texture: UiTexture::Text{text: action.name().to_owned(), font_size: SMALL_TEXT_SIZE},
-                    mix: Some(MixColorLch{keep_transparency: true, ..MixColorLch::color(ACCENT_COLOR)}),
+                    mix: Some(MixColorLch::color(ACCENT_COLOR)),
                     ..UiElement::fit_content()
                 });
 
@@ -1894,7 +1894,7 @@ impl Ui
 
             body.update(UiId::DeathScreen(DeathScreenPart::Text), UiElement{
                 texture: UiTexture::Text{text: "stephy is dead :(".to_owned(), font_size: MEDIUM_TEXT_SIZE},
-                mix: Some(MixColorLch{keep_transparency: true, ..MixColorLch::color(WHITE_COLOR)}),
+                mix: Some(MixColorLch::color(WHITE_COLOR)),
                 ..UiElement::fit_content()
             });
 
@@ -1904,7 +1904,7 @@ impl Ui
 
             body.update(UiId::DeathScreen(DeathScreenPart::InfoText), UiElement{
                 texture: UiTexture::Text{text: killed_text, font_size: MEDIUM_TEXT_SIZE},
-                mix: Some(MixColorLch{keep_transparency: true, ..MixColorLch::color(WHITE_COLOR)}),
+                mix: Some(MixColorLch::color(WHITE_COLOR)),
                 ..UiElement::fit_content()
             });
 
@@ -1921,7 +1921,7 @@ impl Ui
 
             button.update(UiId::DeathScreen(DeathScreenPart::ButtonText), UiElement{
                 texture: UiTexture::Text{text: "RESTART".to_owned(), font_size: BIG_TEXT_SIZE},
-                mix: Some(MixColorLch{keep_transparency: true, ..MixColorLch::color(WHITE_COLOR)}),
+                mix: Some(MixColorLch::color(WHITE_COLOR)),
                 ..UiElement::fit_content()
             });
 
@@ -1989,7 +1989,7 @@ impl Ui
 
             let panel_vertical = health_inner.update(UiId::Health(HealthPart::PanelVertical), UiElement{
                 texture: UiTexture::Custom("ui/health_panel.png".into()),
-                mix: Some(MixColorLch{keep_transparency: true, ..MixColorLch::color(Lcha{a: 0.5, ..BLACK_COLOR})}),
+                mix: Some(MixColorLch::color(Lcha{a: 0.5, ..BLACK_COLOR})),
                 children_layout: UiLayout::Vertical,
                 ..UiElement::fit_content()
             });
@@ -2014,7 +2014,7 @@ impl Ui
 
                 body.update(UiId::Health(HealthPart::Outline), UiElement{
                     texture,
-                    mix: Some(MixColorLch{keep_transparency: true, ..MixColorLch::color(WHITE_COLOR)}),
+                    mix: Some(MixColorLch::color(WHITE_COLOR)),
                     position: UiPosition::Offset(UiId::Health(HealthPart::Body), Vector2::new(-offset.x * 0.5, 0.0)),
                     ..UiElement::fit_content()
                 });
@@ -2036,7 +2036,7 @@ impl Ui
                 let size: UiElementSize<_> = UiSize::FitContent(1.0).into();
                 body.update(UiId::Health(HealthPart::Anatomy(*part_id)), UiElement{
                     texture: UiTexture::CustomId(location.id),
-                    mix: Some(MixColorLch{keep_transparency: true, ..MixColorLch::color(health_color)}),
+                    mix: Some(MixColorLch::color(health_color)),
                     position: UiPosition::Inherit,
                     width: size.clone(),
                     height: size,
@@ -2124,7 +2124,7 @@ impl Ui
                         texture: UiTexture::Custom(icon.into()),
                         width: UiSize::Pixels(size * aspect).into(),
                         height: UiSize::Pixels(size).into(),
-                        mix: Some(MixColorLch{keep_transparency: true, ..MixColorLch::color(Lcha{a, ..ACCENT_COLOR})}),
+                        mix: Some(MixColorLch::color(Lcha{a, ..ACCENT_COLOR})),
                         ..Default::default()
                     });
 
@@ -2132,7 +2132,7 @@ impl Ui
 
                     body.update(id(NotificationPart::Text), UiElement{
                         texture: UiTexture::Text{text: text.clone(), font_size: SMALL_TEXT_SIZE},
-                        mix: Some(MixColorLch{keep_transparency: true, ..MixColorLch::color(Lcha{a, ..ACCENT_COLOR})}),
+                        mix: Some(MixColorLch::color(Lcha{a, ..ACCENT_COLOR})),
                         ..UiElement::fit_content()
                     });
                 }
@@ -2191,10 +2191,7 @@ impl Ui
 
                 body.update(UiId::AnatomyNotification(*entity, AnatomyNotificationPart::Part(*part_id)), UiElement{
                     texture: UiTexture::CustomId(location.id),
-                    mix: Some(MixColorLch{
-                        keep_transparency: true,
-                        ..MixColorLch::color(Lcha{a: health_color.a * alpha, ..health_color})
-                    }),
+                    mix: Some(MixColorLch::color(Lcha{a: health_color.a * alpha, ..health_color})),
                     position: UiPosition::Inherit,
                     animation: Animation{
                         mix: Some(MixAnimation{
@@ -2426,7 +2423,7 @@ impl Ui
 
                 body.update(text_id, UiElement{
                     texture: UiTexture::Text{text: kind.name(), font_size: 30},
-                    mix: Some(MixColorLch{keep_transparency: true, ..MixColorLch::color(WHITE_COLOR)}),
+                    mix: Some(MixColorLch::color(WHITE_COLOR)),
                     position: UiPosition::Inherit,
                     ..UiElement::fit_content()
                 });
@@ -2508,7 +2505,7 @@ impl Ui
 
             body.update(UiId::Console(ConsolePart::Text), UiElement{
                 texture: UiTexture::Text{text: text.clone(), font_size: 15},
-                mix: Some(MixColorLch{keep_transparency: true, ..MixColorLch::color(ACCENT_COLOR)}),
+                mix: Some(MixColorLch::color(ACCENT_COLOR)),
                 animation: Animation::typing_text(),
                 ..UiElement::fit_content()
             });

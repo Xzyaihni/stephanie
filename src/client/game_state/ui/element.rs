@@ -7,7 +7,10 @@ use nalgebra::Vector2;
 
 use yanyaengine::TextureId;
 
-use crate::common::{render_info::*, colors::Lcha};
+use crate::{
+    client::SlicedTexture,
+    common::{render_info::*, colors::Lcha}
+};
 
 pub use crate::common::lazy_transform::{Scaling, Connection};
 
@@ -68,7 +71,8 @@ pub enum UiTexture
     Solid,
     Text{text: String, font_size: u32},
     Custom(Cow<'static, str>),
-    CustomId(TextureId)
+    CustomId(TextureId),
+    Sliced(SlicedTexture)
 }
 
 #[derive(Debug, Clone)]

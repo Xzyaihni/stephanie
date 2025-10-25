@@ -4,7 +4,8 @@ use std::{
     sync::Arc,
     rc::Rc,
     cell::RefCell,
-    net::TcpStream
+    net::TcpStream,
+    collections::HashMap
 };
 
 use nalgebra::{Vector2, Vector3};
@@ -24,7 +25,7 @@ use yanyaengine::{
 
 use game::Game;
 
-use game_state::{UiAnatomyLocations, PartCreator, GameState, GameStateInfo};
+use game_state::{UiAnatomyLocations, GameState, GameStateInfo};
 
 use crate::{
     LOG_PATH,
@@ -55,6 +56,8 @@ pub use game_state::{
 pub use connections_handler::ConnectionsHandler;
 pub use tiles_factory::{TilesFactory, ChunkInfo};
 
+pub use sliced_texture::{SlicedTexture, PartCreator};
+
 pub mod visibility_checker;
 
 pub mod game_state;
@@ -65,10 +68,13 @@ pub mod tiles_factory;
 
 pub mod world_receiver;
 
+mod sliced_texture;
+
 
 pub struct ClientInitInfo
 {
     pub app_info: AppInfo,
+    pub sliced_textures: Rc<HashMap<String, SlicedTexture>>,
     pub tilemap: TileMapWithTextures,
     pub data_infos: DataInfos
 }

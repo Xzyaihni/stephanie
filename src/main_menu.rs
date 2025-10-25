@@ -1,3 +1,8 @@
+use std::{
+    rc::Rc,
+    collections::HashMap
+};
+
 use nalgebra::{vector, Matrix4};
 
 use vulkano::descriptor_set::WriteDescriptorSet;
@@ -8,6 +13,7 @@ use crate::{
     app::ProgramShaders,
     client::{
         self,
+        SlicedTexture,
         game_state::{
             UiControls,
             ControlsController,
@@ -52,7 +58,8 @@ enum ButtonPartId
 {
     Panel,
     Text,
-    Body
+    Body,
+    Outline
 }
 
 pub enum MenuAction
@@ -69,7 +76,7 @@ enum MenuState
     Options
 }
 
-const BUTTON_SIZE: f32 = 50.0;
+const BUTTON_SIZE: f32 = 0.05;
 
 #[derive(Clone)]
 pub struct MenuClientInfo
@@ -83,6 +90,7 @@ pub struct MenuClientInfo
 pub struct MainMenu
 {
     shaders: ProgramShaders,
+    sliced_textures: Rc<HashMap<String, SlicedTexture>>,
     screen_object: SolidObject,
     controller: Controller<MainMenuId>,
     controls: ControlsController<MainMenuId>,
@@ -95,7 +103,8 @@ impl MainMenu
 {
     pub fn new(
         partial_info: &ObjectCreatePartialInfo,
-        shaders: ProgramShaders
+        shaders: ProgramShaders,
+        sliced_textures: Rc<HashMap<String, SlicedTexture>>
     ) -> Self
     {
         let controller = Controller::new(partial_info);
@@ -111,6 +120,7 @@ impl MainMenu
 
         Self{
             shaders,
+            sliced_textures,
             screen_object: client::create_screen_object(partial_info),
             controller,
             controls: ControlsController::new(),
@@ -130,15 +140,25 @@ impl MainMenu
     {
         let panel = parent.update(id(ButtonPartId::Panel), UiElement{
             width: UiSize::Rest(1.0).into(),
-            height: UiSize::Pixels(BUTTON_SIZE).into(),
+            height: UiElementSize{
+                minimum_size: Some(UiMinimumSize::Pixels(85.0)),
+                size: UiSize::Absolute(BUTTON_SIZE)
+            },
             children_layout: UiLayout::Vertical,
             ..Default::default()
         });
 
+        let mix_animation = MixAnimation{
+            decay: MixDecay::all(30.0),
+            ..Default::default()
+        };
+
+        let button_height = panel.try_height().unwrap_or(BUTTON_SIZE);
+
         let body = panel.update(id(ButtonPartId::Body), UiElement{
-            texture: UiTexture::Solid,
+            texture: UiTexture::Sliced(self.sliced_textures["rounded"]),
             mix: Some(MixColorLch::color(BACKGROUND_COLOR)),
-            width: UiSize::Pixels(BUTTON_SIZE * 3.0).into(),
+            width: UiSize::Absolute(button_height * 5.0).into(),
             height: UiSize::Rest(1.0).into(),
             animation: Animation{
                 scaling: Some(ScalingAnimation{
@@ -146,42 +166,55 @@ impl MainMenu
                     start_mode: Scaling::EaseOut{decay: 16.0},
                     ..Default::default()
                 }),
-                mix: Some(MixAnimation::default()),
+                mix: Some(mix_animation.clone()),
+                ..Default::default()
+            },
+            ..Default::default()
+        });
+
+        let inside_button = body.is_mouse_inside();
+
+        let text_mix = MixColorLch::color(if inside_button { BACKGROUND_COLOR } else { ACCENT_COLOR });
+
+        let outline_body = body.update(id(ButtonPartId::Outline), UiElement{
+            texture: UiTexture::Sliced(self.sliced_textures["rounded_outline"]),
+            mix: Some(MixColorLch::color(ACCENT_COLOR)),
+            width: UiSize::Rest(1.0).into(),
+            height: UiSize::Rest(1.0).into(),
+            animation: Animation{
+                mix: Some(mix_animation.clone()),
                 ..Default::default()
             },
             children_layout: UiLayout::Vertical,
             ..Default::default()
         });
 
-        let text = body.update(id(ButtonPartId::Text), UiElement{
-            texture: UiTexture::Text{text: name.to_owned(), font_size: 30},
-            mix: Some(MixColorLch{keep_transparency: true, ..MixColorLch::color(ACCENT_COLOR)}),
-            animation: Animation{
-                mix: Some(MixAnimation::default()),
-                ..Default::default()
-            },
-            ..UiElement::fit_content()
-        });
-
-        let inside_button = body.is_mouse_inside();
+        if let Some(height) = body.try_height()
+        {
+            let font_size = (self.controller.screen_size().max() * height * 0.6) as u32;
+            outline_body.update(id(ButtonPartId::Text), UiElement{
+                texture: UiTexture::Text{text: name.to_owned(), font_size},
+                mix: Some(text_mix),
+                animation: Animation{
+                    mix: Some(mix_animation),
+                    ..Default::default()
+                },
+                inherit_animation: false,
+                ..UiElement::fit_content()
+            });
+        }
 
         if inside_button
         {
-            {
-                let mut element = body.element();
-                element.width = UiSize::Pixels(BUTTON_SIZE * 4.0).into();
-                element.mix = Some(MixColorLch::color(ACCENT_COLOR));
-            }
-
-            text.element().mix = Some(MixColorLch{keep_transparency: true, ..MixColorLch::color(BACKGROUND_COLOR)});
-        }
-
-        if !inside_button
+            let mut element = body.element();
+            element.width = UiSize::Absolute(button_height * 6.0).into();
+            element.mix = Some(MixColorLch::color(ACCENT_COLOR));
+        } else
         {
             body.element().animation.scaling.as_mut().unwrap().start_mode = Scaling::Spring(SpringScalingInfo{
                 start_velocity: vector![0.0, 0.0],
-                damping: 0.0001,
-                strength: 200.0
+                damping: 0.00001,
+                strength: 230.0
             }.into());
         }
 
@@ -199,11 +232,19 @@ impl MainMenu
 
         add_padding_vertical(menu, UiSize::Rest(0.25).into());
 
-        let title_size: UiElementSize<_> = UiSize::FitContent(2.0).into();
+        let title_size = 0.15;
+
+        let title_texture = UiTexture::Custom("ui/title.png".into());
+        let aspect = {
+            let size = self.controller.texture_size(&title_texture);
+
+            size.x / size.y
+        };
+
         menu.update(MainMenuId::Title, UiElement{
-            texture: UiTexture::Custom("ui/title.png".into()),
-            width: title_size.clone(),
-            height: title_size,
+            texture: title_texture,
+            width: UiSize::Absolute(title_size * aspect).into(),
+            height: UiSize::Absolute(title_size).into(),
             animation: Animation{
                 scaling: Some(ScalingAnimation{
                     start_mode: Scaling::Spring(SpringScalingInfo{
@@ -218,7 +259,7 @@ impl MainMenu
             ..Default::default()
         });
 
-        add_padding_vertical(menu, UiSize::Rest(1.0).into());
+        add_padding_vertical(menu, UiSize::Rest(0.3).into());
 
         let buttons_panel = menu.update(MainMenuId::Buttons, UiElement{
             width: UiSize::Rest(1.0).into(),
@@ -226,7 +267,7 @@ impl MainMenu
             ..Default::default()
         });
 
-        let button_pad = || add_padding_vertical(buttons_panel, UiSize::Pixels(BUTTON_SIZE * 0.75).into());
+        let button_pad = || add_padding_vertical(buttons_panel, UiSize::Absolute(BUTTON_SIZE * 0.75).into());
 
         if self.update_button(controls, buttons_panel, |part| MainMenuId::Start(part), "start")
         {
