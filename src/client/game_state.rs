@@ -1683,12 +1683,9 @@ impl GameState
 
     pub fn resize(&mut self, aspect: f32)
     {
-        let mut camera = self.camera.write();
-        camera.resize(aspect);
         self.ui_camera.resize(aspect);
 
-        let size = camera.size();
-        drop(camera);
+        let size = self.camera.read().size();
 
         if !self.debug_visibility.is_detached()
         {

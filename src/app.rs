@@ -543,9 +543,11 @@ impl YanyaApp for App
 
     fn mouse_move(&mut self, position: (f64, f64))
     {
+        self.client.mouse_move(position);
+
         match &mut self.scene
         {
-            Scene::Game => self.client.mouse_move(position),
+            Scene::Game => (),
             Scene::Menu(x) => x.mouse_move(position)
         }
     }
@@ -561,9 +563,11 @@ impl YanyaApp for App
 
     fn resize(&mut self, aspect: f32)
     {
+        self.client.resize(aspect);
+
         match &mut self.scene
         {
-            Scene::Game => self.client.resize(aspect),
+            Scene::Game => (),
             Scene::Menu(x) => x.resize(aspect)
         }
     }

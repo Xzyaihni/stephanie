@@ -244,6 +244,8 @@ impl Client
 
     pub fn resize(&mut self, aspect: f32)
     {
+        self.camera.write().resize(aspect);
+
         some_or_return!(self.game_state.as_ref()).borrow_mut().resize(aspect);
     }
 
