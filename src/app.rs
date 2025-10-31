@@ -194,6 +194,7 @@ pub struct ProgramShaders
     pub light_shadow: ShaderId,
     pub lighting: ShaderId,
     pub clear_alpha: ShaderId,
+    pub menu_background: ShaderId,
     pub ui: ShaderId,
     pub final_mix: ShaderId
 }

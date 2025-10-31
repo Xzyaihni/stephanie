@@ -6,7 +6,7 @@ use std::{
     cell::{Ref, RefCell},
     rc::Rc,
     ops::ControlFlow,
-    collections::{VecDeque, BTreeMap, btree_map::Entry},
+    collections::{VecDeque, BTreeMap, HashMap, btree_map::Entry},
     sync::{
         Arc,
         mpsc::{self, TryRecvError, Receiver}
@@ -33,7 +33,7 @@ use yanyaengine::{
 use crate::{
     debug_config::*,
     app::{ProgramShaders, TimestampQuery},
-    client::{self, PartCreator},
+    client::{self, SlicedTexture, PartCreator},
     common::{
         some_or_value,
         some_or_return,
@@ -540,6 +540,7 @@ impl ClientEntitiesContainer
 pub struct GameStateInfo
 {
     pub shaders: ProgramShaders,
+    pub sliced_textures: Rc<HashMap<String, SlicedTexture>>,
     pub camera: Arc<RwLock<Camera>>,
     pub timestamp_query: TimestampQuery,
     pub data_infos: DataInfos,
@@ -900,6 +901,7 @@ impl GameState
                     camera: entities.camera_entity,
                     player: entities.player_entity
                 },
+                info.sliced_textures,
                 &mut *anatomy_locations,
                 user_receiver.clone()
             )

@@ -154,6 +154,14 @@ impl From<Lcha> for Lch
     }
 }
 
+impl From<Lcha> for [u8; 3]
+{
+    fn from(value: Lcha) -> Self
+    {
+        Rgb::from(Lab::from(Lch::from(value))).0
+    }
+}
+
 impl From<Lch> for [f32; 3]
 {
     fn from(value: Lch) -> Self

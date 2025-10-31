@@ -724,7 +724,7 @@ impl YanyaApp for ChunkPreviewer
 
                 add_padding_horizontal(panel, UiSize::Pixels(30.0).into());
                 panel.update(id(UiScrollbarPart::Text), UiElement{
-                    texture: UiTexture::Text{text: description, font_size: 20},
+                    texture: UiTexture::Text(TextInfo::new_simple(20, description)),
                     ..UiElement::fit_content()
                 });
             };
@@ -753,7 +753,7 @@ impl YanyaApp for ChunkPreviewer
                 });
 
                 button.update(UiId::Button(id, ButtonPartId::Text), UiElement{
-                    texture: UiTexture::Text{text: name.to_owned(), font_size: 20},
+                    texture: UiTexture::Text(TextInfo::new_simple(20, name.to_owned())),
                     ..UiElement::fit_content()
                 });
 
@@ -801,7 +801,7 @@ impl YanyaApp for ChunkPreviewer
                 }
 
                 name_body.update(id(TextboxPartId::Text), UiElement{
-                    texture: UiTexture::Text{text: text.clone(), font_size: 20},
+                    texture: UiTexture::Text(TextInfo::new_simple(20, text.clone())),
                     ..UiElement::fit_content()
                 });
 

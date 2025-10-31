@@ -201,6 +201,15 @@ mod final_fragment
     }
 }
 
+mod menu_background_fragment
+{
+    vulkano_shaders::shader!
+    {
+        ty: "fragment",
+        path: "shaders/menu_background.frag"
+    }
+}
+
 
 pub const DARKEN: f32 = 0.97;
 pub const SHADOW_COLOR: Vector3<f32> = Vector3::new(0.07, 0.02, 0.1);
@@ -443,6 +452,16 @@ pub fn create() -> ShadersCreated
         ..Default::default()
     });
 
+    let menu_background_shader = shaders.push(Shader{
+        shader: ShadersGroup::new(
+            final_vertex::load,
+            menu_background_fragment::load
+        ),
+        per_vertex: Some(vec![SimpleVertex::per_vertex()]),
+        subpass: 3,
+        ..Default::default()
+    });
+
     let above_world_shader = shaders.push(Shader{
         shader: ShadersGroup::new(
             default_vertex,
@@ -478,6 +497,7 @@ pub fn create() -> ShadersCreated
             light_shadow: light_shadow_shader,
             lighting: lighting_shader,
             clear_alpha: clear_alpha_shader,
+            menu_background: menu_background_shader,
             ui: ui_shader,
             final_mix: final_mix_shader
         }

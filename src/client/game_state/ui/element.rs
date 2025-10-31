@@ -12,6 +12,8 @@ use crate::{
     common::{render_info::*, colors::Lcha}
 };
 
+pub use yanyaengine::{TextInfo, TextBlocks, TextInfoBlock, TextOutline};
+
 pub use crate::common::lazy_transform::{Scaling, Connection};
 
 
@@ -69,7 +71,7 @@ pub enum UiTexture
 {
     None,
     Solid,
-    Text{text: String, font_size: u32},
+    Text(TextInfo<'static>),
     Custom(Cow<'static, str>),
     CustomId(TextureId),
     Sliced(SlicedTexture)

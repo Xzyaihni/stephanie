@@ -22,13 +22,16 @@ use yanyaengine::{
 
 use crate::{
     debug_config::*,
-    client::game_state::{
-        GameState,
-        UiAnatomyLocations,
-        UiControls,
-        UiEvent,
-        GameUiEvent,
-        UiReceiver
+    client::{
+        SlicedTexture,
+        game_state::{
+            GameState,
+            UiAnatomyLocations,
+            UiControls,
+            UiEvent,
+            GameUiEvent,
+            UiReceiver
+        }
     },
     common::{
         some_or_return,
@@ -84,9 +87,9 @@ const WHITE_COLOR: Lcha = Lcha{l: 100.0, c: 0.0, h: 0.0, a: 1.0};
 const GRAY_COLOR: Lcha = Lcha{l: 5.0, c: 0.0, h: 0.0, a: 1.0};
 const BLACK_COLOR: Lcha = Lcha{l: 0.0, c: 0.0, h: 0.0, a: 1.0};
 
-pub const BACKGROUND_COLOR: Lcha = Lcha{h: ACCENT_COLOR.h, ..WHITE_COLOR};
-pub const ACCENT_COLOR: Lcha = Lcha{l: 70.0, c: 90.0, h: 6.0, a: 1.0};
-pub const HIGHLIGHTED_COLOR: Lcha = Lcha{l: 80.0, c: 40.0, h: 6.0, a: 1.0};
+pub const BACKGROUND_COLOR: Lcha = Lcha{h: HIGHLIGHTED_COLOR.h, ..WHITE_COLOR};
+pub const ACCENT_COLOR: Lcha = Lcha{h: HIGHLIGHTED_COLOR.h, l: 90.0, ..WHITE_COLOR};
+pub const HIGHLIGHTED_COLOR: Lcha = Lcha{l: 70.0, c: 90.0, h: 6.0, a: 1.0};
 
 const MISSING_PART_COLOR: Lcha = Lcha{l: 50.0, a: 0.3, ..BLACK_COLOR};
 
@@ -215,8 +218,15 @@ pub enum ConsolePart
 pub enum NotificationPart
 {
     Icon,
-    Body,
+    Body(OutlinePart),
     Text
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum OutlinePart
+{
+    Normal,
+    Outline
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -779,7 +789,7 @@ impl WindowKind
 
             add_padding_horizontal(titlebar, padding_size.clone());
             titlebar.update(id(WindowPart::Title(TitlePart::Text)), UiElement{
-                texture: UiTexture::Text{text: title, font_size: 25},
+                texture: UiTexture::Text(TextInfo::new_simple(25, title)),
                 mix: Some(MixColorLch::color(ACCENT_COLOR)),
                 ..UiElement::fit_content()
             });
@@ -937,7 +947,7 @@ impl WindowKind
                     add_padding_horizontal(body, UiSize::Pixels(ITEM_PADDING / 2.0).into());
 
                     body.update(id(ItemPart::Name), UiElement{
-                        texture: UiTexture::Text{text: item.name.clone(), font_size},
+                        texture: UiTexture::Text(TextInfo::new_simple(font_size, item.name.clone())),
                         mix: Some(MixColorLch::color(ACCENT_COLOR)),
                         ..UiElement::fit_content()
                     });
@@ -1007,7 +1017,7 @@ impl WindowKind
                 add_padding_horizontal(body, UiSize::Pixels(BODY_PADDING).into());
 
                 body.update(id(ItemInfoPart::Text), UiElement{
-                    texture: UiTexture::Text{text: description, font_size: SMALL_TEXT_SIZE},
+                    texture: UiTexture::Text(TextInfo::new_simple(SMALL_TEXT_SIZE, description)),
                     mix: Some(MixColorLch::color(ACCENT_COLOR)),
                     ..UiElement::fit_content()
                 });
@@ -1034,7 +1044,7 @@ impl WindowKind
                 add_padding_horizontal(body, UiSize::Pixels(BODY_PADDING).into());
 
                 body.update(UiId::Window(window_id, WindowPart::Stats), UiElement{
-                    texture: UiTexture::Text{text: kills_text, font_size: SMALL_TEXT_SIZE},
+                    texture: UiTexture::Text(TextInfo::new_simple(SMALL_TEXT_SIZE, kills_text)),
                     mix: Some(MixColorLch::color(ACCENT_COLOR)),
                     ..UiElement::fit_content()
                 });
@@ -1130,7 +1140,7 @@ impl WindowKind
                     });
 
                     title.update(id(AnatomyTooltipPart::Name), UiElement{
-                        texture: UiTexture::Text{text: part_id.to_string(), font_size: SMALL_TEXT_SIZE},
+                        texture: UiTexture::Text(TextInfo::new_simple(SMALL_TEXT_SIZE, part_id.to_string())),
                         mix: Some(MixColorLch::color(ACCENT_COLOR)),
                         ..UiElement::fit_content()
                     });
@@ -1206,7 +1216,7 @@ impl WindowKind
                         add_padding_horizontal(bar_body, UiSize::Rest(1.0 - value).into());
 
                         body.update(text_id, UiElement{
-                            texture: UiTexture::Text{text: bar_id.to_string(), font_size: SMALLEST_TEXT_SIZE},
+                            texture: UiTexture::Text(TextInfo::new_simple(SMALLEST_TEXT_SIZE, bar_id.to_string())),
                             mix: Some(MixColorLch::color(WHITE_COLOR)),
                             position: UiPosition::Inherit,
                             ..UiElement::fit_content()
@@ -1390,6 +1400,7 @@ pub struct Ui
     items_info: Arc<ItemsInfo>,
     assets: Arc<Mutex<Assets>>,
     fonts: Rc<FontsContainer>,
+    sliced_textures: Rc<HashMap<String, SlicedTexture>>,
     anatomy_locations: UiAnatomyLocations,
     anatomy_locations_small: UiAnatomyLocations,
     user_receiver: Rc<RefCell<UiReceiver>>,
@@ -1419,6 +1430,7 @@ impl Ui
         info: &mut ObjectCreateInfo,
         entities: &mut ClientEntities,
         ui_entities: UiEntities,
+        sliced_textures: Rc<HashMap<String, SlicedTexture>>,
         anatomy_locations: &mut dyn FnMut(&mut ObjectCreateInfo, &str) -> UiAnatomyLocations,
         user_receiver: Rc<RefCell<UiReceiver>>
     ) -> Rc<RefCell<Self>>
@@ -1429,6 +1441,7 @@ impl Ui
             items_info,
             assets: info.partial.assets.clone(),
             fonts: info.partial.builder_wrapper.fonts().clone(),
+            sliced_textures,
             anatomy_locations: anatomy_locations(info, "anatomy_areas"),
             anatomy_locations_small: anatomy_locations(info, "anatomy_areas_small"),
             user_receiver,
@@ -1741,7 +1754,7 @@ impl Ui
                 add_padding_horizontal(body, UiSize::Pixels(ITEM_PADDING).into());
 
                 body.update(id(PopupButtonPart::Text), UiElement{
-                    texture: UiTexture::Text{text: action.name().to_owned(), font_size: SMALL_TEXT_SIZE},
+                    texture: UiTexture::Text(TextInfo::new_simple(SMALL_TEXT_SIZE, action.name().to_owned())),
                     mix: Some(MixColorLch::color(ACCENT_COLOR)),
                     ..UiElement::fit_content()
                 });
@@ -1833,7 +1846,7 @@ impl Ui
             });
 
             body.update(UiId::Loading(LoadingPart::Text), UiElement{
-                texture: UiTexture::Text{text: "LOADING".to_owned(), font_size: BIG_TEXT_SIZE},
+                texture: UiTexture::Text(TextInfo::new_simple(BIG_TEXT_SIZE, "LOADING")),
                 ..UiElement::fit_content()
             });
 
@@ -1893,18 +1906,23 @@ impl Ui
             });
 
             body.update(UiId::DeathScreen(DeathScreenPart::Text), UiElement{
-                texture: UiTexture::Text{text: "stephy is dead :(".to_owned(), font_size: MEDIUM_TEXT_SIZE},
+                texture: UiTexture::Text(TextInfo::new_simple(MEDIUM_TEXT_SIZE, "stephy is dead :(")),
                 mix: Some(MixColorLch::color(WHITE_COLOR)),
                 ..UiElement::fit_content()
             });
 
             add_padding_vertical(body, UiSize::Pixels(TINY_PADDING).into());
 
-            let killed_text = format!("killed {kills} enemies");
-
             body.update(UiId::DeathScreen(DeathScreenPart::InfoText), UiElement{
-                texture: UiTexture::Text{text: killed_text, font_size: MEDIUM_TEXT_SIZE},
-                mix: Some(MixColorLch::color(WHITE_COLOR)),
+                texture: UiTexture::Text(TextInfo{
+                    font_size: MEDIUM_TEXT_SIZE,
+                    text: TextBlocks(vec![
+                        TextInfoBlock{color: WHITE_COLOR.into(), text: "killed ".into()},
+                        TextInfoBlock{color: HIGHLIGHTED_COLOR.into(), text: kills.to_string().into()},
+                        TextInfoBlock{color: WHITE_COLOR.into(), text: " enemies".into()}
+                    ]),
+                    ..Default::default()
+                }),
                 ..UiElement::fit_content()
             });
 
@@ -1920,7 +1938,7 @@ impl Ui
             add_padding_horizontal(button, UiSize::Pixels(TINY_PADDING).into());
 
             button.update(UiId::DeathScreen(DeathScreenPart::ButtonText), UiElement{
-                texture: UiTexture::Text{text: "RESTART".to_owned(), font_size: BIG_TEXT_SIZE},
+                texture: UiTexture::Text(TextInfo::new_simple(BIG_TEXT_SIZE, "RESTART")),
                 mix: Some(MixColorLch::color(WHITE_COLOR)),
                 ..UiElement::fit_content()
             });
@@ -2075,16 +2093,26 @@ impl Ui
 
             let position = some_or_value!(position_of(notification.owner), false);
 
-            let body = self.controller.update(id(NotificationPart::Body), UiElement{
-                texture: UiTexture::Solid,
-                mix: Some(MixColorLch::color(Lcha{a: 0.5, ..BACKGROUND_COLOR})),
+            let outer_body = self.controller.update(id(NotificationPart::Body(OutlinePart::Normal)), UiElement{
+                texture: UiTexture::Sliced(self.sliced_textures["rounded"]),
+                mix: Some(MixColorLch::color(BACKGROUND_COLOR)),
                 position: UiPosition::Absolute{position, align: UiPositionAlign{
                     horizontal: AlignHorizontal::Middle,
                     vertical: AlignVertical::Bottom
                 }},
                 animation: Animation{
-                    position: None,
-                    ..Animation::normal()
+                    mix: Some(MixAnimation::default()),
+                    ..Default::default()
+                },
+                ..Default::default()
+            });
+
+            let body = outer_body.update(id(NotificationPart::Body(OutlinePart::Outline)), UiElement{
+                texture: UiTexture::Sliced(self.sliced_textures["rounded_outline"]),
+                mix: Some(MixColorLch::color(ACCENT_COLOR)),
+                animation: Animation{
+                    mix: Some(MixAnimation::default()),
+                    ..Default::default()
                 },
                 ..Default::default()
             });
@@ -2131,7 +2159,7 @@ impl Ui
                     add_padding_horizontal(body, UiSize::Pixels(NOTIFICATION_PADDING * 0.5).into());
 
                     body.update(id(NotificationPart::Text), UiElement{
-                        texture: UiTexture::Text{text: text.clone(), font_size: SMALL_TEXT_SIZE},
+                        texture: UiTexture::Text(TextInfo::new_simple(SMALL_TEXT_SIZE, text.clone())),
                         mix: Some(MixColorLch::color(Lcha{a, ..ACCENT_COLOR})),
                         ..UiElement::fit_content()
                     });
@@ -2140,7 +2168,15 @@ impl Ui
 
             add_padding_horizontal(body, UiSize::Pixels(NOTIFICATION_PADDING).into());
 
-            notification.lifetime > 0.0
+            let close = notification.lifetime <= 0.0;
+
+            if close
+            {
+                outer_body.element().mix = Some(MixColorLch::color(Lcha{a: 0.0, ..BACKGROUND_COLOR}));
+                body.element().mix = Some(MixColorLch::color(Lcha{a: 0.0, ..ACCENT_COLOR}));
+            }
+
+            !close
         });
 
         self.anatomy_notifications.retain(|entity, (lifetime, parts)|
@@ -2422,7 +2458,7 @@ impl Ui
                 add_padding_horizontal(bar_body, UiSize::Rest(1.0 - bar.value).into());
 
                 body.update(text_id, UiElement{
-                    texture: UiTexture::Text{text: kind.name(), font_size: 30},
+                    texture: UiTexture::Text(TextInfo::new_simple(30, kind.name())),
                     mix: Some(MixColorLch::color(WHITE_COLOR)),
                     position: UiPosition::Inherit,
                     ..UiElement::fit_content()
@@ -2470,7 +2506,7 @@ impl Ui
             });
 
             self.controller.update(UiId::Paused(PausedPart::Text), UiElement{
-                texture: UiTexture::Text{text: "PAUSED".to_owned(), font_size: BIG_TEXT_SIZE},
+                texture: UiTexture::Text(TextInfo::new_simple(BIG_TEXT_SIZE, "PAUSED")),
                 position: UiPosition::Absolute{position: Vector2::zeros(), align: Default::default()},
                 animation: Animation{
                     scaling: Some(ScalingAnimation{
@@ -2504,7 +2540,7 @@ impl Ui
             });
 
             body.update(UiId::Console(ConsolePart::Text), UiElement{
-                texture: UiTexture::Text{text: text.clone(), font_size: 15},
+                texture: UiTexture::Text(TextInfo::new_simple(15, text.clone())),
                 mix: Some(MixColorLch::color(ACCENT_COLOR)),
                 animation: Animation::typing_text(),
                 ..UiElement::fit_content()

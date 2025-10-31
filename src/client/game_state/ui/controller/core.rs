@@ -17,7 +17,6 @@ use yanyaengine::{
     FontsContainer,
     Assets,
     TextObject,
-    TextInfo,
     DefaultTexture,
     TextureId,
     game_object::*
@@ -318,12 +317,9 @@ impl UiElementCached
         let kind = match texture
         {
             UiTexture::None => None,
-            UiTexture::Text{text, font_size} =>
+            UiTexture::Text(info) =>
             {
-                Some(RenderObjectKind::Text{
-                    text: text.clone(),
-                    font_size: *font_size
-                })
+                Some(RenderObjectKind::Text(info.clone()))
             },
             UiTexture::Solid =>
             {
@@ -1164,12 +1160,13 @@ impl TextureSizer
         match texture
         {
             UiTexture::None => Vector2::zeros(),
-            UiTexture::Text{text, font_size} =>
+            UiTexture::Text(info) =>
             {
-                TextObject::calculate_bounds(TextInfo{
-                    font_size: *font_size,
-                    text
-                }, self.fonts.default_font(), &self.size).component_mul(&(self.size / self.size.max()))
+                TextObject::calculate_bounds(
+                    info,
+                    self.fonts.default_font(),
+                    &self.size
+                ).component_mul(&(self.size / self.size.max()))
             },
             UiTexture::Solid
             | UiTexture::Custom(_)

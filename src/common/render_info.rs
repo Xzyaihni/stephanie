@@ -347,7 +347,7 @@ pub enum RenderObjectKind
     TextureId{id: TextureId},
     TextureRotating{ids: DirectionsGroup<TextureId>, offset: Option<f32>},
     TextureSliced{texture: SlicedTexture, normal_scale: Vector2<f32>},
-    Text{text: String, font_size: u32}
+    Text(TextInfo<'static>)
 }
 
 impl RenderObjectKind
@@ -432,15 +432,12 @@ impl RenderObjectKind
 
                 Self::TextureId{id}.into_client(transform, create_info)
             },
-            Self::Text{ref text, font_size} =>
+            Self::Text(inner) =>
             {
                 let object = create_info.partial.builder_wrapper.create_text(
                     TextCreateInfo{
                         transform,
-                        inner: TextInfo{
-                            font_size,
-                            text
-                        }
+                        inner
                     }
                 );
 

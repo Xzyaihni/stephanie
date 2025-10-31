@@ -174,6 +174,7 @@ impl Client
 
         let info = GameStateInfo{
             shaders: client_init_info.app_info.shaders,
+            sliced_textures: client_init_info.sliced_textures,
             camera: camera.clone(),
             timestamp_query,
             data_infos: client_init_info.data_infos,
