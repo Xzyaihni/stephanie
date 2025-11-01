@@ -5,6 +5,22 @@ use crate::common::{lerp, EaseOut};
 pub use image::{Rgb, Rgba};
 
 
+pub fn srgb_to_linear(x: [f32; 3]) -> [f32; 3]
+{
+    fn f(value: f32) -> f32
+    {
+        if value <= 0.04045
+        {
+            value / 12.92
+        } else
+        {
+            ((value + 0.055) / 1.055).powf(2.4)
+        }
+    }
+
+    x.map(f)
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct Laba
 {
@@ -367,22 +383,7 @@ impl From<Rgb<f32>> for Xyz
 {
     fn from(value: Rgb<f32>) -> Self
     {
-        let f = |value: f32| -> f32
-        {
-            let value = if value <= 0.04045
-            {
-                value / 12.92
-            } else
-            {
-                ((value + 0.055) / 1.055).powf(2.4)
-            };
-
-            value * 100.0
-        };
-
-        let r = f(value.0[0]);
-        let g = f(value.0[1]);
-        let b = f(value.0[2]);
+        let [r, g, b] = srgb_to_linear(value.0).map(|x| x * 100.0);
 
         let x = 0.4124564 * r + 0.3575761 * g + 0.1804375 * b;
         let y = 0.2126729 * r + 0.7151522 * g + 0.0721750 * b;

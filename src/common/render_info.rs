@@ -38,7 +38,7 @@ use crate::{
         lerp,
         with_z,
         rotate_point,
-        colors::Lcha,
+        colors::{srgb_to_linear, Lcha},
         ServerToClient,
         world::{TileRotation, PosDirection, DirectionsGroup}
     }
@@ -106,8 +106,11 @@ impl From<Option<MixColor>> for RawMixColor
     {
         if let Some(color) = color
         {
+            let [r, g, b, a] = color.color;
+            let [new_r, new_g, new_b] = srgb_to_linear([r, g, b]);
+
             Self{
-                other_color: color.color,
+                other_color: [new_r, new_g, new_b, a],
                 other_mix: color.amount,
                 keep_transparency: color.keep_transparency as u32
             }
