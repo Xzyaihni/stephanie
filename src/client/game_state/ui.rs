@@ -83,13 +83,12 @@ const MEDIUM_TEXT_SIZE: u32 = 25;
 const SMALL_TEXT_SIZE: u32 = 20;
 const SMALLEST_TEXT_SIZE: u32 = 15;
 
-const WHITE_COLOR: Lcha = Lcha{l: 100.0, c: 0.0, h: 0.0, a: 1.0};
-const GRAY_COLOR: Lcha = Lcha{l: 5.0, c: 0.0, h: 0.0, a: 1.0};
-const BLACK_COLOR: Lcha = Lcha{l: 0.0, c: 0.0, h: 0.0, a: 1.0};
+pub const WHITE_COLOR: Lcha = Lcha{l: 100.0, c: 0.0, h: 0.0, a: 1.0};
+pub const GRAY_COLOR: Lcha = Lcha{l: 5.0, c: 0.0, h: 0.0, a: 1.0};
+pub const BLACK_COLOR: Lcha = Lcha{l: 0.0, c: 0.0, h: 0.0, a: 1.0};
 
-pub const BACKGROUND_COLOR: Lcha = Lcha{h: HIGHLIGHTED_COLOR.h, ..WHITE_COLOR};
-pub const ACCENT_COLOR: Lcha = Lcha{h: HIGHLIGHTED_COLOR.h, l: 90.0, ..WHITE_COLOR};
-pub const HIGHLIGHTED_COLOR: Lcha = Lcha{l: 70.0, c: 90.0, h: 6.0, a: 1.0};
+pub const BACKGROUND_COLOR: Lcha = Lcha{h: ACCENT_COLOR.h, ..WHITE_COLOR};
+pub const ACCENT_COLOR: Lcha = Lcha{l: 78.0, c: 42.8, h: 5.943, a: 1.0};
 
 const MISSING_PART_COLOR: Lcha = Lcha{l: 50.0, a: 0.3, ..BLACK_COLOR};
 
@@ -433,7 +432,7 @@ fn handle_button(
 
     if button.is_mouse_inside()
     {
-        button.element().mix.as_mut().unwrap().color = HIGHLIGHTED_COLOR;
+        button.element().mix.as_mut().unwrap().color = ACCENT_COLOR;
 
         if info.controls.take_click_down()
         {
@@ -598,7 +597,7 @@ impl<T> UiList<T>
 
             if (bar.is_mouse_inside() || info.controls.observe_action_held(&scrollbar_id)) && !info.mouse_taken
             {
-                bar.element().mix.as_mut().unwrap().color = HIGHLIGHTED_COLOR;
+                bar.element().mix.as_mut().unwrap().color = ACCENT_COLOR;
             }
         }
 
@@ -1918,7 +1917,7 @@ impl Ui
                     font_size: MEDIUM_TEXT_SIZE,
                     text: TextBlocks(vec![
                         TextInfoBlock{color: WHITE_COLOR.into(), text: "killed ".into()},
-                        TextInfoBlock{color: HIGHLIGHTED_COLOR.into(), text: kills.to_string().into()},
+                        TextInfoBlock{color: ACCENT_COLOR.into(), text: kills.to_string().into()},
                         TextInfoBlock{color: WHITE_COLOR.into(), text: " enemies".into()}
                     ]),
                     ..Default::default()

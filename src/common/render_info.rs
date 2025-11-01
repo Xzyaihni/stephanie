@@ -498,7 +498,7 @@ impl Default for Scissor
 
 impl Scissor
 {
-    pub fn into_global(self, size: [f32; 2]) -> VulkanoScissor
+    pub fn into_global(mut self, size: [f32; 2]) -> VulkanoScissor
     {
         let [x, y] = size;
 
@@ -506,6 +506,19 @@ impl Scissor
         {
             (value * s) as u32
         };
+
+        (0..2).for_each(|i|
+        {
+            let offset = &mut self.offset[i];
+            if *offset < 0.0
+            {
+                let extent = &mut self.extent[i];
+
+                *extent = *extent + *offset;
+
+                *offset = 0.0;
+            }
+        });
 
         VulkanoScissor{
             offset: [s(self.offset[0], x), s(self.offset[1], y)],

@@ -863,7 +863,8 @@ pub struct UiElement<Id>
     pub children_layout: UiLayout,
     pub width: UiElementSize<Id>,
     pub height: UiElementSize<Id>,
-    pub scissor: bool
+    pub scissor: bool,
+    pub scissor_override: Option<Id>
 }
 
 impl<Id> Default for UiElement<Id>
@@ -879,7 +880,8 @@ impl<Id> Default for UiElement<Id>
             children_layout: UiLayout::Horizontal,
             width: UiElementSize::default(),
             height: UiElementSize::default(),
-            scissor: false
+            scissor: false,
+            scissor_override: None
         }
     }
 }

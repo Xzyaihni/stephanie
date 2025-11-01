@@ -46,6 +46,12 @@ pub trait Inputable
     fn position_mapped(&self, check_position: Vector2<f32>) -> Option<Vector2<f32>>;
     fn mouse_position(&self) -> Vector2<f32>;
 
+    fn try_width(&self) -> Option<f32>;
+    fn try_height(&self) -> Option<f32>;
+    fn try_position(&self) -> Option<Vector2<f32>>;
+
+    fn exists(&self) -> bool;
+
     fn position_inside(&self, check_position: Vector2<f32>) -> Option<Vector2<f32>>
     {
         let mapped = self.position_mapped(check_position)?;
@@ -158,6 +164,21 @@ impl<'a, Id: Idable> TreeInserter<'a, Id>
         f(shared.elements.get(id))
     }
 
+    pub fn try_width_animated(&self) -> Option<f32>
+    {
+        self.persistent_element(|x| x.map(|x| x.cached.current_scale().x))
+    }
+
+    pub fn try_height_animated(&self) -> Option<f32>
+    {
+        self.persistent_element(|x| x.map(|x| x.cached.current_scale().y))
+    }
+
+    pub fn try_position_animated(&self) -> Option<Vector2<f32>>
+    {
+        self.persistent_element(|x| x.map(|x| x.cached.current_position()))
+    }
+
     pub fn try_position(&self) -> Option<Vector2<f32>>
     {
         self.persistent_element(|x| x.map(|x| x.deferred.position.unwrap()))
@@ -187,6 +208,26 @@ impl<Id: Idable> Inputable for TreeInserter<'_, Id>
     fn mouse_position(&self) -> Vector2<f32>
     {
         self.tree_element().shared.borrow().mouse_position
+    }
+
+    fn try_width(&self) -> Option<f32>
+    {
+        Self::try_width(self)
+    }
+
+    fn try_height(&self) -> Option<f32>
+    {
+        Self::try_height(self)
+    }
+
+    fn try_position(&self) -> Option<Vector2<f32>>
+    {
+        Self::try_position(self)
+    }
+
+    fn exists(&self) -> bool
+    {
+        self.persistent_element(|x| x.is_some())
     }
 }
 
@@ -254,10 +295,7 @@ impl UiElementCached
     ) -> Self
     {
         let last_scissor = scissor;
-        let scissor = Self::calculate_scissor(
-            Vector2::from(create_info.partial.size),
-            scissor
-        );
+        let scissor = Self::calculate_scissor(Vector2::from(create_info.partial.size), scissor);
 
         let scale = {
             let scaling = element.animation.scaling
@@ -1343,6 +1381,36 @@ impl<Id: Idable> Inputable for InputHandler<'_, Id>
     {
         self.mouse_position
     }
+
+    fn try_width(&self) -> Option<f32>
+    {
+        self.persistent_element(|x| x.map(|x| x.deferred.width.unwrap()))
+    }
+
+    fn try_height(&self) -> Option<f32>
+    {
+        self.persistent_element(|x| x.map(|x| x.deferred.height.unwrap()))
+    }
+
+    fn try_position(&self) -> Option<Vector2<f32>>
+    {
+        self.persistent_element(|x| x.map(|x| x.deferred.position.unwrap()))
+    }
+
+    fn exists(&self) -> bool
+    {
+        self.persistent_element(|x| x.is_some())
+    }
+}
+
+impl<Id: Idable> InputHandler<'_, Id>
+{
+    fn persistent_element<T>(&self, f: impl FnOnce(Option<&Element<Id>>) -> T) -> T
+    {
+        let shared = self.shared.borrow();
+
+        f(shared.elements.get(self.id))
+    }
 }
 
 pub struct Controller<Id>
@@ -1434,13 +1502,19 @@ impl<Id: Idable> Controller<Id>
         {
             let mut shared = self.shared.borrow_mut();
 
-            let scissor = this.deferred.scissor.as_ref().and_then(|id|
+            let scissor = if let Some(override_id) = this.element.scissor_override.as_ref()
             {
-                shared.elements.get(id).map(|scissor_element|
+                shared.elements.get(override_id).map(|x| x.scissor())
+            } else
+            {
+                this.deferred.scissor.as_ref().and_then(|id|
                 {
-                    scissor_element.scissor()
+                    shared.elements.get(id).map(|scissor_element|
+                    {
+                        scissor_element.scissor()
+                    })
                 })
-            });
+            };
 
             {
                 let [element, parent] = if let Some(parent) = parent.as_ref()
