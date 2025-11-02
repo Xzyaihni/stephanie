@@ -1899,14 +1899,14 @@ impl Ui
     {
         if let Some(progress) = self.loading
         {
-            self.controller.update(UiId::Loading(LoadingPart::Cover), UiElement{
+            let cover = self.controller.update(UiId::Loading(LoadingPart::Cover), UiElement{
                 texture: UiTexture::Solid,
                 mix: Some(MixColorLch::color(BACKGROUND_COLOR)),
                 width: 1.0.into(),
                 height: 1.0.into(),
                 animation: Animation{
                     mix: Some(MixAnimation{
-                        decay: MixDecay::all(1.0),
+                        decay: MixDecay::all(15.0),
                         close_mix: Some(Lcha{a: 0.0, ..BACKGROUND_COLOR}),
                         ..Default::default()
                     }),
@@ -1915,16 +1915,9 @@ impl Ui
                 ..Default::default()
             });
 
-            let body = self.controller.update(UiId::Loading(LoadingPart::Body), UiElement{
+            let body = cover.update(UiId::Loading(LoadingPart::Body), UiElement{
                 position: UiPosition::Absolute{position: Vector2::zeros(), align: Default::default()},
                 children_layout: UiLayout::Vertical,
-                animation: Animation{
-                    scaling: Some(ScalingAnimation{
-                        close_mode: Scaling::EaseOut{decay: 20.0},
-                        ..Default::default()
-                    }),
-                    ..Default::default()
-                },
                 ..Default::default()
             });
 
@@ -1991,7 +1984,7 @@ impl Ui
 
             body.update(UiId::DeathScreen(DeathScreenPart::Text), UiElement{
                 texture: UiTexture::Text(TextInfo::new_simple(MEDIUM_TEXT_SIZE, "stephy is dead :(")),
-                mix: Some(MixColorLch::color(WHITE_COLOR)),
+                mix: Some(MixColorLch::color(ACCENT_COLOR)),
                 ..UiElement::fit_content()
             });
 

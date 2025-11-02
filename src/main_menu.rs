@@ -527,7 +527,7 @@ impl MainMenu
 
             let font_size = (self.controller.screen_size().max() * 0.02) as u32;
             panel.update(id(WorldSelectPartId::Message), UiElement{
-                texture: UiTexture::Text(TextInfo::new_simple(font_size, "who am i")),
+                texture: UiTexture::Text(TextInfo::new_simple(font_size, "who am i?")),
                 mix: Some(MixColorLch::color(ACCENT_COLOR)),
                 ..UiElement::fit_content()
             });

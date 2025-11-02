@@ -255,6 +255,7 @@ fn parental_position_of<Id>(parent_deferred: Option<&UiDeferredInfo<Id>>, elemen
 #[derive(Debug, Clone)]
 struct Fractions
 {
+    alpha: f32,
     scale: Vector2<f32>,
     scale_inherit: Vector2<f32>,
     position: Vector2<f32>,
@@ -266,6 +267,7 @@ impl Default for Fractions
     fn default() -> Self
     {
         Self{
+            alpha: 1.0,
             scale: Vector2::repeat(1.0),
             scale_inherit: Vector2::repeat(1.0),
             position: Vector2::zeros(),
@@ -463,11 +465,14 @@ impl UiElementCached
         &mut self,
         element: &UiElement<Id>,
         target_mix: Option<MixColorLch>,
+        alpha_inherit: f32,
         dt: f32
     )
     {
-        let target = if let Some(x) = target_mix
+        let target = if let Some(mut x) = target_mix
         {
+            x.color.a *= alpha_inherit;
+
             x
         } else
         {
@@ -551,7 +556,7 @@ impl UiElementCached
             self.position = target_position;
         }
 
-        self.update_mix(old_element, old_element.mix, dt);
+        self.update_mix(old_element, old_element.mix, parent_fraction.alpha, dt);
 
         self.last_scissor = scissor;
         self.update_always(
@@ -658,7 +663,21 @@ impl UiElementCached
             element.mix
         };
 
-        self.update_mix(element, target_mix, dt);
+        {
+            let this_alpha = if element.animation.mix.as_ref().map(|x| x.close_mix.is_some()).unwrap_or(false)
+            {
+                self.mix.map(|x| x.color.a).unwrap_or(1.0)
+            } else
+            {
+                1.0
+            };
+
+            let inherit_alpha = if self.inherit_animation { parent_fraction.alpha } else { 1.0 };
+
+            self.fractions.alpha = inherit_alpha * this_alpha;
+        }
+
+        self.update_mix(element, target_mix, parent_fraction.alpha, dt);
 
         self.update_always(
             parent_fraction,
