@@ -243,12 +243,19 @@ pub enum WindowPart
 {
     Panel,
     Body,
-    Separator,
+    Separator(SeparatorPart),
     Title(TitlePart),
     Inventory(InventoryPart),
     ItemInfo(ItemInfoPart),
     Stats,
     Anatomy(AnatomyPart)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum SeparatorPart
+{
+    Outer,
+    Inner
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -795,14 +802,22 @@ impl WindowKind
                 game_state.ui.borrow_mut().remove_window(&window_id);
             }));
 
-            parent.update(id(WindowPart::Separator), UiElement{
+            let outer_separator = parent.update(id(WindowPart::Separator(SeparatorPart::Outer)), UiElement{
+                width: UiSize::Rest(1.0).into(),
+                height: UiSize::Pixels(SEPARATOR_SIZE).into(),
+                ..Default::default()
+            });
+
+            add_padding_horizontal(outer_separator, UiSize::Pixels(SMALL_PADDING).into());
+            outer_separator.update(id(WindowPart::Separator(SeparatorPart::Inner)), UiElement{
                 texture: UiTexture::Solid,
                 mix: Some(MixColorLch::color(ACCENT_COLOR)),
                 width: UiSize::Rest(1.0).into(),
-                height: UiSize::Pixels(SEPARATOR_SIZE).into(),
+                height: UiSize::Rest(1.0).into(),
                 animation: Animation::separator_wide(),
                 ..Default::default()
             });
+            add_padding_horizontal(outer_separator, UiSize::Pixels(SMALL_PADDING).into());
 
             if prepad { add_padding_vertical(parent, UiSize::Pixels(SMALL_PADDING).into()); }
 
