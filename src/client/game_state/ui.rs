@@ -68,12 +68,15 @@ pub mod controller;
 
 const TITLE_PADDING: f32 = 15.0;
 const TINY_PADDING: f32 = 5.0;
+const TINY_SMALL_PADDING: f32 = 7.5;
 const SMALL_PADDING: f32 = 10.0;
+const MEDIUM_PADDING: f32 = 15.0;
 const ITEM_PADDING: f32 = SMALL_PADDING;
 const BODY_PADDING: f32 = 20.0;
 const NOTIFICATION_PADDING: f32 = TINY_PADDING;
 
 const BUTTON_SIZE: f32 = 40.0;
+const SCROLLBAR_WIDTH: f32 = SMALL_PADDING;
 const SCROLLBAR_HEIGHT: f32 = BUTTON_SIZE * 5.0;
 
 const SEPARATOR_SIZE: f32 = 3.0;
@@ -89,6 +92,7 @@ pub const BLACK_COLOR: Lcha = Lcha{l: 0.0, c: 0.0, h: 0.0, a: 1.0};
 
 pub const BACKGROUND_COLOR: Lcha = Lcha{l: 94.0, c: 18.0, h: ACCENT_COLOR.h, a: 1.0};
 pub const ACCENT_COLOR: Lcha = Lcha{l: 78.0, c: 42.8, h: 5.943, a: 1.0};
+pub const ACCENT_COLOR_FADED: Lcha = Lcha{l: 90.0, c: 25.0, ..ACCENT_COLOR};
 
 pub const SPECIAL_COLOR: Lcha = Lcha{h: ACCENT_COLOR.h - f32::consts::PI, ..ACCENT_COLOR};
 
@@ -341,7 +345,6 @@ pub enum UiListPart
     BodyOuter,
     Body,
     Moving,
-    Separator,
     Scrollbar,
     BarPad,
     Bar
@@ -541,8 +544,6 @@ impl<T> UiList<T>
             ..Default::default()
         });
 
-        add_padding_vertical(outer_body, UiSize::Pixels(padding).into());
-
         let body_id = id(UiListPart::Body);
         let body = outer_body.update(body_id.clone(), UiElement{
             width: UiSize::Rest(1.0).into(),
@@ -577,18 +578,11 @@ impl<T> UiList<T>
 
         if bar_height < 1.0
         {
-            parent.update(id(UiListPart::Separator), UiElement{
-                texture: UiTexture::Solid,
-                mix: Some(MixColorLch::color(ACCENT_COLOR)),
-                width: UiSize::Pixels(SEPARATOR_SIZE).into(),
-                height: UiSize::Rest(1.0).into(),
-                animation: Animation::separator_tall(),
-                ..Default::default()
-            });
-
             let scrollbar_id = id(UiListPart::Scrollbar);
             let scrollbar = parent.update(scrollbar_id.clone(), UiElement{
-                width: UiSize::Pixels(BUTTON_SIZE).into(),
+                texture: UiTexture::Solid,
+                mix: Some(MixColorLch::color(ACCENT_COLOR_FADED)),
+                width: UiSize::Pixels(SCROLLBAR_WIDTH).into(),
                 height: UiSize::Rest(1.0).into(),
                 children_layout: UiLayout::Vertical,
                 ..Default::default()
@@ -878,7 +872,7 @@ impl WindowKind
                 ..Default::default()
             });
 
-            add_padding_horizontal(outer_separator, UiSize::Pixels(SMALL_PADDING).into());
+            add_padding_horizontal(outer_separator, UiSize::Pixels(MEDIUM_PADDING).into());
             outer_separator.update(id(WindowPart::Separator(SeparatorPart::Inner)), UiElement{
                 texture: UiTexture::Solid,
                 mix: Some(MixColorLch::color(ACCENT_COLOR)),
@@ -887,9 +881,9 @@ impl WindowKind
                 animation: Animation::separator_wide(),
                 ..Default::default()
             });
-            add_padding_horizontal(outer_separator, UiSize::Pixels(SMALL_PADDING).into());
+            add_padding_horizontal(outer_separator, UiSize::Pixels(MEDIUM_PADDING).into());
 
-            if prepad { add_padding_vertical(parent, UiSize::Pixels(SMALL_PADDING).into()); }
+            add_padding_vertical(parent, UiSize::Pixels(TINY_PADDING).into());
 
             let body = parent.update(id(WindowPart::Body), UiElement{
                 width: UiElementSize{
@@ -899,7 +893,7 @@ impl WindowKind
                 ..Default::default()
             });
 
-            if prepad { add_padding_vertical(parent, UiSize::Pixels(SMALL_PADDING).into()); }
+            if prepad { add_padding_vertical(parent, UiSize::Pixels(TINY_SMALL_PADDING).into()); }
 
             body
         }
