@@ -90,6 +90,8 @@ pub const BLACK_COLOR: Lcha = Lcha{l: 0.0, c: 0.0, h: 0.0, a: 1.0};
 pub const BACKGROUND_COLOR: Lcha = Lcha{h: ACCENT_COLOR.h, ..WHITE_COLOR};
 pub const ACCENT_COLOR: Lcha = Lcha{l: 78.0, c: 42.8, h: 5.943, a: 1.0};
 
+pub const SPECIAL_COLOR: Lcha = Lcha{h: ACCENT_COLOR.h - f32::consts::PI, ..ACCENT_COLOR};
+
 const MISSING_PART_COLOR: Lcha = Lcha{l: 50.0, a: 0.3, ..BLACK_COLOR};
 
 
@@ -217,15 +219,8 @@ pub enum ConsolePart
 pub enum NotificationPart
 {
     Icon,
-    Body(OutlinePart),
+    Body,
     Text
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum OutlinePart
-{
-    Normal,
-    Outline
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -405,7 +400,8 @@ pub struct NotificationInfo
 {
     pub owner: Entity,
     pub lifetime: f32,
-    pub kind: NotificationKindInfo
+    pub kind: NotificationKindInfo,
+    pub is_closed: bool
 }
 
 impl Hash for NotificationInfo
@@ -470,10 +466,10 @@ fn single_health_color(fraction: Option<f32>) -> Lcha
 {
     fraction.map(|x|
     {
-        let range = 0.8..=2.15;
+        let range = 0.8..=2.27;
         let h = f32_to_range(range, x);
 
-        Lcha{l: 50.0, c: 100.0, h, a: 1.0}
+        Lcha{l: 80.0, c: 100.0, h, a: 1.0}
     }).unwrap_or(MISSING_PART_COLOR)
 }
 
@@ -1295,7 +1291,7 @@ impl Window
         }).unwrap_or_default();
 
         let body = ui.update(id, UiElement{
-            texture: UiTexture::Solid,
+            texture: UiTexture::Sliced(info.sliced_textures["rounded"]),
             mix: Some(MixColorLch::color(BACKGROUND_COLOR)),
             animation: Animation::normal(),
             position: UiPosition::Absolute{position, align: Default::default()},
@@ -1345,6 +1341,7 @@ struct UpdateInfo<'a, 'b, 'c, 'd>
 {
     entities: &'a ClientEntities,
     items_info: &'a ItemsInfo,
+    sliced_textures: &'a HashMap<String, SlicedTexture>,
     fonts: &'a FontsContainer,
     anatomy_locations: &'a UiAnatomyLocations,
     popup: &'a Option<UiItemPopup>,
@@ -1917,7 +1914,7 @@ impl Ui
                     font_size: MEDIUM_TEXT_SIZE,
                     text: TextBlocks(vec![
                         TextInfoBlock{color: WHITE_COLOR.into(), text: "killed ".into()},
-                        TextInfoBlock{color: ACCENT_COLOR.into(), text: kills.to_string().into()},
+                        TextInfoBlock{color: SPECIAL_COLOR.into(), text: kills.to_string().into()},
                         TextInfoBlock{color: WHITE_COLOR.into(), text: " enemies".into()}
                     ]),
                     ..Default::default()
@@ -2092,29 +2089,28 @@ impl Ui
 
             let position = some_or_value!(position_of(notification.owner), false);
 
-            let outer_body = self.controller.update(id(NotificationPart::Body(OutlinePart::Normal)), UiElement{
+            let is_active = notification.lifetime > 0.0;
+
+            let animation = Animation{
+                mix: Some(MixAnimation{
+                    start_mix: Some(Lcha{a: 0.0, ..BACKGROUND_COLOR}),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            };
+
+            let body = self.controller.update(id(NotificationPart::Body), UiElement{
                 texture: UiTexture::Sliced(self.sliced_textures["rounded"]),
                 mix: Some(MixColorLch::color(BACKGROUND_COLOR)),
                 position: UiPosition::Absolute{position, align: UiPositionAlign{
                     horizontal: AlignHorizontal::Middle,
                     vertical: AlignVertical::Bottom
                 }},
-                animation: Animation{
-                    mix: Some(MixAnimation::default()),
-                    ..Default::default()
-                },
+                animation: animation.clone(),
                 ..Default::default()
             });
 
-            let body = outer_body.update(id(NotificationPart::Body(OutlinePart::Outline)), UiElement{
-                texture: UiTexture::Sliced(self.sliced_textures["rounded_outline"]),
-                mix: Some(MixColorLch::color(ACCENT_COLOR)),
-                animation: Animation{
-                    mix: Some(MixAnimation::default()),
-                    ..Default::default()
-                },
-                ..Default::default()
-            });
+            let is_fully_closed = body.is_mix_near().unwrap_or(false) && notification.is_closed && !is_active;
 
             add_padding_horizontal(body, UiSize::Pixels(NOTIFICATION_PADDING).into());
 
@@ -2147,35 +2143,41 @@ impl Ui
                     let a = if transparency { 0.25 } else { 1.0 };
 
                     let size = 20.0;
-                    body.update(id(NotificationPart::Icon), UiElement{
+                    let icon = body.update(id(NotificationPart::Icon), UiElement{
                         texture: UiTexture::Custom(icon.into()),
                         width: UiSize::Pixels(size * aspect).into(),
                         height: UiSize::Pixels(size).into(),
                         mix: Some(MixColorLch::color(Lcha{a, ..ACCENT_COLOR})),
+                        animation: animation.clone(),
                         ..Default::default()
                     });
 
                     add_padding_horizontal(body, UiSize::Pixels(NOTIFICATION_PADDING * 0.5).into());
 
-                    body.update(id(NotificationPart::Text), UiElement{
+                    let text = body.update(id(NotificationPart::Text), UiElement{
                         texture: UiTexture::Text(TextInfo::new_simple(SMALL_TEXT_SIZE, text.clone())),
                         mix: Some(MixColorLch::color(Lcha{a, ..ACCENT_COLOR})),
+                        animation,
                         ..UiElement::fit_content()
                     });
+
+                    if !is_active
+                    {
+                        icon.element().mix = Some(MixColorLch::color(Lcha{a: 0.0, ..ACCENT_COLOR}));
+                        text.element().mix = Some(MixColorLch::color(Lcha{a: 0.0, ..ACCENT_COLOR}));
+                    }
                 }
             }
 
             add_padding_horizontal(body, UiSize::Pixels(NOTIFICATION_PADDING).into());
 
-            let close = notification.lifetime <= 0.0;
-
-            if close
+            if !is_active
             {
-                outer_body.element().mix = Some(MixColorLch::color(Lcha{a: 0.0, ..BACKGROUND_COLOR}));
-                body.element().mix = Some(MixColorLch::color(Lcha{a: 0.0, ..ACCENT_COLOR}));
+                body.element().mix = Some(MixColorLch::color(Lcha{a: 0.0, ..BACKGROUND_COLOR}));
+                notification.is_closed = true;
             }
 
-            !close
+            !is_fully_closed
         });
 
         self.anatomy_notifications.retain(|entity, (lifetime, parts)|
@@ -2369,6 +2371,7 @@ impl Ui
             let mut info = UpdateInfo{
                 entities,
                 items_info: &self.items_info,
+                sliced_textures: &self.sliced_textures,
                 fonts: &self.fonts,
                 anatomy_locations: &self.anatomy_locations,
                 popup: &self.popup,
@@ -2467,7 +2470,7 @@ impl Ui
             }
         };
 
-        render_bar_display(BarDisplayKind::Cooldown, &mut self.cooldown, Lcha{l: 50.0, c: 100.0, h: 4.0, a: 1.0});
+        render_bar_display(BarDisplayKind::Cooldown, &mut self.cooldown, Lcha{l: 80.0, c: 100.0, h: 4.0, a: 1.0});
 
         if let Some(anatomy) = entities.anatomy(self.ui_entities.player)
         {
@@ -2475,10 +2478,10 @@ impl Ui
             let color = if oxygen <= WINDED_OXYGEN
             {
                 let fraction = (oxygen / WINDED_OXYGEN).powi(3);
-                Lcha{l: lerp(30.0, 70.0, fraction), c: 120.0, h: lerp(0.713, 1.5, fraction), a: 1.0}
+                Lcha{l: lerp(50.0, 100.0, fraction), c: 120.0, h: lerp(0.713, 1.5, fraction), a: 1.0}
             } else
             {
-                Lcha{l: 70.0, c: 120.0, h: 1.5, a: 1.0}
+                Lcha{l: 100.0, c: 120.0, h: 1.5, a: 1.0}
             };
 
             render_bar_display(BarDisplayKind::Stamina, &mut self.stamina, color);

@@ -1858,7 +1858,8 @@ impl<'a> PlayerContainer<'a>
         let notification = NotificationInfo{
             owner: self.info.entity,
             lifetime: 0.1,
-            kind: NotificationKindInfo::Text{icon, text}
+            kind: NotificationKindInfo::Text{icon, text},
+            is_closed: false
         };
 
         self.game_state.ui.borrow_mut().show_notification(notification);

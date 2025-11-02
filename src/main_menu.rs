@@ -505,7 +505,7 @@ impl MainMenu
         if self.worlds.is_empty()
         {
             let panel_padding = 0.05;
-            let panel_padding_horizontal = 0.05;
+            let panel_padding_horizontal = 0.06;
 
             add_padding_vertical(menu, UiSize::Rest(1.0).into());
 
@@ -523,7 +523,7 @@ impl MainMenu
                 ..Default::default()
             });
 
-            add_padding_vertical(panel, panel_padding.into());
+            add_padding_vertical(panel, (panel_padding * 0.8).into());
 
             let font_size = (self.controller.screen_size().max() * 0.02) as u32;
             panel.update(id(WorldSelectPartId::Message), UiElement{

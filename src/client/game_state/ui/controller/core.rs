@@ -1,4 +1,5 @@
 use std::{
+    f32,
     fmt,
     hash::Hash,
     rc::Rc,
@@ -162,6 +163,17 @@ impl<'a, Id: Idable> TreeInserter<'a, Id>
         let shared = element.shared.borrow();
 
         f(shared.elements.get(id))
+    }
+
+    pub fn is_mix_near(&self) -> Option<bool>
+    {
+        self.persistent_element(|x|
+        {
+            x.and_then(|x| -> Option<bool>
+            {
+                Some(is_mix_near(x.cached.mix?.color, x.element.mix?.color))
+            })
+        })
     }
 
     pub fn try_width_animated(&self) -> Option<f32>
@@ -675,15 +687,7 @@ impl UiElementCached
 
         if !is_scaling_close && is_mix_close
         {
-            let current = self.mix.expect("must be mix close").color;
-            let target = target_mix.expect("must be mix close").color;
-
-            let distance = (target.l - current.l).abs()
-                + (target.c - current.c).abs()
-                + (target.h - current.h).abs()
-                + (target.a - current.a).abs();
-
-            if distance < MINIMUM_COLOR_DISTANCE
+            if is_mix_near(self.mix.expect("must be mix close").color, target_mix.expect("must be mix close").color)
             {
                 return false;
             }
@@ -1786,6 +1790,16 @@ impl<Id: Idable> Controller<Id>
             }
         });
     }
+}
+
+fn is_mix_near(current: Lcha, target: Lcha) -> bool
+{
+    let distance = (target.l - current.l).abs()
+        + (target.c - current.c).abs()
+        + (target.h - current.h).abs() * (100.0 / (f32::consts::PI * 2.0))
+        + (target.a - current.a).abs() * 100.0;
+
+    distance < MINIMUM_COLOR_DISTANCE
 }
 
 pub fn add_padding<Id: Idable>(x: TreeInserter<Id>, width: UiElementSize<Id>, height: UiElementSize<Id>)
