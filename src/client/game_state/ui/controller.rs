@@ -6,11 +6,28 @@ pub use core::*;
 
 mod core;
 
+
 pub fn text_input_handle<Id: Idable>(
     controls: &mut UiControls<Id>,
+    position: &mut u32,
     text: &mut String
 )
 {
+    let shift_left = |position: &mut u32|
+    {
+        *position = position.saturating_sub(1);
+    };
+
+    let shift_right_many = |text: &String, position: &mut u32, amount: u32|
+    {
+        *position = (*position + amount).min(text.chars().count() as u32);
+    };
+
+    let shift_right = |text: &String, position: &mut u32|
+    {
+        shift_right_many(text, position, 1);
+    };
+
     controls.controls.retain(|(changed, state)|
     {
         if let KeyMapping::Keyboard(KeyCode::ControlLeft) = changed.key
@@ -21,21 +38,42 @@ pub fn text_input_handle<Id: Idable>(
 
         if let (Some(logical), ControlState::Pressed) = (&changed.logical, state)
         {
+            let current_index = text.char_indices().nth(*position as usize).map(|(index, _)| index).unwrap_or(text.len());
+
             if let KeyMapping::Keyboard(key) = changed.key
             {
                 match key
                 {
+                    KeyCode::ArrowLeft =>
+                    {
+                        shift_left(position);
+                        return false;
+                    },
+                    KeyCode::ArrowRight =>
+                    {
+                        shift_right(text, position);
+                        return false;
+                    },
                     KeyCode::Tab => return false,
                     KeyCode::Backspace =>
                     {
-                        text.pop();
+                        if !text.is_empty()
+                        {
+                            text.remove(current_index.saturating_sub(1));
+                            shift_left(position);
+                        }
+
                         return false;
                     },
                     KeyCode::KeyV if controls.state.ctrl_held =>
                     {
                         match controls.clipboard.get_text()
                         {
-                            Ok(content) => *text += &content,
+                            Ok(content) =>
+                            {
+                                text.insert_str(current_index, &content);
+                                shift_right_many(text, position, content.chars().count() as u32);
+                            },
                             Err(err) => eprintln!("error pasting from clipboard: {err}")
                         }
 
@@ -47,7 +85,9 @@ pub fn text_input_handle<Id: Idable>(
 
             if let Some(c) = logical.to_text()
             {
-                *text += c;
+                text.insert_str(current_index, c);
+
+                shift_right_many(text, position, c.chars().count() as u32);
 
                 return false;
             }

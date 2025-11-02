@@ -303,7 +303,7 @@ impl SlowModeTrait for SlowModeFalse
 enum Scene
 {
     Game,
-    Menu(MainMenu)
+    Menu(Box<MainMenu>)
 }
 
 pub struct App
@@ -418,11 +418,11 @@ impl YanyaApp for App
 
         DebugConfig::on_start();
 
-        let scene = Scene::Menu(MainMenu::new(
+        let scene = Scene::Menu(Box::new(MainMenu::new(
             &partial_info.object_info,
             init_info.app_info.shaders.clone(),
             init_info.sliced_textures.clone()
-        ));
+        )));
 
         let client = Client::new(partial_info, init_info).unwrap();
 
@@ -459,8 +459,10 @@ impl YanyaApp for App
                 {
                     MenuAction::None => (),
                     MenuAction::Quit => self.exit = true,
-                    MenuAction::Start(client_info) =>
+                    MenuAction::Start =>
                     {
+                        let client_info = x.info.clone();
+
                         let (tx, rx) = mpsc::channel();
 
                         let listen_outside = false;
@@ -470,7 +472,7 @@ impl YanyaApp for App
 
                         self.server_handle = Some(thread::spawn(move ||
                         {
-                            let port = None.unwrap_or(0);
+                            let port = 0;
 
                             let listen_address = format!("{}:{port}", if listen_outside { "0.0.0.0" } else { "127.0.0.1" });
 
@@ -510,7 +512,7 @@ impl YanyaApp for App
 
                         let client_info = ClientInfo{
                             address: client_info.address.unwrap_or_else(|| format!("127.0.0.1:{port}")),
-                            name: client_info.name,
+                            name: client_info.name.text,
                             host: client_info.host,
                             debug: client_info.debug
                         };

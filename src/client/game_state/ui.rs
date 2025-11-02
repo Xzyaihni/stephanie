@@ -12,7 +12,7 @@ use parking_lot::Mutex;
 
 use image::RgbImage;
 
-use nalgebra::Vector2;
+use nalgebra::{vector, Vector2};
 
 use yanyaengine::{
     FontsContainer,
@@ -79,7 +79,7 @@ const BUTTON_SIZE: f32 = 40.0;
 const SCROLLBAR_WIDTH: f32 = SMALL_PADDING;
 const SCROLLBAR_HEIGHT: f32 = BUTTON_SIZE * 5.0;
 
-const SEPARATOR_SIZE: f32 = 3.0;
+pub const SEPARATOR_SIZE: f32 = 3.0;
 
 const BIG_TEXT_SIZE: u32 = 30;
 const MEDIUM_TEXT_SIZE: u32 = 25;
@@ -109,7 +109,7 @@ pub enum UiId
     DeathScreen(DeathScreenPart),
     Fade,
     Padding(u32),
-    Console(ConsolePart),
+    Console(TextboxPartId),
     SeenNotification(Entity, SeenNotificationPart),
     Notification(Entity, NotificationKindInfo, NotificationPart),
     AnatomyNotification(Entity, AnatomyNotificationPart),
@@ -209,13 +209,6 @@ pub enum BarDisplayPart
     Body,
     Bar,
     BarFill,
-    Text
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum ConsolePart
-{
-    Body,
     Text
 }
 
@@ -376,6 +369,113 @@ pub enum UiIdButtonPart
 
 type UiController = Controller<UiId>;
 type UiParentElement<'a> = TreeInserter<'a, UiId>;
+
+#[derive(Clone)]
+pub struct TextboxInfo
+{
+    pub text: String,
+    position: u32,
+    animation: f32
+}
+
+impl TextboxInfo
+{
+    pub fn new(text: String) -> Self
+    {
+        Self{
+            position: text.chars().count() as u32,
+            text,
+            animation: 0.0
+        }
+    }
+
+    pub fn update(&mut self, dt: f32)
+    {
+        self.animation = (self.animation + dt * 0.75).fract();
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum TextboxPartId
+{
+    Body,
+    Entry,
+    Text,
+    Line,
+    CursorStart,
+    Cursor
+}
+
+pub fn textbox_update<Id: Idable>(
+    controls: &mut UiControls<Id>,
+    fonts: &FontsContainer,
+    id: fn(TextboxPartId) -> Id,
+    body: TreeInserter<Id>,
+    font_size: u32,
+    info: &mut TextboxInfo
+)
+{
+    let entry = body.update(id(TextboxPartId::Entry), UiElement{
+        width: UiSize::FitChildren.into(),
+        height: UiSize::FitChildren.into(),
+        children_layout: UiLayout::Horizontal,
+        ..Default::default()
+    });
+
+    entry.update(id(TextboxPartId::Text), UiElement{
+        texture: UiTexture::Text(TextInfo::new_simple(font_size, info.text.clone())),
+        mix: Some(MixColorLch::color(ACCENT_COLOR)),
+        ..UiElement::fit_content()
+    });
+
+    let screen_size = entry.screen_size().max();
+    let font_height = fonts.text_height(font_size, screen_size);
+    let cursor_start = entry.update(id(TextboxPartId::CursorStart), UiElement{
+        width: 0.0.into(),
+        height: font_height.into(),
+        position: UiPosition::Inherit,
+        ..Default::default()
+    });
+
+    if let Some(cursor_start) = cursor_start.try_position()
+    {
+        let is_visible = info.animation < 0.5;
+
+        let text_info = TextInfo::new_simple(
+            font_size,
+            info.text.chars().take(info.position as usize).collect::<String>()
+        );
+
+        let offset = if info.position == 0
+        {
+            Vector2::zeros()
+        } else
+        {
+            fonts.calculate_bounds(&text_info, &Vector2::repeat(screen_size)) - vector![0.0, font_height]
+        };
+
+        entry.update(id(TextboxPartId::Cursor), UiElement{
+            texture: UiTexture::Solid,
+            mix: Some(MixColorLch::color(Lcha{a: if is_visible { 1.0 } else { 0.0 }, ..ACCENT_COLOR})),
+            width: UiSize::Pixels(SEPARATOR_SIZE).into(),
+            height: UiSize::Rest(1.0).into(),
+            position: UiPosition::Absolute{position: cursor_start + offset, align: UiPositionAlign::default()},
+            ..Default::default()
+        });
+    }
+
+    add_padding_vertical(body, UiSize::Pixels(5.0).into());
+
+    body.update(id(TextboxPartId::Line), UiElement{
+        texture: UiTexture::Solid,
+        mix: Some(MixColorLch::color(ACCENT_COLOR)),
+        width: UiSize::Rest(1.0).into(),
+        height: UiSize::Pixels(SEPARATOR_SIZE).into(),
+        ..Default::default()
+    });
+
+    text_input_handle(controls, &mut info.position, &mut info.text);
+}
 
 #[derive(Debug, Clone, Copy)]
 pub enum NotificationDoor
@@ -834,7 +934,7 @@ impl WindowKind
                 };
 
                 update_button(
-                    button.id.clone(),
+                    button.id,
                     background,
                     button.texture.clone(),
                     button.action.clone()
@@ -855,7 +955,7 @@ impl WindowKind
             add_padding_horizontal(titlebar, padding_size);
 
             update_button(
-                |part| UiIdTitleButton::Close(part),
+                UiIdTitleButton::Close,
                 UiTexture::Sliced(top_right_rounded),
                 "ui/close_button.png".to_owned(),
                 Rc::new(move |game_state|
@@ -1491,7 +1591,7 @@ pub struct Ui
     controller: UiController,
     dragging_window: Option<(UiIdWindow, Vector2<f32>)>,
     mouse_position: Vector2<f32>,
-    console_contents: Option<String>,
+    console_contents: Option<TextboxInfo>,
     loading: Option<f32>,
     is_paused: bool,
     is_fade: bool,
@@ -1647,14 +1747,14 @@ impl Ui
         self.controller.set_mouse_position(position);
     }
 
-    pub fn get_console(&self) -> &Option<String>
+    pub fn get_console(&self) -> Option<&String>
     {
-        &self.console_contents
+        self.console_contents.as_ref().map(|x| &x.text)
     }
 
     pub fn set_console(&mut self, contents: Option<String>)
     {
-        self.console_contents = contents;
+        self.console_contents = contents.map(|x| TextboxInfo::new(x));
     }
 
     fn find_window(&self, id: &UiIdWindow) -> Option<usize>
@@ -2610,11 +2710,7 @@ impl Ui
 
         if let Some(text) = self.console_contents.as_mut()
         {
-            text_input_handle(controls, text);
-
-            let body = self.controller.update(UiId::Console(ConsolePart::Body), UiElement{
-                texture: UiTexture::Solid,
-                mix: Some(MixColorLch::color(Lcha{a: 0.5, ..BACKGROUND_COLOR})),
+            let body = self.controller.update(UiId::Console(TextboxPartId::Body), UiElement{
                 animation: Animation::normal(),
                 position: UiPosition::Absolute{position: Vector2::zeros(), align: Default::default()},
                 width: UiElementSize{
@@ -2628,12 +2724,7 @@ impl Ui
                 ..Default::default()
             });
 
-            body.update(UiId::Console(ConsolePart::Text), UiElement{
-                texture: UiTexture::Text(TextInfo::new_simple(15, text.clone())),
-                mix: Some(MixColorLch::color(ACCENT_COLOR)),
-                animation: Animation::typing_text(),
-                ..UiElement::fit_content()
-            });
+            textbox_update(controls, &self.fonts, UiId::Console, body, 15, text);
         }
 
         if takes_input.is_some() || popup_taken

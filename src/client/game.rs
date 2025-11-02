@@ -967,7 +967,7 @@ impl Game
 
     fn get_console_contents(&self) -> Option<String>
     {
-        with_game_state(&self.game_state, |x| x.ui.borrow().get_console().clone())
+        with_game_state(&self.game_state, |x| x.ui.borrow().get_console().cloned())
     }
 
     fn set_console_contents(&self, contents: Option<String>)

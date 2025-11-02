@@ -23,7 +23,15 @@ use crate::{
         game_state::{
             UiControls,
             ControlsController,
-            ui::{BACKGROUND_COLOR, ACCENT_COLOR, controller::*}
+            ui::{
+                textbox_update,
+                BACKGROUND_COLOR,
+                ACCENT_COLOR,
+                ACCENT_COLOR_FADED,
+                TextboxInfo,
+                TextboxPartId,
+                controller::*
+            }
         }
     },
     common::{
@@ -79,6 +87,7 @@ enum AlignPartId
 enum OptionsPartId
 {
     Controls(ButtonPartId),
+    DebugToggle(ButtonPartId),
     Back(ButtonPartId)
 }
 
@@ -88,7 +97,7 @@ enum WorldSelectPartId
     Panel,
     PanelInner,
     Message,
-    Textbox,
+    Textbox(TextboxPartId),
     Buttons,
     Confirm(ButtonPartId),
     Back(ButtonPartId)
@@ -109,7 +118,7 @@ pub enum MenuAction
 {
     None,
     Quit,
-    Start(MenuClientInfo)
+    Start
 }
 
 #[derive(Clone, Copy)]
@@ -121,13 +130,12 @@ enum MenuState
 }
 
 const BUTTON_SIZE: f32 = 0.05;
-const TEXTBOX_SIZE: f32 = BUTTON_SIZE;
 
 #[derive(Clone)]
 pub struct MenuClientInfo
 {
     pub address: Option<String>,
-    pub name: String,
+    pub name: TextboxInfo,
     pub host: bool,
     pub debug: bool
 }
@@ -149,11 +157,22 @@ struct ButtonInfo
     padding_left: UiElementSize<MainMenuId>,
     padding_right: UiElementSize<MainMenuId>,
     align_left: bool,
+    disabled: bool,
     invert_colors: bool
+}
+
+struct UiInfo<'a, 'b, 'c, 'd>
+{
+    controls: &'b mut UiControls<MainMenuId>,
+    sliced_textures: &'a HashMap<String, SlicedTexture>,
+    fonts: &'a FontsContainer,
+    info: &'c mut MenuClientInfo,
+    worlds: &'d mut Vec<WorldInfo>
 }
 
 pub struct MainMenu
 {
+    pub info: MenuClientInfo,
     shaders: ProgramShaders,
     sliced_textures: Rc<HashMap<String, SlicedTexture>>,
     fonts: Rc<FontsContainer>,
@@ -162,8 +181,7 @@ pub struct MainMenu
     controls: ControlsController<MainMenuId>,
     state: MenuState,
     ui_camera: Camera,
-    worlds: Vec<WorldInfo>,
-    info: MenuClientInfo
+    worlds: Vec<WorldInfo>
 }
 
 impl MainMenu
@@ -178,7 +196,7 @@ impl MainMenu
 
         let info = MenuClientInfo{
             address: None,
-            name: "stephanie".to_owned(),
+            name: TextboxInfo::new("stephanie".to_owned()),
             host: true,
             debug: false
         };
@@ -228,14 +246,13 @@ impl MainMenu
     }
 
     fn update_main_button(
-        &self,
         controls: &mut UiControls<MainMenuId>,
         parent: TreeInserter<MainMenuId>,
         id: impl Fn(ButtonPartId) -> MainMenuId,
         name: &str
     ) -> bool
     {
-        self.update_button(controls, parent, id, ButtonInfo{
+        Self::update_button(controls, parent, id, ButtonInfo{
             name: name.to_owned(),
             width: UiSize::Rest(1.0).into(),
             height: UiElementSize{
@@ -247,24 +264,32 @@ impl MainMenu
             padding_left: 0.013.into(),
             padding_right: 0.01.into(),
             align_left: true,
+            disabled: false,
             invert_colors: false
         })
     }
 
     fn update_button(
-        &self,
         controls: &mut UiControls<MainMenuId>,
         parent: TreeInserter<MainMenuId>,
         id: impl Fn(ButtonPartId) -> MainMenuId,
         info: ButtonInfo
     ) -> bool
     {
-        let (primary_color, secondary_color) = if info.invert_colors
+        let colors@(primary_color, secondary_color) = if info.disabled
         {
-            (BACKGROUND_COLOR, ACCENT_COLOR)
+            (ACCENT_COLOR_FADED, BACKGROUND_COLOR)
         } else
         {
             (ACCENT_COLOR, BACKGROUND_COLOR)
+        };
+
+        let (primary_color, secondary_color) = if info.invert_colors
+        {
+            (secondary_color, primary_color)
+        } else
+        {
+            colors
         };
 
         let panel_id = id(ButtonPartId::Panel);
@@ -283,7 +308,7 @@ impl MainMenu
             ..Default::default()
         });
 
-        let inside_button = body.is_mouse_inside();
+        let inside_button = body.is_mouse_inside() && !info.disabled;
 
         let width = some_or_value!(body.try_width(), false);
         let height = some_or_value!(body.try_height(), false);
@@ -298,7 +323,7 @@ impl MainMenu
 
         let font_size = info.override_font_size.unwrap_or_else(||
         {
-            (self.controller.screen_size().max() * height * 0.6) as u32
+            (body.screen_size().max() * height * 0.6) as u32
         });
 
         let bar_id = id(ButtonPartId::Bar);
@@ -348,9 +373,9 @@ impl MainMenu
             });
         }
 
-        if self.controller.input_of(&bar_id).exists()
+        if body.input_of(&bar_id).exists()
         {
-            if let Some(position) = self.controller.input_of(&id(ButtonPartId::Text)).try_position()
+            if let Some(position) = body.input_of(&id(ButtonPartId::Text)).try_position()
             {
                 panel.update(id(ButtonPartId::BarText), UiElement{
                     texture: UiTexture::Text(TextInfo::new_simple(font_size, info.name.clone())),
@@ -381,19 +406,18 @@ impl MainMenu
     }
 
     fn update_main(
-        &self,
-        controls: &mut UiControls<MainMenuId>,
+        ui_info: UiInfo,
         menu: TreeInserter<MainMenuId>
     ) -> (MenuState, MenuAction)
     {
         let id = |part| MainMenuId::Main(part);
 
-        let mut state = self.state;
+        let mut state = MenuState::Main;
         let mut action = MenuAction::None;
 
         add_padding_vertical(menu, UiSize::Rest(0.25).into());
 
-        let title_font_size = (self.controller.screen_size().max() * 0.08) as u32;
+        let title_font_size = (menu.screen_size().max() * 0.08) as u32;
 
         let title_outer = menu.update(id(MainPartId::Title(AlignPartId::Outer)), UiElement{
             children_layout: UiLayout::Horizontal,
@@ -436,21 +460,21 @@ impl MainMenu
 
         let button_pad = || Self::button_pad(buttons_panel);
 
-        if self.update_main_button(controls, buttons_panel, |part| id(MainPartId::Start(part)), "start")
+        if Self::update_main_button(ui_info.controls, buttons_panel, |part| id(MainPartId::Start(part)), "start")
         {
             state = MenuState::WorldSelect;
         }
 
         button_pad();
 
-        if self.update_main_button(controls, buttons_panel, |part| id(MainPartId::Options(part)), "options")
+        if Self::update_main_button(ui_info.controls, buttons_panel, |part| id(MainPartId::Options(part)), "options")
         {
             state = MenuState::Options;
         }
 
         button_pad();
 
-        if self.update_main_button(controls, buttons_panel, |part| id(MainPartId::Quit(part)), "quit")
+        if Self::update_main_button(ui_info.controls, buttons_panel, |part| id(MainPartId::Quit(part)), "quit")
         {
             action = MenuAction::Quit;
         }
@@ -461,144 +485,175 @@ impl MainMenu
     }
 
     fn update_options(
-        &self,
-        controls: &mut UiControls<MainMenuId>,
+        ui_info: UiInfo,
         menu: TreeInserter<MainMenuId>
     ) -> (MenuState, MenuAction)
     {
         let id = |part| MainMenuId::Options(part);
 
-        let mut state = self.state;
+        let mut state = MenuState::Options;
+        let mut action = MenuAction::None;
 
         let button_pad = || Self::button_pad(menu);
 
         add_padding_vertical(menu, UiSize::Rest(1.0).into());
 
-        if self.update_main_button(controls, menu, |part| id(OptionsPartId::Controls(part)), "controls")
+        if Self::update_main_button(ui_info.controls, menu, |part| id(OptionsPartId::Controls(part)), "controls")
         {
             todo!();
         }
 
         button_pad();
 
-        if self.update_main_button(controls, menu, |part| id(OptionsPartId::Back(part)), "back")
+        let debug_mode_text = format!("debug mode: {}", if ui_info.info.debug { "on" } else { "off" });
+        if Self::update_main_button(ui_info.controls, menu, |part| id(OptionsPartId::DebugToggle(part)), &debug_mode_text)
+        {
+            ui_info.info.debug = !ui_info.info.debug;
+        }
+
+        button_pad();
+
+        if Self::update_main_button(ui_info.controls, menu, |part| id(OptionsPartId::Back(part)), "back")
         {
             state = MenuState::Main;
         }
 
         add_padding_vertical(menu, UiSize::Rest(1.0).into());
 
-        (state, MenuAction::None)
+        (state, action)
     }
 
-    fn update_world_select(
-        &self,
-        controls: &mut UiControls<MainMenuId>,
+    fn update_world_create(
+        ui_info: UiInfo,
         menu: TreeInserter<MainMenuId>
     ) -> (MenuState, MenuAction)
     {
         let id = |part| MainMenuId::WorldSelect(part);
 
-        let mut state = self.state;
+        let mut state = MenuState::WorldSelect;
         let mut action = MenuAction::None;
 
-        if self.worlds.is_empty()
+        let panel_padding = 0.05;
+        let panel_padding_horizontal = 0.06;
+
+        add_padding_vertical(menu, UiSize::Rest(1.0).into());
+
+        let panel_outer = menu.update(id(WorldSelectPartId::Panel), UiElement{
+            texture: UiTexture::Sliced(ui_info.sliced_textures["rounded"]),
+            mix: Some(MixColorLch::color(BACKGROUND_COLOR)),
+            children_layout: UiLayout::Horizontal,
+            ..Default::default()
+        });
+
+        add_padding_horizontal(panel_outer, panel_padding_horizontal.into());
+
+        let panel = panel_outer.update(id(WorldSelectPartId::PanelInner), UiElement{
+            children_layout: UiLayout::Vertical,
+            ..Default::default()
+        });
+
+        add_padding_vertical(panel, (panel_padding * 0.8).into());
+
+        let font_size = (panel.screen_size().max() * 0.02) as u32;
+        let font_height = ui_info.fonts.text_height(font_size, panel.screen_size().max());
+
+        panel.update(id(WorldSelectPartId::Message), UiElement{
+            texture: UiTexture::Text(TextInfo::new_simple(font_size, "who am i?")),
+            mix: Some(MixColorLch::color(ACCENT_COLOR)),
+            ..UiElement::fit_content()
+        });
+
+        add_padding_vertical(panel, 0.008.into());
+
+        let textbox = panel.update(id(WorldSelectPartId::Textbox(TextboxPartId::Body)), UiElement{
+            width: UiSize::Rest(1.0).into(),
+            children_layout: UiLayout::Vertical,
+            ..Default::default()
+        });
+
+        textbox_update(
+            ui_info.controls,
+            ui_info.fonts,
+            |part| MainMenuId::WorldSelect(WorldSelectPartId::Textbox(part)),
+            textbox,
+            font_size,
+            &mut ui_info.info.name
+        );
+
+        add_padding_vertical(panel, 0.01.into());
+
+        let buttons = panel.update(id(WorldSelectPartId::Buttons), UiElement::default());
+
+        let confirm_allowed = !ui_info.info.name.text.is_empty();
+
+        let confirm_info = {
+            let padding: UiElementSize<_> = 0.005.into();
+
+            ButtonInfo{
+                name: "confirm".to_owned(),
+                width: UiSize::FitChildren.into(),
+                height: font_height.into(),
+                body_width: UiSize::FitChildren.into(),
+                override_font_size: Some(font_size),
+                padding_left: padding.clone(),
+                padding_right: padding,
+                align_left: false,
+                disabled: !confirm_allowed,
+                invert_colors: true
+            }
+        };
+
+        let confirm_clicked = Self::update_button(
+            ui_info.controls,
+            buttons,
+            |part| id(WorldSelectPartId::Confirm(part)),
+            confirm_info.clone()
+        );
+
+        if confirm_clicked && confirm_allowed
         {
-            let panel_padding = 0.05;
-            let panel_padding_horizontal = 0.06;
+            action = MenuAction::Start;
+        }
 
-            add_padding_vertical(menu, UiSize::Rest(1.0).into());
+        add_padding_horizontal(buttons, 0.005.into());
 
-            let panel_outer = menu.update(id(WorldSelectPartId::Panel), UiElement{
-                texture: UiTexture::Sliced(self.sliced_textures["rounded"]),
-                mix: Some(MixColorLch::color(BACKGROUND_COLOR)),
-                children_layout: UiLayout::Horizontal,
-                ..Default::default()
-            });
-
-            add_padding_horizontal(panel_outer, panel_padding_horizontal.into());
-
-            let panel = panel_outer.update(id(WorldSelectPartId::PanelInner), UiElement{
-                children_layout: UiLayout::Vertical,
-                ..Default::default()
-            });
-
-            add_padding_vertical(panel, (panel_padding * 0.8).into());
-
-            let font_size = (self.controller.screen_size().max() * 0.02) as u32;
-            panel.update(id(WorldSelectPartId::Message), UiElement{
-                texture: UiTexture::Text(TextInfo::new_simple(font_size, "who am i?")),
-                mix: Some(MixColorLch::color(ACCENT_COLOR)),
-                ..UiElement::fit_content()
-            });
-
-            add_padding_vertical(panel, 0.008.into());
-
-            let textbox = panel.update(id(WorldSelectPartId::Textbox), UiElement{
-                texture: UiTexture::Solid,
-                width: UiSize::Rest(1.0).into(),
-                height: TEXTBOX_SIZE.into(),
-                mix: Some(MixColorLch::color(ACCENT_COLOR)),
-                ..Default::default()
-            });
-
-            add_padding_vertical(panel, 0.01.into());
-
-            let buttons = panel.update(id(WorldSelectPartId::Buttons), UiElement::default());
-
-            let confirm_info = {
-                let padding: UiElementSize<_> = 0.005.into();
-
-                let font_height = self.fonts.text_height(font_size, self.controller.screen_size().max());
-
-                ButtonInfo{
-                    name: "confirm".to_owned(),
-                    width: UiSize::FitChildren.into(),
-                    height: font_height.into(),
-                    body_width: UiSize::FitChildren.into(),
-                    override_font_size: Some(font_size),
-                    padding_left: padding.clone(),
-                    padding_right: padding,
-                    align_left: false,
-                    invert_colors: true
-                }
-            };
-
-            let confirm_clicked = self.update_button(
-                controls,
-                buttons,
-                |part| id(WorldSelectPartId::Confirm(part)),
-                confirm_info.clone()
-            );
-
-            let confirm_allowed = !self.info.name.is_empty();
-
-            if confirm_clicked && confirm_allowed
-            {
-                action = MenuAction::Start(self.info.clone());
+        let back_clicked = Self::update_button(
+            ui_info.controls,
+            buttons,
+            |part| id(WorldSelectPartId::Back(part)),
+            ButtonInfo{
+                name: "back".to_owned(),
+                disabled: false,
+                ..confirm_info
             }
+        );
 
-            add_padding_horizontal(buttons, 0.005.into());
+        if back_clicked
+        {
+            state = MenuState::Main;
+        }
 
-            let back_clicked = self.update_button(
-                controls,
-                buttons,
-                |part| id(WorldSelectPartId::Back(part)),
-                ButtonInfo{
-                    name: "back".to_owned(),
-                    ..confirm_info
-                }
-            );
+        add_padding_vertical(panel, panel_padding.into());
+        add_padding_horizontal(panel_outer, panel_padding_horizontal.into());
 
-            if back_clicked
-            {
-                state = MenuState::Main;
-            }
+        add_padding_vertical(menu, UiSize::Rest(1.0).into());
 
-            add_padding_vertical(panel, panel_padding.into());
-            add_padding_horizontal(panel_outer, panel_padding_horizontal.into());
+        (state, action)
+    }
 
-            add_padding_vertical(menu, UiSize::Rest(1.0).into());
+    fn update_world_select(
+        ui_info: UiInfo,
+        menu: TreeInserter<MainMenuId>
+    ) -> (MenuState, MenuAction)
+    {
+        let id = |part| MainMenuId::WorldSelect(part);
+
+        let mut state = MenuState::WorldSelect;
+        let mut action = MenuAction::None;
+
+        if ui_info.worlds.is_empty()
+        {
+            (state, action) = Self::update_world_create(ui_info, menu);
         } else
         {
             todo!();
@@ -638,11 +693,21 @@ impl MainMenu
             ..Default::default()
         });
 
-        let (next_state, action) = match self.state
-        {
-            MenuState::Main => self.update_main(&mut controls, menu),
-            MenuState::Options => self.update_options(&mut controls, menu),
-            MenuState::WorldSelect => self.update_world_select(&mut controls, menu)
+        let (next_state, action) = {
+            let ui_info = UiInfo{
+                controls: &mut controls,
+                sliced_textures: &self.sliced_textures,
+                fonts: &self.fonts,
+                info: &mut self.info,
+                worlds: &mut self.worlds
+            };
+
+            match self.state
+            {
+                MenuState::Main => Self::update_main(ui_info, menu),
+                MenuState::Options => Self::update_options(ui_info, menu),
+                MenuState::WorldSelect => Self::update_world_select(ui_info, menu)
+            }
         };
 
         self.state = next_state;

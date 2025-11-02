@@ -515,9 +515,7 @@ impl Scissor
             let offset = &mut self.offset[i];
             if *offset < 0.0
             {
-                let extent = &mut self.extent[i];
-
-                *extent = *extent + *offset;
+                self.extent[i] += *offset;
 
                 *offset = 0.0;
             }
