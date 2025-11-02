@@ -1264,7 +1264,7 @@ impl WindowKind
 
                         let body = body.update(id(BarDisplayPart::Body), UiElement{
                             texture: UiTexture::Solid,
-                            mix: Some(MixColorLch::color(Lcha{a: 0.2, ..BLACK_COLOR})),
+                            mix: Some(MixColorLch::color(BACKGROUND_COLOR)),
                             width: UiElementSize{
                                 minimum_size: Some(UiMinimumSize::FitChildren),
                                 size: UiSize::Rest(1.0)
@@ -1901,13 +1901,13 @@ impl Ui
         {
             self.controller.update(UiId::Loading(LoadingPart::Cover), UiElement{
                 texture: UiTexture::Solid,
-                mix: Some(MixColorLch::color(BLACK_COLOR)),
+                mix: Some(MixColorLch::color(BACKGROUND_COLOR)),
                 width: 1.0.into(),
                 height: 1.0.into(),
                 animation: Animation{
                     mix: Some(MixAnimation{
                         decay: MixDecay::all(1.0),
-                        close_mix: Some(Lcha{a: 0.0, ..BLACK_COLOR}),
+                        close_mix: Some(Lcha{a: 0.0, ..BACKGROUND_COLOR}),
                         ..Default::default()
                     }),
                     ..Default::default()
@@ -1930,12 +1930,13 @@ impl Ui
 
             body.update(UiId::Loading(LoadingPart::Text), UiElement{
                 texture: UiTexture::Text(TextInfo::new_simple(BIG_TEXT_SIZE, "LOADING")),
+                mix: Some(MixColorLch::color(ACCENT_COLOR)),
                 ..UiElement::fit_content()
             });
 
             let bar = body.update(UiId::Loading(LoadingPart::BarBody), UiElement{
                 texture: UiTexture::Solid,
-                mix: Some(MixColorLch::color(GRAY_COLOR)),
+                mix: Some(MixColorLch::color(ACCENT_COLOR_FADED)),
                 width: UiSize::Rest(1.0).into(),
                 height: UiSize::Pixels(30.0).into(),
                 children_layout: UiLayout::Horizontal,
@@ -1944,7 +1945,7 @@ impl Ui
 
             bar.update(UiId::Loading(LoadingPart::Bar), UiElement{
                 texture: UiTexture::Solid,
-                mix: Some(MixColorLch::color(WHITE_COLOR)),
+                mix: Some(MixColorLch::color(ACCENT_COLOR)),
                 width: UiSize::Rest(progress).into(),
                 height: UiSize::Rest(1.0).into(),
                 ..Default::default()
@@ -2000,9 +2001,9 @@ impl Ui
                 texture: UiTexture::Text(TextInfo{
                     font_size: MEDIUM_TEXT_SIZE,
                     text: TextBlocks(vec![
-                        TextInfoBlock{color: WHITE_COLOR.into(), text: "killed ".into()},
+                        TextInfoBlock{color: ACCENT_COLOR.into(), text: "killed ".into()},
                         TextInfoBlock{color: SPECIAL_COLOR.into(), text: kills.to_string().into()},
-                        TextInfoBlock{color: WHITE_COLOR.into(), text: " enemies".into()}
+                        TextInfoBlock{color: ACCENT_COLOR.into(), text: " enemies".into()}
                     ]),
                     ..Default::default()
                 }),
@@ -2013,16 +2014,20 @@ impl Ui
 
             let button = body.update(UiId::DeathScreen(DeathScreenPart::Button), UiElement{
                 texture: UiTexture::Solid,
-                mix: Some(MixColorLch::color(BLACK_COLOR)),
+                mix: Some(MixColorLch::color(BACKGROUND_COLOR)),
                 animation: Animation::button(),
                 ..Default::default()
             });
 
             add_padding_horizontal(button, UiSize::Pixels(TINY_PADDING).into());
 
-            button.update(UiId::DeathScreen(DeathScreenPart::ButtonText), UiElement{
+            let text = button.update(UiId::DeathScreen(DeathScreenPart::ButtonText), UiElement{
                 texture: UiTexture::Text(TextInfo::new_simple(BIG_TEXT_SIZE, "RESTART")),
-                mix: Some(MixColorLch::color(WHITE_COLOR)),
+                mix: Some(MixColorLch::color(ACCENT_COLOR)),
+                animation: Animation{
+                    mix: Some(MixAnimation::default()),
+                    ..Default::default()
+                },
                 ..UiElement::fit_content()
             });
 
@@ -2030,7 +2035,8 @@ impl Ui
 
             if button.is_mouse_inside()
             {
-                button.element().mix.as_mut().unwrap().color = GRAY_COLOR;
+                button.element().mix = Some(MixColorLch::color(ACCENT_COLOR));
+                text.element().mix = Some(MixColorLch::color(BACKGROUND_COLOR));
 
                 if controls.take_click_down()
                 {
@@ -2090,7 +2096,7 @@ impl Ui
 
             let panel_vertical = health_inner.update(UiId::Health(HealthPart::PanelVertical), UiElement{
                 texture: UiTexture::Custom("ui/health_panel.png".into()),
-                mix: Some(MixColorLch::color(Lcha{a: 0.5, ..BLACK_COLOR})),
+                mix: Some(MixColorLch::color(BACKGROUND_COLOR)),
                 children_layout: UiLayout::Vertical,
                 ..UiElement::fit_content()
             });
@@ -2510,7 +2516,7 @@ impl Ui
 
                 let body = bars_body.update(UiId::BarDisplay(kind, BarDisplayPart::Body), UiElement{
                     texture: UiTexture::Solid,
-                    mix: Some(MixColorLch::color(Lcha{a: 0.2, ..BLACK_COLOR})),
+                    mix: Some(MixColorLch::color(BACKGROUND_COLOR)),
                     width: UiSize::Pixels(width).into(),
                     children_layout: UiLayout::Vertical,
                     animation: Animation{
@@ -2557,7 +2563,7 @@ impl Ui
             }
         };
 
-        render_bar_display(BarDisplayKind::Cooldown, &mut self.cooldown, Lcha{l: 80.0, c: 100.0, h: 4.0, a: 1.0});
+        render_bar_display(BarDisplayKind::Cooldown, &mut self.cooldown, Lcha{h: 4.0, ..ACCENT_COLOR});
 
         if let Some(anatomy) = entities.anatomy(self.ui_entities.player)
         {
@@ -2565,10 +2571,10 @@ impl Ui
             let color = if oxygen <= WINDED_OXYGEN
             {
                 let fraction = (oxygen / WINDED_OXYGEN).powi(3);
-                Lcha{l: lerp(50.0, 100.0, fraction), c: 120.0, h: lerp(0.713, 1.5, fraction), a: 1.0}
+                Lcha{l: lerp(50.0, ACCENT_COLOR.l, fraction), h: lerp(0.713, 1.5, fraction), ..ACCENT_COLOR}
             } else
             {
-                Lcha{l: 100.0, c: 120.0, h: 1.5, a: 1.0}
+                Lcha{h: 1.5, ..ACCENT_COLOR}
             };
 
             render_bar_display(BarDisplayKind::Stamina, &mut self.stamina, color);
@@ -2596,6 +2602,7 @@ impl Ui
 
             self.controller.update(UiId::Paused(PausedPart::Text), UiElement{
                 texture: UiTexture::Text(TextInfo::new_simple(BIG_TEXT_SIZE, "PAUSED")),
+                mix: Some(MixColorLch::color(ACCENT_COLOR)),
                 position: UiPosition::Absolute{position: Vector2::zeros(), align: Default::default()},
                 animation: Animation{
                     scaling: Some(ScalingAnimation{
