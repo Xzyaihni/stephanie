@@ -87,7 +87,7 @@ pub const WHITE_COLOR: Lcha = Lcha{l: 100.0, c: 0.0, h: 0.0, a: 1.0};
 pub const GRAY_COLOR: Lcha = Lcha{l: 5.0, c: 0.0, h: 0.0, a: 1.0};
 pub const BLACK_COLOR: Lcha = Lcha{l: 0.0, c: 0.0, h: 0.0, a: 1.0};
 
-pub const BACKGROUND_COLOR: Lcha = Lcha{h: ACCENT_COLOR.h, ..WHITE_COLOR};
+pub const BACKGROUND_COLOR: Lcha = Lcha{l: 94.0, c: 18.0, h: ACCENT_COLOR.h, a: 1.0};
 pub const ACCENT_COLOR: Lcha = Lcha{l: 78.0, c: 42.8, h: 5.943, a: 1.0};
 
 pub const SPECIAL_COLOR: Lcha = Lcha{h: ACCENT_COLOR.h - f32::consts::PI, ..ACCENT_COLOR};
@@ -338,6 +338,7 @@ pub enum TitlePart
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum UiListPart
 {
+    BodyOuter,
     Body,
     Moving,
     Separator,
@@ -355,12 +356,19 @@ pub enum UiIdWindow
     Anatomy(Entity)
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum UiIdTitleButton
 {
-    Anatomy,
-    Stats,
-    Close
+    Anatomy(UiIdButtonPart),
+    Stats(UiIdButtonPart),
+    Close(UiIdButtonPart)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum UiIdButtonPart
+{
+    Body,
+    Icon
 }
 
 type UiController = Controller<UiId>;
@@ -422,26 +430,30 @@ impl Hash for NotificationInfo
 
 pub type InventoryOnClick = Box<dyn FnMut(&Item, &ItemInfo, InventoryItem) -> Vec<GameUiEvent>>;
 
+struct ButtonResult
+{
+    inside: bool,
+    clicked: bool
+}
+
 fn handle_button(
     info: &mut UpdateInfo,
-    button: UiParentElement,
-    f: impl FnOnce(&mut UpdateInfo)
-)
+    button: UiParentElement
+) -> ButtonResult
 {
     if info.mouse_taken
     {
-        return;
+        return ButtonResult{inside: false, clicked: false};
     }
 
-    if button.is_mouse_inside()
+    let inside = button.is_mouse_inside();
+
+    if inside
     {
         button.element().mix.as_mut().unwrap().color = ACCENT_COLOR;
-
-        if info.controls.take_click_down()
-        {
-            f(info);
-        }
     }
+
+    ButtonResult{inside, clicked: inside && info.controls.take_click_down()}
 }
 
 fn draw_item_image(
@@ -514,6 +526,7 @@ impl<T> UiList<T>
         parent: UiParentElement,
         id: impl Fn(UiListPart) -> UiId,
         item_height: f32,
+        padding: f32,
         mut update_item: impl FnMut(&mut UpdateInfo, UiParentElement, &T, bool)
     ) -> Option<usize>
     {
@@ -521,8 +534,17 @@ impl<T> UiList<T>
 
         self.position = self.position.ease_out(self.target_position, 10.0, info.dt);
 
+        let outer_body = parent.update(id(UiListPart::BodyOuter), UiElement{
+            width: UiSize::Rest(1.0).into(),
+            height: UiSize::Rest(1.0).into(),
+            children_layout: UiLayout::Vertical,
+            ..Default::default()
+        });
+
+        add_padding_vertical(outer_body, UiSize::Pixels(padding).into());
+
         let body_id = id(UiListPart::Body);
-        let body = parent.update(body_id.clone(), UiElement{
+        let body = outer_body.update(body_id.clone(), UiElement{
             width: UiSize::Rest(1.0).into(),
             height: UiSize::Rest(1.0).into(),
             scissor: true,
@@ -627,6 +649,8 @@ impl<T> UiList<T>
                 update_item(info, moving_part, value, is_selected);
             });
 
+        add_padding_vertical(outer_body, UiSize::Pixels(padding).into());
+
         selected_index
     }
 }
@@ -641,7 +665,7 @@ struct UiInventoryItem
 
 struct UiTitleButton
 {
-    id: UiIdTitleButton,
+    id: fn(UiIdButtonPart) -> UiIdTitleButton,
     texture: String,
     action: Rc<dyn Fn(&mut GameState)>
 }
@@ -760,28 +784,67 @@ impl WindowKind
                 info.dragging_currently = true;
             }
 
-            let mut update_button = |button_id, texture: String, action|
+            let top_left_rounded = info.sliced_textures["top_left_rounded"];
+            let top_right_rounded = info.sliced_textures["top_right_rounded"];
+
+            let mut update_button = |button_id: fn(UiIdButtonPart) -> UiIdTitleButton, background, texture: String, action|
             {
+                let id = |part| id(WindowPart::Title(TitlePart::Button(button_id(part))));
+
                 let size: UiElementSize<UiId> = UiSize::Pixels(BUTTON_SIZE).into();
 
-                let close_button = titlebar.update(id(WindowPart::Title(TitlePart::Button(button_id))), UiElement{
-                    texture: UiTexture::Custom(texture.into()),
-                    mix: Some(MixColorLch::color(ACCENT_COLOR)),
-                    animation: Animation::button(),
+                let animation = Animation{
+                    mix: Some(MixAnimation::default()),
+                    ..Default::default()
+                };
+
+                let button = titlebar.update(id(UiIdButtonPart::Body), UiElement{
+                    texture: background,
+                    mix: Some(MixColorLch::color(Lcha{a: 0.0, ..ACCENT_COLOR})),
+                    animation: animation.clone(),
                     width: size.clone(),
                     height: size,
                     ..Default::default()
                 });
 
-                handle_button(info, close_button, move |info|
+                let icon = button.update(id(UiIdButtonPart::Icon), UiElement{
+                    texture: UiTexture::Custom(texture.into()),
+                    mix: Some(MixColorLch::color(ACCENT_COLOR)),
+                    animation,
+                    width: UiSize::Rest(1.0).into(),
+                    height: UiSize::Rest(1.0).into(),
+                    ..Default::default()
+                });
+
+                let result = handle_button(info, button);
+
+                if result.inside
+                {
+                    icon.element().mix = Some(MixColorLch::color(BACKGROUND_COLOR));
+                }
+
+                if result.clicked
                 {
                     info.user_receiver.push(UiEvent::Action(action));
-                });
+                }
             };
 
-            buttons.iter().for_each(|button|
+            buttons.iter().enumerate().for_each(|(index, button)|
             {
-                update_button(button.id.clone(), button.texture.clone(), button.action.clone());
+                let background = if index == 0
+                {
+                    UiTexture::Sliced(top_left_rounded)
+                } else
+                {
+                    UiTexture::Solid
+                };
+
+                update_button(
+                    button.id.clone(),
+                    background,
+                    button.texture.clone(),
+                    button.action.clone()
+                );
             });
 
             let padding_size = UiElementSize{
@@ -797,10 +860,17 @@ impl WindowKind
             });
             add_padding_horizontal(titlebar, padding_size);
 
-            update_button(UiIdTitleButton::Close, "ui/close_button.png".to_owned(), Rc::new(move |game_state|
-            {
-                game_state.ui.borrow_mut().remove_window(&window_id);
-            }));
+            update_button(
+                |part| UiIdTitleButton::Close(part),
+                UiTexture::Sliced(top_right_rounded),
+                "ui/close_button.png".to_owned(),
+                Rc::new(move |game_state|
+                {
+                    game_state.ui.borrow_mut().remove_window(&window_id);
+                })
+            );
+
+            add_padding_vertical(parent, UiSize::Pixels(TINY_PADDING).into());
 
             let outer_separator = parent.update(id(WindowPart::Separator(SeparatorPart::Outer)), UiElement{
                 width: UiSize::Rest(1.0).into(),
@@ -887,7 +957,7 @@ impl WindowKind
                 let selected = inventory.list.update(info, body, |list_part|
                 {
                     id(InventoryPart::List(list_part))
-                }, item_height, |_info, parent, item, is_selected|
+                }, item_height, SMALL_PADDING, |_info, parent, item, is_selected|
                 {
                     let is_picked = picked_item == Some(item.item);
 
@@ -900,10 +970,14 @@ impl WindowKind
 
                     let rarity_color = rarity_hue_chroma.map(|(h, c)| Lcha{l: 80.0, c, h, a: 1.0});
 
+                    let colors_inverted = is_picked || is_selected;
+
                     let body_color = Lcha{
-                        a: if is_picked { 0.15 } else if is_selected { 0.1 } else { 0.0 },
-                        ..BLACK_COLOR
+                        a: if colors_inverted { 1.0 } else { 0.0 },
+                        ..ACCENT_COLOR
                     };
+
+                    let text_color = if colors_inverted { BACKGROUND_COLOR } else { ACCENT_COLOR };
 
                     let body = parent.update(id(ItemPart::Body), UiElement{
                         texture: UiTexture::Solid,
@@ -958,7 +1032,11 @@ impl WindowKind
 
                     body.update(id(ItemPart::Name), UiElement{
                         texture: UiTexture::Text(TextInfo::new_simple(font_size, item.name.clone())),
-                        mix: Some(MixColorLch::color(ACCENT_COLOR)),
+                        mix: Some(MixColorLch::color(text_color)),
+                        animation: Animation{
+                            mix: Some(MixAnimation::default()),
+                            ..Default::default()
+                        },
                         ..UiElement::fit_content()
                     });
                 });

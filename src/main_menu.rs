@@ -244,8 +244,8 @@ impl MainMenu
             },
             body_width: UiSize::FitChildren.into(),
             override_font_size: None,
-            padding_left: 0.01.into(),
-            padding_right: 0.005.into(),
+            padding_left: 0.013.into(),
+            padding_right: 0.01.into(),
             align_left: true,
             invert_colors: false
         })
@@ -404,7 +404,7 @@ impl MainMenu
             texture: UiTexture::Text(TextInfo{
                 font_size: title_font_size,
                 text: TextBlocks::single(ACCENT_COLOR.into(), "stephanie".into()),
-                outline: Some(TextOutline{color: [255; 3], size: 5})
+                outline: Some(TextOutline{color: BACKGROUND_COLOR.into(), size: 5})
             }),
             animation: Animation{
                 scaling: Some(ScalingAnimation{
