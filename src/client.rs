@@ -68,6 +68,8 @@ pub mod tiles_factory;
 
 pub mod world_receiver;
 
+pub mod ui_common;
+
 mod sliced_texture;
 
 

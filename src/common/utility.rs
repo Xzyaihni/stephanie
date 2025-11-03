@@ -941,6 +941,20 @@ pub fn from_upper_camel(s: &str) -> String
     }).collect()
 }
 
+pub fn sanitized_name(s: &str) -> String
+{
+    s.chars().map(|x|
+    {
+        if x.is_ascii_alphanumeric()
+        {
+            x
+        } else
+        {
+            '_'
+        }
+    }).collect()
+}
+
 pub fn debug_env() -> Option<String>
 {
     env::var("STEPHANIE_DEBUG").ok()

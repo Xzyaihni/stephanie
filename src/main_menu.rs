@@ -1,11 +1,12 @@
 use std::{
+    f32,
     fs,
     path::PathBuf,
     rc::Rc,
     collections::HashMap
 };
 
-use nalgebra::{vector, Matrix4};
+use nalgebra::{vector, Vector2, Matrix4};
 
 use yanyaengine::{
     game_object::*,
@@ -20,23 +21,16 @@ use crate::{
     app::ProgramShaders,
     client::{
         self,
+        ui_common::*,
         SlicedTexture,
         game_state::{
             KeyMapping,
             UiControls,
-            ControlsController,
-            ui::{
-                textbox_update,
-                BACKGROUND_COLOR,
-                ACCENT_COLOR,
-                ACCENT_COLOR_FADED,
-                TextboxInfo,
-                TextboxPartId,
-                controller::*
-            }
+            ControlsController
         }
     },
     common::{
+        sanitized_name,
         some_or_value,
         render_info::*,
         lazy_transform::SpringScalingInfo
@@ -52,7 +46,8 @@ enum MainMenuId
     Menu,
     Main(MainPartId),
     Options(OptionsPartId),
-    WorldSelect(WorldSelectPartId)
+    WorldSelect(WorldSelectPartId),
+    WorldCreate(WorldCreatePartId)
 }
 
 impl Idable for MainMenuId
@@ -96,6 +91,18 @@ enum OptionsPartId
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 enum WorldSelectPartId
 {
+    PanelOuter,
+    Panel,
+    List(UiListPart),
+    Button(usize, WorldButtonPartId),
+    Buttons,
+    Create(ButtonPartId),
+    Back(ButtonPartId),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum WorldCreatePartId
+{
     Panel,
     PanelInner,
     Message,
@@ -103,6 +110,13 @@ enum WorldSelectPartId
     Buttons,
     Confirm(ButtonPartId),
     Back(ButtonPartId)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum WorldButtonPartId
+{
+    Body,
+    Text
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -128,7 +142,8 @@ enum MenuState
 {
     Main,
     Options,
-    WorldSelect
+    WorldSelect,
+    WorldCreate
 }
 
 const BUTTON_SIZE: f32 = 0.05;
@@ -145,7 +160,8 @@ pub struct MenuClientInfo
 struct WorldInfo
 {
     name: String,
-    path: PathBuf
+    path: PathBuf,
+    id: usize
 }
 
 #[derive(Clone)]
@@ -169,7 +185,7 @@ struct UiInfo<'a, 'b, 'c, 'd>
     sliced_textures: &'a HashMap<String, SlicedTexture>,
     fonts: &'a FontsContainer,
     info: &'c mut MenuClientInfo,
-    worlds: &'d mut Vec<WorldInfo>,
+    worlds: &'d mut UiList<WorldInfo>,
     dt: f32
 }
 
@@ -184,7 +200,7 @@ pub struct MainMenu
     controls: ControlsController<MainMenuId>,
     state: MenuState,
     ui_camera: Camera,
-    worlds: Vec<WorldInfo>
+    worlds: UiList<WorldInfo>
 }
 
 impl MainMenu
@@ -211,13 +227,14 @@ impl MainMenu
         {
             fs::read_dir(worlds_path).and_then(|iter| -> Result<Vec<_>, _>
             {
-                iter.map(|x|
+                iter.enumerate().map(|(id, x)|
                 {
                     x.map(|x|
                     {
                         WorldInfo{
                             name: x.file_name().to_string_lossy().into_owned(),
-                            path: x.path()
+                            path: x.path(),
+                            id
                         }
                     })
                 }).collect()
@@ -243,7 +260,7 @@ impl MainMenu
             controls: ControlsController::new(),
             state: MenuState::Main,
             ui_camera,
-            worlds,
+            worlds: worlds.into(),
             info
         }
     }
@@ -495,7 +512,6 @@ impl MainMenu
         let id = |part| MainMenuId::Options(part);
 
         let mut state = MenuState::Options;
-        let mut action = MenuAction::None;
 
         let button_pad = || Self::button_pad(menu);
 
@@ -523,7 +539,7 @@ impl MainMenu
 
         add_padding_vertical(menu, UiSize::Rest(1.0).into());
 
-        (state, action)
+        (state, MenuAction::None)
     }
 
     fn update_world_create(
@@ -531,26 +547,25 @@ impl MainMenu
         menu: TreeInserter<MainMenuId>
     ) -> (MenuState, MenuAction)
     {
-        let id = |part| MainMenuId::WorldSelect(part);
+        let id = |part| MainMenuId::WorldCreate(part);
 
-        let mut state = MenuState::WorldSelect;
+        let mut state = MenuState::WorldCreate;
         let mut action = MenuAction::None;
 
         let panel_padding = 0.05;
         let panel_padding_horizontal = 0.06;
 
-        add_padding_vertical(menu, UiSize::Rest(1.0).into());
-
-        let panel_outer = menu.update(id(WorldSelectPartId::Panel), UiElement{
+        let panel_outer = menu.update(id(WorldCreatePartId::Panel), UiElement{
             texture: UiTexture::Sliced(ui_info.sliced_textures["rounded"]),
             mix: Some(MixColorLch::color(BACKGROUND_COLOR)),
+            position: UiPosition::Absolute{position: Vector2::zeros(), align: UiPositionAlign::default()},
             children_layout: UiLayout::Horizontal,
             ..Default::default()
         });
 
         add_padding_horizontal(panel_outer, panel_padding_horizontal.into());
 
-        let panel = panel_outer.update(id(WorldSelectPartId::PanelInner), UiElement{
+        let panel = panel_outer.update(id(WorldCreatePartId::PanelInner), UiElement{
             children_layout: UiLayout::Vertical,
             ..Default::default()
         });
@@ -560,7 +575,7 @@ impl MainMenu
         let font_size = (panel.screen_size().max() * 0.02) as u32;
         let font_height = ui_info.fonts.text_height(font_size, panel.screen_size().max());
 
-        panel.update(id(WorldSelectPartId::Message), UiElement{
+        panel.update(id(WorldCreatePartId::Message), UiElement{
             texture: UiTexture::Text(TextInfo::new_simple(font_size, "who am i?")),
             mix: Some(MixColorLch::color(ACCENT_COLOR)),
             ..UiElement::fit_content()
@@ -568,7 +583,7 @@ impl MainMenu
 
         add_padding_vertical(panel, 0.008.into());
 
-        let textbox = panel.update(id(WorldSelectPartId::Textbox(TextboxPartId::Body)), UiElement{
+        let textbox = panel.update(id(WorldCreatePartId::Textbox(TextboxPartId::Body)), UiElement{
             width: UiElementSize{
                 minimum_size: Some(UiMinimumSize::FitChildren),
                 size: UiSize::Rest(1.0)
@@ -582,7 +597,7 @@ impl MainMenu
         textbox_update(
             ui_info.controls,
             ui_info.fonts,
-            |part| MainMenuId::WorldSelect(WorldSelectPartId::Textbox(part)),
+            |part| MainMenuId::WorldCreate(WorldCreatePartId::Textbox(part)),
             textbox,
             font_size,
             &mut ui_info.info.name
@@ -590,7 +605,7 @@ impl MainMenu
 
         add_padding_vertical(panel, 0.01.into());
 
-        let buttons = panel.update(id(WorldSelectPartId::Buttons), UiElement::default());
+        let buttons = panel.update(id(WorldCreatePartId::Buttons), UiElement::default());
 
         let confirm_allowed = !ui_info.info.name.text.is_empty();
 
@@ -614,7 +629,7 @@ impl MainMenu
         let back_clicked = Self::update_button(
             ui_info.controls,
             buttons,
-            |part| id(WorldSelectPartId::Back(part)),
+            |part| id(WorldCreatePartId::Back(part)),
             ButtonInfo{
                 name: "back".to_owned(),
                 disabled: false,
@@ -632,7 +647,7 @@ impl MainMenu
         let confirm_clicked = Self::update_button(
             ui_info.controls,
             buttons,
-            |part| id(WorldSelectPartId::Confirm(part)),
+            |part| id(WorldCreatePartId::Confirm(part)),
             confirm_info
         );
 
@@ -646,7 +661,23 @@ impl MainMenu
         add_padding_vertical(panel, panel_padding.into());
         add_padding_horizontal(panel_outer, panel_padding_horizontal.into());
 
-        add_padding_vertical(menu, UiSize::Rest(1.0).into());
+        if let MenuAction::Start = action
+        {
+            fn unique_name(worlds: &[WorldInfo], name: String) -> String
+            {
+                if worlds.iter().any(|x| x.name == name)
+                {
+                    unique_name(worlds, name + "_")
+                } else
+                {
+                    name
+                }
+            }
+
+            let world_name = sanitized_name(&ui_info.info.name.text);
+
+            ui_info.info.name.text = unique_name(&ui_info.worlds.items, world_name);
+        }
 
         (state, action)
     }
@@ -661,12 +692,131 @@ impl MainMenu
         let mut state = MenuState::WorldSelect;
         let mut action = MenuAction::None;
 
-        if ui_info.worlds.is_empty()
+        if ui_info.worlds.items.is_empty()
         {
-            (state, action) = Self::update_world_create(ui_info, menu);
+            state = MenuState::WorldCreate;
         } else
         {
-            todo!();
+            add_padding_vertical(menu, 0.05.into());
+
+            let outer_panel = menu.update(id(WorldSelectPartId::PanelOuter), UiElement{
+                texture: UiTexture::Sliced(ui_info.sliced_textures["rounded"]),
+                mix: Some(MixColorLch::color(BACKGROUND_COLOR)),
+                width: UiSize::FitChildren.into(),
+                height: UiSize::Rest(1.0).into(),
+                children_layout: UiLayout::Vertical,
+                ..Default::default()
+            });
+
+            add_padding_vertical(outer_panel, UiSize::Pixels(SMALL_PADDING).into());
+
+            let panel = outer_panel.update(id(WorldSelectPartId::Panel), UiElement{
+                width: UiSize::FitChildren.into(),
+                height: UiSize::Rest(1.0).into(),
+                ..Default::default()
+            });
+
+            let font_size = MEDIUM_TEXT_SIZE;
+            let item_height = ui_info.fonts.text_height(font_size, menu.screen_size().max());
+
+            let list_info = UiListInfo{
+                controls: ui_info.controls,
+                mouse_taken: false,
+                item_height,
+                padding: SMALL_PADDING,
+                outer_width: UiSize::FitChildren.into(),
+                outer_height: UiSize::Rest(1.0).into(),
+                dt: ui_info.dt
+            };
+
+            ui_info.worlds.update(panel, |part| id(WorldSelectPartId::List(part)), list_info, |info, parent, item, is_selected|
+            {
+                let id = |part| id(WorldSelectPartId::Button(item.id, part));
+
+                let body = parent.update(id(WorldButtonPartId::Body), UiElement{
+                    texture: UiTexture::Solid,
+                    mix: Some(MixColorLch::color(if is_selected { ACCENT_COLOR } else { BACKGROUND_COLOR })),
+                    height: item_height.into(),
+                    animation: Animation{
+                        mix: Some(MixAnimation::default()),
+                        ..Default::default()
+                    },
+                    children_layout: UiLayout::Horizontal,
+                    ..Default::default()
+                });
+
+                add_padding_horizontal(body, 0.005.into());
+                body.update(id(WorldButtonPartId::Text), UiElement{
+                    texture: UiTexture::Text(TextInfo::new_simple(font_size, item.name.clone())),
+                    mix: Some(MixColorLch::color(if is_selected { BACKGROUND_COLOR } else { ACCENT_COLOR })),
+                    animation: Animation{
+                        mix: Some(MixAnimation::default()),
+                        ..Default::default()
+                    },
+                    ..UiElement::fit_content()
+                });
+                add_padding_horizontal(body, 0.005.into());
+
+                if is_selected && info.controls.take_click_down()
+                {
+                    ui_info.info.name = TextboxInfo::new(item.name.clone());
+                    action = MenuAction::Start;
+                }
+            });
+
+            add_padding_vertical(outer_panel, UiSize::Rest(1.0).into());
+            let buttons = outer_panel.update(id(WorldSelectPartId::Buttons), UiElement{
+                ..Default::default()
+            });
+
+            let create_info = {
+                let padding: UiElementSize<_> = 0.005.into();
+
+                ButtonInfo{
+                    name: "create".to_owned(),
+                    width: UiSize::FitChildren.into(),
+                    height: item_height.into(),
+                    body_width: UiSize::FitChildren.into(),
+                    override_font_size: Some(font_size),
+                    padding_left: padding.clone(),
+                    padding_right: padding,
+                    align_left: false,
+                    disabled: false,
+                    invert_colors: true
+                }
+            };
+
+            let back_clicked = Self::update_button(
+                ui_info.controls,
+                buttons,
+                |part| id(WorldSelectPartId::Back(part)),
+                ButtonInfo{
+                    name: "back".to_owned(),
+                    ..create_info.clone()
+                }
+            );
+
+            if back_clicked
+            {
+                state = MenuState::Main;
+            }
+
+            add_padding_horizontal(buttons, 0.005.into());
+
+            let create_clicked = Self::update_button(
+                ui_info.controls,
+                buttons,
+                |part| id(WorldSelectPartId::Create(part)),
+                create_info
+            );
+
+            if create_clicked
+            {
+                state = MenuState::WorldCreate;
+            }
+
+            add_padding_vertical(outer_panel, UiSize::Pixels(SMALL_PADDING).into());
+            add_padding_vertical(menu, 0.05.into());
         }
 
         (state, action)
@@ -684,7 +834,8 @@ impl MainMenu
         {
             MenuState::Main => true,
             MenuState::Options => true,
-            MenuState::WorldSelect => false
+            MenuState::WorldSelect => false,
+            MenuState::WorldCreate => false
         };
 
         self.controller.as_inserter().element().children_layout = if align_left
@@ -717,7 +868,8 @@ impl MainMenu
             {
                 MenuState::Main => Self::update_main(ui_info, menu),
                 MenuState::Options => Self::update_options(ui_info, menu),
-                MenuState::WorldSelect => Self::update_world_select(ui_info, menu)
+                MenuState::WorldSelect => Self::update_world_select(ui_info, menu),
+                MenuState::WorldCreate => Self::update_world_create(ui_info, menu)
             }
         };
 

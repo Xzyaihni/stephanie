@@ -43,6 +43,7 @@ use crate::{
         PartCreator
     },
     common::{
+        sanitized_name,
         TileMap,
         TileMapWithTextures,
         DataInfos,
@@ -470,6 +471,8 @@ impl YanyaApp for App
                         let tilemap = self.tilemap.clone();
                         let data_infos = self.data_infos.clone();
 
+                        let world_name = sanitized_name(&client_info.name.text);
+
                         self.server_handle = Some(thread::spawn(move ||
                         {
                             let port = 0;
@@ -479,6 +482,7 @@ impl YanyaApp for App
                             let x = Server::new(
                                 tilemap,
                                 data_infos,
+                                world_name,
                                 &listen_address,
                                 16
                             );

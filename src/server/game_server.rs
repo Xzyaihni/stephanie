@@ -205,14 +205,13 @@ impl GameServer
     pub fn new(
         tilemap: TileMap,
         data_infos: DataInfos,
+        world_name: String,
         limit: usize
     ) -> Result<(Sender<TcpStream>, Self), ParseError>
     {
         let tilemap = Rc::new(tilemap);
         let entities = Entities::new(data_infos.clone());
         let connection_handler = Arc::new(Mutex::new(ConnectionsHandler::new(limit)));
-
-        let world_name = "default".to_owned();
 
         let world = Some(World::new(
             connection_handler.clone(),

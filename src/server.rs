@@ -30,6 +30,7 @@ impl Server
     pub fn new(
         tilemap: TileMapWithTextures,
         data_infos: DataInfos,
+        world_name: String,
         address: &str,
         connections_limit: usize
     ) -> Result<(GameServer, Self), ParseError>
@@ -39,6 +40,7 @@ impl Server
         let (connector, game_server) = GameServer::new(
             tilemap.tilemap,
             data_infos,
+            world_name,
             connections_limit
         )?;
 
