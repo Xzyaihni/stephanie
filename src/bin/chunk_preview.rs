@@ -798,7 +798,7 @@ impl YanyaApp for ChunkPreviewer
                     name_body.element().mix = Some(MixColorLch::color(Lcha{l: 0.0, c: 0.0, h: 0.0, a: 0.5}));
 
                     let mut _position = 0;
-                    text_input_handle(controls, &mut _position, text);
+                    text_input_handle(controls, None, &mut _position, text);
                 }
 
                 name_body.update(id(TextboxPartId::Text), UiElement{

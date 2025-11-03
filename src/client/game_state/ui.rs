@@ -374,6 +374,7 @@ type UiParentElement<'a> = TreeInserter<'a, UiId>;
 pub struct TextboxInfo
 {
     pub text: String,
+    limit: Option<usize>,
     position: u32,
     animation: f32
 }
@@ -382,9 +383,20 @@ impl TextboxInfo
 {
     pub fn new(text: String) -> Self
     {
+        Self::new_inner(text, None)
+    }
+
+    pub fn new_with_limit(text: String, limit: usize) -> Self
+    {
+        Self::new_inner(text, Some(limit))
+    }
+
+    fn new_inner(text: String, limit: Option<usize>) -> Self
+    {
         Self{
             position: text.chars().count() as u32,
             text,
+            limit,
             animation: 0.0
         }
     }
@@ -422,22 +434,26 @@ pub fn textbox_update<Id: Idable>(
         ..Default::default()
     });
 
+    let screen_size = entry.screen_size().max();
+
+    let text_info = TextInfo::new_simple(font_size, info.text.clone());
+    let text_width = fonts.calculate_bounds(&text_info, &Vector2::repeat(screen_size)).x;
+
     entry.update(id(TextboxPartId::Text), UiElement{
-        texture: UiTexture::Text(TextInfo::new_simple(font_size, info.text.clone())),
+        texture: UiTexture::Text(text_info),
         mix: Some(MixColorLch::color(ACCENT_COLOR)),
         ..UiElement::fit_content()
     });
 
-    let screen_size = entry.screen_size().max();
     let font_height = fonts.text_height(font_size, screen_size);
-    let cursor_start = entry.update(id(TextboxPartId::CursorStart), UiElement{
+    entry.update(id(TextboxPartId::CursorStart), UiElement{
         width: 0.0.into(),
         height: font_height.into(),
         position: UiPosition::Inherit,
         ..Default::default()
     });
 
-    if let Some(cursor_start) = cursor_start.try_position()
+    if let Some(cursor_start) = entry.try_position()
     {
         let is_visible = info.animation < 0.5;
 
@@ -454,12 +470,14 @@ pub fn textbox_update<Id: Idable>(
             fonts.calculate_bounds(&text_info, &Vector2::repeat(screen_size)) - vector![0.0, font_height]
         };
 
+        let position = (cursor_start - vector![text_width * 0.5, 0.0]) + offset;
+
         entry.update(id(TextboxPartId::Cursor), UiElement{
             texture: UiTexture::Solid,
             mix: Some(MixColorLch::color(Lcha{a: if is_visible { 1.0 } else { 0.0 }, ..ACCENT_COLOR})),
             width: UiSize::Pixels(SEPARATOR_SIZE).into(),
             height: UiSize::Rest(1.0).into(),
-            position: UiPosition::Absolute{position: cursor_start + offset, align: UiPositionAlign::default()},
+            position: UiPosition::Absolute{position, align: UiPositionAlign::default()},
             ..Default::default()
         });
     }
@@ -474,7 +492,10 @@ pub fn textbox_update<Id: Idable>(
         ..Default::default()
     });
 
-    text_input_handle(controls, &mut info.position, &mut info.text);
+    if text_input_handle(controls, info.limit, &mut info.position, &mut info.text)
+    {
+        info.animation = 0.0;
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -2710,6 +2731,8 @@ impl Ui
 
         if let Some(text) = self.console_contents.as_mut()
         {
+            text.update(dt);
+
             let body = self.controller.update(UiId::Console(TextboxPartId::Body), UiElement{
                 animation: Animation::normal(),
                 position: UiPosition::Absolute{position: Vector2::zeros(), align: Default::default()},

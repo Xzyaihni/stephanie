@@ -167,7 +167,8 @@ struct UiInfo<'a, 'b, 'c, 'd>
     sliced_textures: &'a HashMap<String, SlicedTexture>,
     fonts: &'a FontsContainer,
     info: &'c mut MenuClientInfo,
-    worlds: &'d mut Vec<WorldInfo>
+    worlds: &'d mut Vec<WorldInfo>,
+    dt: f32
 }
 
 pub struct MainMenu
@@ -196,7 +197,7 @@ impl MainMenu
 
         let info = MenuClientInfo{
             address: None,
-            name: TextboxInfo::new("stephanie".to_owned()),
+            name: TextboxInfo::new_with_limit("stephanie".to_owned(), 30),
             host: true,
             debug: false
         };
@@ -566,10 +567,15 @@ impl MainMenu
         add_padding_vertical(panel, 0.008.into());
 
         let textbox = panel.update(id(WorldSelectPartId::Textbox(TextboxPartId::Body)), UiElement{
-            width: UiSize::Rest(1.0).into(),
+            width: UiElementSize{
+                minimum_size: Some(UiMinimumSize::FitChildren),
+                size: UiSize::Rest(1.0)
+            },
             children_layout: UiLayout::Vertical,
             ..Default::default()
         });
+
+        ui_info.info.name.update(ui_info.dt);
 
         textbox_update(
             ui_info.controls,
@@ -699,7 +705,8 @@ impl MainMenu
                 sliced_textures: &self.sliced_textures,
                 fonts: &self.fonts,
                 info: &mut self.info,
-                worlds: &mut self.worlds
+                worlds: &mut self.worlds,
+                dt
             };
 
             match self.state

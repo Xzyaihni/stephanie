@@ -254,8 +254,8 @@ fn sliced_model(
     scale: Vector2<f32>
 ) -> Model
 {
-    let w = width_unscaled / scale.x;
-    let h = height_unscaled / scale.y;
+    let w = (width_unscaled / scale.x).min(0.5);
+    let h = (height_unscaled / scale.y).min(0.5);
 
     let sx = -0.5;
     let sy = -0.5;
