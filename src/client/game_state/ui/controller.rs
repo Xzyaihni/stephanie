@@ -85,7 +85,7 @@ pub fn text_input_handle<Id: Idable>(
                         shift_right(text, position);
                         return false;
                     },
-                    KeyCode::Tab => return false,
+                    KeyCode::Enter | KeyCode::Tab => return true,
                     KeyCode::Backspace =>
                     {
                         if !text.is_empty()

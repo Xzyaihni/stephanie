@@ -2736,14 +2736,6 @@ impl Ui
             let body = self.controller.update(UiId::Console(TextboxPartId::Body), UiElement{
                 animation: Animation::normal(),
                 position: UiPosition::Absolute{position: Vector2::zeros(), align: Default::default()},
-                width: UiElementSize{
-                    minimum_size: Some(UiMinimumSize::Absolute(0.9)),
-                    ..Default::default()
-                },
-                height: UiElementSize{
-                    minimum_size: Some(UiMinimumSize::Absolute(0.1)),
-                    ..Default::default()
-                },
                 ..Default::default()
             });
 

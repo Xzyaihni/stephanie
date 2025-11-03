@@ -9,6 +9,7 @@ use nalgebra::{vector, Matrix4};
 
 use yanyaengine::{
     game_object::*,
+    KeyCode,
     FontsContainer,
     Control,
     SolidObject,
@@ -21,6 +22,7 @@ use crate::{
         self,
         SlicedTexture,
         game_state::{
+            KeyMapping,
             UiControls,
             ControlsController,
             ui::{
@@ -609,20 +611,6 @@ impl MainMenu
             }
         };
 
-        let confirm_clicked = Self::update_button(
-            ui_info.controls,
-            buttons,
-            |part| id(WorldSelectPartId::Confirm(part)),
-            confirm_info.clone()
-        );
-
-        if confirm_clicked && confirm_allowed
-        {
-            action = MenuAction::Start;
-        }
-
-        add_padding_horizontal(buttons, 0.005.into());
-
         let back_clicked = Self::update_button(
             ui_info.controls,
             buttons,
@@ -630,13 +618,29 @@ impl MainMenu
             ButtonInfo{
                 name: "back".to_owned(),
                 disabled: false,
-                ..confirm_info
+                ..confirm_info.clone()
             }
         );
 
         if back_clicked
         {
             state = MenuState::Main;
+        }
+
+        add_padding_horizontal(buttons, 0.005.into());
+
+        let confirm_clicked = Self::update_button(
+            ui_info.controls,
+            buttons,
+            |part| id(WorldSelectPartId::Confirm(part)),
+            confirm_info
+        );
+
+        let confirm_clicked = confirm_clicked || ui_info.controls.take_key_down(KeyMapping::Keyboard(KeyCode::Enter));
+
+        if confirm_clicked && confirm_allowed
+        {
+            action = MenuAction::Start;
         }
 
         add_padding_vertical(panel, panel_padding.into());

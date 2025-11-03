@@ -174,6 +174,19 @@ pub struct UiControls<Id>
 
 impl<Id: PartialEq + Clone> UiControls<Id>
 {
+    pub fn take_key_down(&mut self, key: KeyMapping) -> bool
+    {
+        let key_id = self.controls.iter().position(|(changed, _)| key == changed.key);
+        let is_down = key_id.map(|index| self.controls[index].1.is_down()).unwrap_or(false);
+
+        if is_down
+        {
+            self.controls.remove(key_id.unwrap());
+        }
+
+        is_down
+    }
+
     pub fn take_click_down(&mut self) -> bool
     {
         self.state.click_mappings.iter().fold(false, |acc, mapping|
