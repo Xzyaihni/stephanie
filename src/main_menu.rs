@@ -33,6 +33,7 @@ use crate::{
         sanitized_name,
         some_or_value,
         render_info::*,
+        colors::Lcha,
         lazy_transform::SpringScalingInfo
     }
 };
@@ -83,9 +84,17 @@ enum AlignPartId
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 enum OptionsPartId
 {
+    Menu,
     Controls(ButtonPartId),
     DebugToggle(ButtonPartId),
-    Back(ButtonPartId)
+    Back(ButtonPartId),
+    ControlsTab(ControlsPartId)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum ControlsPartId
+{
+    Panel
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -142,6 +151,7 @@ enum MenuState
 {
     Main,
     Options,
+    Controls,
     WorldSelect,
     WorldCreate
 }
@@ -186,6 +196,7 @@ struct UiInfo<'a, 'b, 'c, 'd>
     fonts: &'a FontsContainer,
     info: &'c mut MenuClientInfo,
     worlds: &'d mut UiList<WorldInfo>,
+    state: MenuState,
     dt: f32
 }
 
@@ -432,7 +443,7 @@ impl MainMenu
     {
         let id = |part| MainMenuId::Main(part);
 
-        let mut state = MenuState::Main;
+        let mut state = ui_info.state;
         let mut action = MenuAction::None;
 
         add_padding_vertical(menu, UiSize::Rest(0.25).into());
@@ -506,12 +517,18 @@ impl MainMenu
 
     fn update_options(
         ui_info: UiInfo,
-        menu: TreeInserter<MainMenuId>
+        outer_menu: TreeInserter<MainMenuId>
     ) -> (MenuState, MenuAction)
     {
         let id = |part| MainMenuId::Options(part);
 
-        let mut state = MenuState::Options;
+        let mut state = ui_info.state;
+
+        let menu = outer_menu.update(id(OptionsPartId::Menu), UiElement{
+            height: UiSize::Rest(1.0).into(),
+            children_layout: UiLayout::Vertical,
+            ..Default::default()
+        });
 
         let button_pad = || Self::button_pad(menu);
 
@@ -519,7 +536,35 @@ impl MainMenu
 
         if Self::update_main_button(ui_info.controls, menu, |part| id(OptionsPartId::Controls(part)), "controls")
         {
-            todo!();
+            state = MenuState::Controls;
+        }
+
+        if let MenuState::Controls = state
+        {
+            let id = |part| id(OptionsPartId::ControlsTab(part));
+
+            let panel = outer_menu.update(id(ControlsPartId::Panel), UiElement{
+                texture: UiTexture::Sliced(ui_info.sliced_textures["rounded"]),
+                mix: Some(MixColorLch::color(BACKGROUND_COLOR)),
+                width: 0.7.into(),
+                height: UiSize::Rest(1.0).into(),
+                animation: Animation{
+                    position: Some(PositionAnimation{
+                        offsets: Some(PositionOffsets{
+                            start: vector![0.0, -1.0],
+                            ..Default::default()
+                        }),
+                        start_mode: Connection::EaseOut{decay: 16.0, limit: None},
+                        ..Default::default()
+                    }),
+                    mix: Some(MixAnimation{
+                        start_mix: Some(Lcha{a: 0.0, ..BACKGROUND_COLOR}),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+                ..Default::default()
+            });
         }
 
         button_pad();
@@ -549,7 +594,7 @@ impl MainMenu
     {
         let id = |part| MainMenuId::WorldCreate(part);
 
-        let mut state = MenuState::WorldCreate;
+        let mut state = ui_info.state;
         let mut action = MenuAction::None;
 
         let panel_padding = 0.05;
@@ -689,7 +734,7 @@ impl MainMenu
     {
         let id = |part| MainMenuId::WorldSelect(part);
 
-        let mut state = MenuState::WorldSelect;
+        let mut state = ui_info.state;
         let mut action = MenuAction::None;
 
         if ui_info.worlds.items.is_empty()
@@ -833,7 +878,7 @@ impl MainMenu
         let align_left = match self.state
         {
             MenuState::Main => true,
-            MenuState::Options => true,
+            MenuState::Options | MenuState::Controls => true,
             MenuState::WorldSelect => false,
             MenuState::WorldCreate => false
         };
@@ -848,11 +893,19 @@ impl MainMenu
             UiLayout::Vertical
         };
 
-        let menu = self.controller.update(MainMenuId::Menu, UiElement{
-            height: UiSize::Rest(1.0).into(),
-            children_layout: UiLayout::Vertical,
-            ..Default::default()
-        });
+        let menu = {
+            let children_layout = match self.state
+            {
+                MenuState::Options | MenuState::Controls => UiLayout::Horizontal,
+                _ => UiLayout::Vertical
+            };
+
+            self.controller.update(MainMenuId::Menu, UiElement{
+                height: UiSize::Rest(1.0).into(),
+                children_layout,
+                ..Default::default()
+            })
+        };
 
         let (next_state, action) = {
             let ui_info = UiInfo{
@@ -861,13 +914,14 @@ impl MainMenu
                 fonts: &self.fonts,
                 info: &mut self.info,
                 worlds: &mut self.worlds,
+                state: self.state,
                 dt
             };
 
             match self.state
             {
                 MenuState::Main => Self::update_main(ui_info, menu),
-                MenuState::Options => Self::update_options(ui_info, menu),
+                MenuState::Options | MenuState::Controls => Self::update_options(ui_info, menu),
                 MenuState::WorldSelect => Self::update_world_select(ui_info, menu),
                 MenuState::WorldCreate => Self::update_world_create(ui_info, menu)
             }

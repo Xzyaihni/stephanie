@@ -1,7 +1,5 @@
 use std::path::Path;
 
-use image::RgbaImage;
-
 use serde::{Serialize, Deserialize};
 
 use nalgebra::vector;
@@ -24,11 +22,11 @@ pub struct PartCreator<'a, 'b>
 
 impl PartCreator<'_, '_>
 {
-    pub fn create(&mut self, image: RgbaImage) -> TextureId
+    pub fn create(&mut self, image: impl Into<SimpleImage>) -> TextureId
     {
         let texture = Texture::new(
             self.resource_uploader,
-            SimpleImage::from(image).into()
+            image.into().into()
         );
 
         self.assets.push_texture(texture)
@@ -87,7 +85,7 @@ impl SlicedTexture
         let this = Self{
             width: f(width, size.x),
             height: f(height, size.y),
-            id: part_creator.create(image.into())
+            id: part_creator.create(image)
         };
 
         Some((name, this))

@@ -2,7 +2,7 @@ use image::{Rgba, DynamicImage, RgbaImage};
 
 use nalgebra::Vector2;
 
-use yanyaengine::TextureId;
+use yanyaengine::{TextureId, object::texture::{outline_image, Imageable, ImageOutline, Color}};
 
 use super::PartCreator;
 use crate::{
@@ -99,9 +99,28 @@ fn color_pairs() -> Vec<(ChangedPart, Rgba<u8>)>
     }).collect()
 }
 
+struct OutlineGenerator<'a>(&'a RgbaImage);
+
+impl Imageable for OutlineGenerator<'_>
+{
+    fn width(&self) -> usize { self.0.width() as usize }
+    fn height(&self) -> usize { self.0.height() as usize }
+
+    fn get_pixel(&self, x: usize, y: usize) -> Color
+    {
+        Color{
+            r: 255,
+            g: 255,
+            b: 255,
+            a: self.0.get_pixel(x as u32, y as u32).0[3]
+        }
+    }
+}
+
 pub struct UiAnatomyLocations
 {
     pub full: TextureId,
+    pub outline: TextureId,
     pub locations: Vec<(ChangedPart, UiAnatomyLocation)>
 }
 
@@ -129,6 +148,14 @@ impl UiAnatomyLocations
 
         let full = part_creator.create(base_image.clone());
 
+        let outline = {
+            let image = OutlineGenerator(&base_image);
+            part_creator.create(outline_image::<true>(
+                &image,
+                ImageOutline{color: [255; 3], size: 2}
+            ).expect("outline must not be 0"))
+        };
+
         let locations: Vec<_> = color_pairs.into_iter().map(|(id, color)|
         {
             let location = UiAnatomyLocation::from_color(
@@ -140,6 +167,6 @@ impl UiAnatomyLocations
             (id, location)
         }).collect();
 
-        Self{full, locations}
+        Self{full, outline, locations}
     }
 }

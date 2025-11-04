@@ -17,7 +17,10 @@ use nalgebra::Vector2;
 use yanyaengine::{
     FontsContainer,
     Assets,
-    game_object::*
+    DefaultTexture,
+    TextureId,
+    game_object::*,
+    object::texture::{outline_image, ImageOutline}
 };
 
 use crate::{
@@ -25,6 +28,7 @@ use crate::{
     client::{
         ui_common::*,
         SlicedTexture,
+        PartCreator,
         game_state::{
             GameState,
             UiAnatomyLocations,
@@ -108,6 +112,7 @@ pub enum HealthPart
 {
     OuterPanel,
     InnerPanel,
+    PanelOutline,
     PanelVertical,
     Panel,
     Body,
@@ -1298,12 +1303,57 @@ pub struct UiEntities
     pub player: Entity
 }
 
+struct HealthPanelInfo
+{
+    outline: TextureId,
+    panel: TextureId
+}
+
+impl HealthPanelInfo
+{
+    fn new(info: &mut ObjectCreateInfo, name: &str) -> Self
+    {
+        let mut assets = info.partial.assets.lock();
+
+        let panel = assets.texture_id(name);
+
+        let outline = assets.textures_path().map(|textures_path| textures_path.join(name)).map(|path|
+        {
+            image::open(path).map(|panel_image|
+            {
+                let outline = outline_image::<true>(
+                    &panel_image.into_rgba8(),
+                    ImageOutline{color: [255; 3], size: 3}
+                ).expect("outline must not be 0");
+
+                let mut part_creator = PartCreator{
+                    assets: &mut assets,
+                    resource_uploader: info.partial.builder_wrapper.resource_uploader_mut()
+                };
+
+                part_creator.create(outline)
+            }).unwrap_or_else(|err|
+            {
+                eprintln!("error loading health panel image: {err}, using fallback");
+
+                assets.default_texture(DefaultTexture::Solid)
+            })
+        }).unwrap_or_else(|| assets.default_texture(DefaultTexture::Solid));
+
+        Self{
+            outline,
+            panel
+        }
+    }
+}
+
 pub struct Ui
 {
     items_info: Arc<ItemsInfo>,
     assets: Arc<Mutex<Assets>>,
     fonts: Rc<FontsContainer>,
     sliced_textures: Rc<HashMap<String, SlicedTexture>>,
+    health_panel: HealthPanelInfo,
     anatomy_locations: UiAnatomyLocations,
     anatomy_locations_small: UiAnatomyLocations,
     user_receiver: Rc<RefCell<UiReceiver>>,
@@ -1345,6 +1395,7 @@ impl Ui
             assets: info.partial.assets.clone(),
             fonts: info.partial.builder_wrapper.fonts().clone(),
             sliced_textures,
+            health_panel: HealthPanelInfo::new(info, "ui/health_panel.png"),
             anatomy_locations: anatomy_locations(info, "anatomy_areas"),
             anatomy_locations_small: anatomy_locations(info, "anatomy_areas_small"),
             user_receiver,
@@ -1889,6 +1940,18 @@ impl Ui
 
         if let Some(anatomy) = entities.anatomy(self.ui_entities.player)
         {
+            let vertical_panel_id = UiId::Health(HealthPart::PanelVertical);
+
+            if let Some(position) = self.controller.input_of(&vertical_panel_id).try_position()
+            {
+                self.controller.update(UiId::Health(HealthPart::PanelOutline), UiElement{
+                    texture: UiTexture::CustomId(self.health_panel.outline),
+                    mix: Some(MixColorLch::color(WHITE_COLOR)),
+                    position: UiPosition::Absolute{position, align: UiPositionAlign::default()},
+                    ..UiElement::fit_content()
+                });
+            }
+
             let health_outer = self.controller.update(UiId::Health(HealthPart::OuterPanel), UiElement{
                 width: ui_screen_width.into(),
                 height: UiSize::Rest(1.0).into(),
@@ -1907,8 +1970,8 @@ impl Ui
 
             add_padding_horizontal(health_inner, UiSize::Rest(1.0).into());
 
-            let panel_vertical = health_inner.update(UiId::Health(HealthPart::PanelVertical), UiElement{
-                texture: UiTexture::Custom("ui/health_panel.png".into()),
+            let panel_vertical = health_inner.update(vertical_panel_id, UiElement{
+                texture: UiTexture::CustomId(self.health_panel.panel),
                 mix: Some(MixColorLch::color(BACKGROUND_COLOR)),
                 children_layout: UiLayout::Vertical,
                 ..UiElement::fit_content()
@@ -1927,14 +1990,13 @@ impl Ui
             let body = panel.update(UiId::Health(HealthPart::Body), UiElement::default());
 
             {
-                let texture = UiTexture::Custom("ui/anatomy_outline.png".into());
+                let texture = UiTexture::CustomId(self.anatomy_locations.outline);
 
                 let texture_size = self.controller.texture_size(&texture);
                 let offset = texture_size - self.controller.texture_size(&UiTexture::CustomId(self.anatomy_locations.full));
 
                 body.update(UiId::Health(HealthPart::Outline), UiElement{
                     texture,
-                    mix: Some(MixColorLch::color(WHITE_COLOR)),
                     position: UiPosition::Offset(UiId::Health(HealthPart::Body), Vector2::new(-offset.x * 0.5, 0.0)),
                     ..UiElement::fit_content()
                 });
@@ -2092,18 +2154,6 @@ impl Ui
 
             let position = some_or_value!(position_of(*entity), false);
 
-            let body = self.controller.update(UiId::AnatomyNotification(*entity, AnatomyNotificationPart::Body), UiElement{
-                position: UiPosition::Absolute{position, align: UiPositionAlign{
-                    horizontal: AlignHorizontal::Middle,
-                    vertical: AlignVertical::Bottom
-                }},
-                animation: Animation{
-                    position: None,
-                    ..Animation::normal()
-                },
-                ..Default::default()
-            });
-
             let alpha = {
                 let other_position = some_or_value!(entities.transform(*entity), false).position;
                 let player_position = some_or_value!(entities.transform(self.ui_entities.player), false).position;
@@ -2112,6 +2162,22 @@ impl Ui
 
                 lerp(0.9, 0.1, (distance / (TILE_SIZE * 4.0)).min(1.0))
             };
+
+            let body = self.controller.update(UiId::AnatomyNotification(*entity, AnatomyNotificationPart::Body), UiElement{
+                texture: UiTexture::CustomId(self.anatomy_locations_small.outline),
+                mix: Some(MixColorLch::color(Lcha{a: alpha, ..WHITE_COLOR})),
+                position: UiPosition::Absolute{position, align: UiPositionAlign{
+                    horizontal: AlignHorizontal::Middle,
+                    vertical: AlignVertical::Bottom
+                }},
+                animation: Animation{
+                    position: None,
+                    ..Animation::normal()
+                },
+                ..UiElement::fit_content()
+            });
+
+            let position = some_or_value!(body.try_position(), true);
 
             let anatomy = some_or_value!(entities.anatomy(*entity), false);
             self.anatomy_locations_small.locations.iter().for_each(|(part_id, location)|
@@ -2135,7 +2201,10 @@ impl Ui
                 body.update(UiId::AnatomyNotification(*entity, AnatomyNotificationPart::Part(*part_id)), UiElement{
                     texture: UiTexture::CustomId(location.id),
                     mix: Some(MixColorLch::color(Lcha{a: health_color.a * alpha, ..health_color})),
-                    position: UiPosition::Inherit,
+                    position: UiPosition::Absolute{position, align: UiPositionAlign{
+                        horizontal: AlignHorizontal::Middle,
+                        vertical: AlignVertical::Middle
+                    }},
                     animation: Animation{
                         mix: Some(MixAnimation{
                             decay: MixDecay{l: lightness_decay, c: lightness_decay, ..MixDecay::all(20.0)},
