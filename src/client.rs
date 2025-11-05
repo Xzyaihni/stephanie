@@ -86,7 +86,8 @@ pub struct ClientInfo
     pub address: String,
     pub name: String,
     pub host: bool,
-    pub debug: bool
+    pub debug: bool,
+    pub controls: Vec<(KeyMapping, Control)>
 }
 
 fn create_message_passer(address: &str) -> io::Result<MessagePasser>

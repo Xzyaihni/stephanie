@@ -89,7 +89,15 @@ use super::{
     ClientInfo
 };
 
-pub use controls_controller::{ControlsController, UiControls, Control, ControlState, KeyMapping, ChangedKey};
+pub use controls_controller::{
+    default_bindings,
+    ControlsController,
+    UiControls,
+    Control,
+    ControlState,
+    KeyMapping,
+    ChangedKey
+};
 
 use notifications::{Notifications, Notification};
 
@@ -837,7 +845,6 @@ impl GameState
         let mouse_position = Vector2::zeros();
 
         let notifications = Notifications::new();
-        let controls = ControlsController::new();
 
         let mut handler = ConnectionsHandler::new(message_passer);
 
@@ -921,7 +928,7 @@ impl GameState
             notifications,
             entities,
             data_infos: info.data_infos,
-            controls,
+            controls: ControlsController::new(client_info.controls.clone()),
             running: true,
             screen_object,
             ui_camera,

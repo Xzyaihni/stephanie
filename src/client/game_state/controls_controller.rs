@@ -5,16 +5,42 @@ use std::{
     fmt::{self, Display}
 };
 
+use serde::{Serialize, Deserialize};
+
 use yanyaengine::{ElementState, PhysicalKey, Key, KeyCode, KeyCodeNamed, MouseButton};
 
-use strum::EnumCount;
+use strum::{EnumCount, EnumIter};
 
 use arboard::Clipboard;
 
 use crate::common::BiMap;
 
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, EnumCount)]
+pub fn default_bindings() -> Vec<(KeyMapping, Control)>
+{
+    vec![
+        (KeyMapping::Keyboard(KeyCode::KeyD), Control::MoveRight),
+        (KeyMapping::Keyboard(KeyCode::KeyA), Control::MoveLeft),
+        (KeyMapping::Keyboard(KeyCode::KeyS), Control::MoveDown),
+        (KeyMapping::Keyboard(KeyCode::KeyW), Control::MoveUp),
+        (KeyMapping::Mouse(MouseButton::Left), Control::MainAction),
+        (KeyMapping::Mouse(MouseButton::Right), Control::SecondaryAction),
+        (KeyMapping::Keyboard(KeyCode::KeyE), Control::Interact),
+        (KeyMapping::Keyboard(KeyCode::Space), Control::Jump),
+        (KeyMapping::Keyboard(KeyCode::ControlLeft), Control::Crawl),
+        (KeyMapping::Keyboard(KeyCode::ShiftLeft), Control::Sprint),
+        (KeyMapping::Keyboard(KeyCode::KeyF), Control::Shoot),
+        (KeyMapping::Keyboard(KeyCode::KeyG), Control::Poke),
+        (KeyMapping::Keyboard(KeyCode::KeyI), Control::Inventory),
+        (KeyMapping::Keyboard(KeyCode::KeyT), Control::Throw),
+        (KeyMapping::Keyboard(KeyCode::Escape), Control::Pause),
+        (KeyMapping::Keyboard(KeyCode::Equal), Control::ZoomIn),
+        (KeyMapping::Keyboard(KeyCode::Minus), Control::ZoomOut),
+        (KeyMapping::Keyboard(KeyCode::Digit0), Control::ZoomReset)
+    ]
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, EnumCount, EnumIter, Serialize, Deserialize)]
 pub enum Control
 {
     MoveUp = 0,
@@ -27,6 +53,7 @@ pub enum Control
     Jump,
     Crawl,
     Sprint,
+    Bash,
     Poke,
     Shoot,
     Throw,
@@ -35,6 +62,35 @@ pub enum Control
     ZoomIn,
     ZoomOut,
     ZoomReset
+}
+
+impl Control
+{
+    pub fn name(&self) -> &'static str
+    {
+        match self
+        {
+            Self::MoveUp => "up",
+            Self::MoveDown => "down",
+            Self::MoveRight => "right",
+            Self::MoveLeft => "left",
+            Self::MainAction => "main action",
+            Self::SecondaryAction => "secondary action",
+            Self::Interact => "interact",
+            Self::Jump => "jump",
+            Self::Crawl => "crawl",
+            Self::Sprint => "sprint",
+            Self::Bash => "bash",
+            Self::Poke => "poke",
+            Self::Shoot => "shoot",
+            Self::Throw => "throw",
+            Self::Inventory => "inventory",
+            Self::Pause => "pause",
+            Self::ZoomIn => "zoom in",
+            Self::ZoomOut => "zoom out",
+            Self::ZoomReset => "zoom reset"
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -143,7 +199,7 @@ pub struct ControlsState<Id>
 {
     is_click_held: Option<Id>,
     pub ctrl_held: bool,
-    click_mappings: Vec<KeyMapping>
+    click_mapping: KeyMapping
 }
 
 #[derive(Debug)]
@@ -189,19 +245,16 @@ impl<Id: PartialEq + Clone> UiControls<Id>
 
     pub fn take_click_down(&mut self) -> bool
     {
-        self.state.click_mappings.iter().fold(false, |acc, mapping|
+        let key_id = self.controls.iter().position(|(changed, _)| self.state.click_mapping == changed.key);
+        let is_down = key_id.map(|index| self.controls[index].1.is_down()).unwrap_or(false);
+
+        if is_down
         {
-            let key_id = self.controls.iter().position(|(changed, _)| *mapping == changed.key);
-            let is_down = key_id.map(|index| self.controls[index].1.is_down()).unwrap_or(false);
+            self.click_taken = true;
+            self.controls.remove(key_id.unwrap());
+        }
 
-            if is_down
-            {
-                self.click_taken = true;
-                self.controls.remove(key_id.unwrap());
-            }
-
-            acc || is_down
-        })
+        is_down
     }
 
     pub fn is_click_taken(&self) -> bool
@@ -211,10 +264,10 @@ impl<Id: PartialEq + Clone> UiControls<Id>
 
     pub fn is_click_down(&self) -> bool
     {
-        self.state.click_mappings.iter().any(|mapping|
-        {
-            self.controls.iter().find(|(changed, _)| *mapping == changed.key).map(|(_, x)| x.is_down()).unwrap_or(false)
-        })
+        self.controls.iter()
+            .find(|(changed, _)| self.state.click_mapping == changed.key)
+            .map(|(_, x)| x.is_down())
+            .unwrap_or(false)
     }
 
     pub fn poll_action_held(&mut self, id: &Id) -> bool
@@ -270,46 +323,18 @@ pub struct ControlsController<Id>
 
 impl<Id> ControlsController<Id>
 {
-    pub fn new() -> Self
+    pub fn new(mappings: Vec<(KeyMapping, Control)>) -> Self
     {
-        let key_mapping: BiMap<KeyMapping, Control> = [
-            (KeyMapping::Keyboard(KeyCode::KeyD), Control::MoveRight),
-            (KeyMapping::Keyboard(KeyCode::KeyA), Control::MoveLeft),
-            (KeyMapping::Keyboard(KeyCode::KeyS), Control::MoveDown),
-            (KeyMapping::Keyboard(KeyCode::KeyW), Control::MoveUp),
-            (KeyMapping::Mouse(MouseButton::Left), Control::MainAction),
-            (KeyMapping::Keyboard(KeyCode::KeyC), Control::MainAction),
-            (KeyMapping::Mouse(MouseButton::Right), Control::SecondaryAction),
-            (KeyMapping::Keyboard(KeyCode::KeyV), Control::SecondaryAction),
-            (KeyMapping::Keyboard(KeyCode::KeyE), Control::Interact),
-            (KeyMapping::Keyboard(KeyCode::Space), Control::Jump),
-            (KeyMapping::Keyboard(KeyCode::ControlLeft), Control::Crawl),
-            (KeyMapping::Keyboard(KeyCode::ShiftLeft), Control::Sprint),
-            (KeyMapping::Keyboard(KeyCode::KeyF), Control::Shoot),
-            (KeyMapping::Keyboard(KeyCode::KeyG), Control::Poke),
-            (KeyMapping::Keyboard(KeyCode::KeyI), Control::Inventory),
-            (KeyMapping::Keyboard(KeyCode::KeyT), Control::Throw),
-            (KeyMapping::Keyboard(KeyCode::Escape), Control::Pause),
-            (KeyMapping::Keyboard(KeyCode::Equal), Control::ZoomIn),
-            (KeyMapping::Keyboard(KeyCode::Minus), Control::ZoomOut),
-            (KeyMapping::Keyboard(KeyCode::Digit0), Control::ZoomReset)
-        ].into_iter().collect();
+        let key_mapping: BiMap<KeyMapping, Control> = mappings.into_iter().collect();
 
-        let click_mappings = key_mapping.iter().filter_map(|(mapping, control)|
-        {
-            if let Control::MainAction = control
-            {
-                Some(*mapping)
-            } else
-            {
-                None
-            }
-        }).collect();
+        let click_mapping = key_mapping.get_back(&Control::MainAction)
+            .cloned()
+            .unwrap_or(KeyMapping::Mouse(MouseButton::Left));
 
         let controls_state = Some(ControlsState{
             is_click_held: None,
             ctrl_held: false,
-            click_mappings
+            click_mapping
         });
 
         let clipboard = match Clipboard::new()
@@ -378,6 +403,16 @@ impl<Id> ControlsController<Id>
     pub fn key_for(&self, control: &Control) -> Option<&KeyMapping>
     {
         self.key_mapping.get_back(control)
+    }
+
+    pub fn mappings(&self) -> &BiMap<KeyMapping, Control>
+    {
+        &self.key_mapping
+    }
+
+    pub fn mappings_mut(&mut self) -> &mut BiMap<KeyMapping, Control>
+    {
+        &mut self.key_mapping
     }
 
     pub fn changed_this_frame(&mut self) -> UiControls<Id>

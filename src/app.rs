@@ -459,6 +459,10 @@ impl YanyaApp for App
                 match action
                 {
                     MenuAction::None => (),
+                    MenuAction::Rebind(control, key) =>
+                    {
+                        x.rebind(control, key);
+                    },
                     MenuAction::Quit => self.exit = true,
                     MenuAction::Start =>
                     {
@@ -518,7 +522,8 @@ impl YanyaApp for App
                             address: client_info.address.unwrap_or_else(|| format!("127.0.0.1:{port}")),
                             name: client_info.name.text,
                             host: client_info.host,
-                            debug: client_info.debug
+                            debug: client_info.debug,
+                            controls: x.bindings()
                         };
 
                         self.client.initialize(&mut info, client_info);

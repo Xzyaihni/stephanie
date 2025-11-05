@@ -8,6 +8,8 @@ use std::{
 
 use nalgebra::{vector, Vector2, Matrix4};
 
+use strum::IntoEnumIterator;
+
 use yanyaengine::{
     game_object::*,
     KeyCode,
@@ -26,11 +28,14 @@ use crate::{
         game_state::{
             KeyMapping,
             UiControls,
-            ControlsController
+            ControlsController,
+            Control as GameControl,
+            default_bindings
         }
     },
     common::{
         sanitized_name,
+        from_upper_camel,
         some_or_value,
         render_info::*,
         colors::Lcha,
@@ -47,6 +52,7 @@ enum MainMenuId
     Menu,
     Main(MainPartId),
     Options(OptionsPartId),
+    Controls(ControlsPartId),
     WorldSelect(WorldSelectPartId),
     WorldCreate(WorldCreatePartId)
 }
@@ -87,14 +93,37 @@ enum OptionsPartId
     Menu,
     Controls(ButtonPartId),
     DebugToggle(ButtonPartId),
-    Back(ButtonPartId),
-    ControlsTab(ControlsPartId)
+    Back(ButtonPartId)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 enum ControlsPartId
 {
-    Panel
+    PanelOuter,
+    PanelBetween,
+    Title,
+    TitleText,
+    Separator(SeparatorPartId),
+    Panel,
+    Buttons,
+    Back(ButtonPartId),
+    List(UiListPart),
+    Button(GameControl, ControlButtonPartId)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum ControlButtonPartId
+{
+    Body,
+    Text,
+    Binding
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum SeparatorPartId
+{
+    Outer,
+    Body
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -142,6 +171,7 @@ enum ButtonPartId
 pub enum MenuAction
 {
     None,
+    Rebind(GameControl, KeyMapping),
     Quit,
     Start
 }
@@ -189,13 +219,15 @@ struct ButtonInfo
     invert_colors: bool
 }
 
-struct UiInfo<'a, 'b, 'c, 'd>
+struct UiInfo<'a, 'b, 'c, 'd, 'e, 'f>
 {
     controls: &'b mut UiControls<MainMenuId>,
+    bindings: &'e mut UiList<(GameControl, Option<KeyMapping>)>,
     sliced_textures: &'a HashMap<String, SlicedTexture>,
     fonts: &'a FontsContainer,
     info: &'c mut MenuClientInfo,
     worlds: &'d mut UiList<WorldInfo>,
+    controls_taken: &'f mut Option<GameControl>,
     state: MenuState,
     dt: f32
 }
@@ -211,6 +243,8 @@ pub struct MainMenu
     controls: ControlsController<MainMenuId>,
     state: MenuState,
     ui_camera: Camera,
+    controls_taken: Option<GameControl>,
+    bindings: UiList<(GameControl, Option<KeyMapping>)>,
     worlds: UiList<WorldInfo>
 }
 
@@ -262,18 +296,53 @@ impl MainMenu
 
         worlds.sort_by(|a, b| a.name.cmp(&b.name));
 
+        let default_bindings = default_bindings();
+
+        let controls = ControlsController::new(default_bindings);
+
+        let bindings = Self::bindings_list(&controls);
+
         Self{
             shaders,
             sliced_textures,
             fonts: partial_info.builder_wrapper.fonts().clone(),
             screen_object: client::create_screen_object(partial_info),
             controller,
-            controls: ControlsController::new(),
+            controls,
             state: MenuState::Main,
             ui_camera,
+            controls_taken: None,
+            bindings: bindings.into(),
             worlds: worlds.into(),
             info
         }
+    }
+
+    pub fn rebind(&mut self, control: GameControl, key: KeyMapping)
+    {
+        self.controls.mappings_mut().insert(key, control);
+
+        self.bindings.items = Self::bindings_list(&self.controls);
+    }
+
+    fn bindings_list(controls: &ControlsController<MainMenuId>) -> Vec<(GameControl, Option<KeyMapping>)>
+    {
+        let mut bindings = GameControl::iter().map(|control|
+        {
+            (control, controls.mappings().get_back(&control).copied())
+        }).collect::<Vec<_>>();
+
+        bindings.sort_by(|a, b| a.0.cmp(&b.0));
+
+        bindings
+    }
+
+    pub fn bindings(&self) -> Vec<(KeyMapping, GameControl)>
+    {
+        self.bindings.items.iter().filter_map(|(control, key)|
+        {
+            key.map(|key| (key, *control))
+        }).collect()
     }
 
     fn update_main_button(
@@ -285,7 +354,10 @@ impl MainMenu
     {
         Self::update_button(controls, parent, id, ButtonInfo{
             name: name.to_owned(),
-            width: UiSize::Rest(1.0).into(),
+            width: UiElementSize{
+                minimum_size: Some(UiMinimumSize::FitChildren),
+                size: UiSize::Rest(1.0)
+            },
             height: UiElementSize{
                 minimum_size: Some(UiMinimumSize::Pixels(85.0)),
                 size: UiSize::Absolute(BUTTON_SIZE)
@@ -455,7 +527,7 @@ impl MainMenu
             ..Default::default()
         });
 
-        title_outer.update(id(MainPartId::Title(AlignPartId::Inner)), UiElement{
+        let title_text = title_outer.update(id(MainPartId::Title(AlignPartId::Inner)), UiElement{
             texture: UiTexture::Text(TextInfo{
                 font_size: title_font_size,
                 text: TextBlocks::single(ACCENT_COLOR.into(), "stephanie".into()),
@@ -483,11 +555,35 @@ impl MainMenu
             ..Default::default()
         });
 
-        let buttons_panel = buttons_panel_outer.update(id(MainPartId::Buttons(AlignPartId::Inner)), UiElement{
-            width: UiSize::Rest(1.0).into(),
-            children_layout: UiLayout::Vertical,
-            ..Default::default()
-        });
+        let buttons_panel = {
+            let width = match buttons_panel_outer.try_width()
+            {
+                Some(x) => x,
+                None =>
+                {
+                    title_text.element().texture = UiTexture::None;
+
+                    return (state, action);
+                }
+            };
+
+            buttons_panel_outer.update(id(MainPartId::Buttons(AlignPartId::Inner)), UiElement{
+                width: UiSize::Rest(1.0).into(),
+                children_layout: UiLayout::Vertical,
+                animation: Animation{
+                    position: Some(PositionAnimation{
+                        offsets: Some(PositionOffsets{
+                            start: vector![-width, 0.0],
+                            ..Default::default()
+                        }),
+                        start_mode: Connection::EaseOut{decay: 16.0, limit: None},
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+                ..Default::default()
+            })
+        };
 
         let button_pad = || Self::button_pad(buttons_panel);
 
@@ -524,11 +620,27 @@ impl MainMenu
 
         let mut state = ui_info.state;
 
-        let menu = outer_menu.update(id(OptionsPartId::Menu), UiElement{
-            height: UiSize::Rest(1.0).into(),
-            children_layout: UiLayout::Vertical,
-            ..Default::default()
-        });
+        let menu = {
+            let width = outer_menu.try_width().unwrap_or(0.0);
+
+            outer_menu.update(id(OptionsPartId::Menu), UiElement{
+                width: UiSize::Rest(1.0).into(),
+                height: UiSize::Rest(1.0).into(),
+                children_layout: UiLayout::Vertical,
+                    animation: Animation{
+                    position: Some(PositionAnimation{
+                        offsets: Some(PositionOffsets{
+                            start: vector![-width, 0.0],
+                            ..Default::default()
+                        }),
+                        start_mode: Connection::EaseOut{decay: 16.0, limit: None},
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+                ..Default::default()
+            })
+        };
 
         let button_pad = || Self::button_pad(menu);
 
@@ -537,34 +649,6 @@ impl MainMenu
         if Self::update_main_button(ui_info.controls, menu, |part| id(OptionsPartId::Controls(part)), "controls")
         {
             state = MenuState::Controls;
-        }
-
-        if let MenuState::Controls = state
-        {
-            let id = |part| id(OptionsPartId::ControlsTab(part));
-
-            let panel = outer_menu.update(id(ControlsPartId::Panel), UiElement{
-                texture: UiTexture::Sliced(ui_info.sliced_textures["rounded"]),
-                mix: Some(MixColorLch::color(BACKGROUND_COLOR)),
-                width: 0.7.into(),
-                height: UiSize::Rest(1.0).into(),
-                animation: Animation{
-                    position: Some(PositionAnimation{
-                        offsets: Some(PositionOffsets{
-                            start: vector![0.0, -1.0],
-                            ..Default::default()
-                        }),
-                        start_mode: Connection::EaseOut{decay: 16.0, limit: None},
-                        ..Default::default()
-                    }),
-                    mix: Some(MixAnimation{
-                        start_mix: Some(Lcha{a: 0.0, ..BACKGROUND_COLOR}),
-                        ..Default::default()
-                    }),
-                    ..Default::default()
-                },
-                ..Default::default()
-            });
         }
 
         button_pad();
@@ -585,6 +669,207 @@ impl MainMenu
         add_padding_vertical(menu, UiSize::Rest(1.0).into());
 
         (state, MenuAction::None)
+    }
+
+    fn update_controls(
+        ui_info: UiInfo,
+        outer_menu: TreeInserter<MainMenuId>
+    ) -> (MenuState, MenuAction)
+    {
+        let id = |part| MainMenuId::Controls(part);
+
+        let mut state = ui_info.state;
+        let mut action = MenuAction::None;
+
+        if let MenuState::Controls = state
+        {
+            let panel_outer = outer_menu.update(id(ControlsPartId::PanelOuter), UiElement{
+                height: UiSize::Rest(1.0).into(),
+                children_layout: UiLayout::Vertical,
+                ..Default::default()
+            });
+
+            add_padding_vertical(panel_outer, 0.02.into());
+
+            let font_size = MEDIUM_TEXT_SIZE;
+            let item_height = ui_info.fonts.text_height(font_size, panel_outer.screen_size().max());
+
+            let panel_between = panel_outer.update(id(ControlsPartId::PanelBetween), UiElement{
+                texture: UiTexture::Sliced(ui_info.sliced_textures["rounded"]),
+                mix: Some(MixColorLch::color(BACKGROUND_COLOR)),
+                height: UiSize::Rest(1.0).into(),
+                children_layout: UiLayout::Vertical,
+                animation: Animation{
+                    position: Some(PositionAnimation{
+                        offsets: Some(PositionOffsets{
+                            start: vector![0.0, -1.0],
+                            ..Default::default()
+                        }),
+                        start_mode: Connection::EaseOut{decay: 16.0, limit: None},
+                        ..Default::default()
+                    }),
+                    mix: Some(MixAnimation{
+                        start_mix: Some(Lcha{a: 0.0, ..BACKGROUND_COLOR}),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+                ..Default::default()
+            });
+
+            let title = panel_between.update(id(ControlsPartId::Title), UiElement{
+                children_layout: UiLayout::Vertical,
+                ..Default::default()
+            });
+
+            title.update(id(ControlsPartId::TitleText), UiElement{
+                texture: UiTexture::Text(TextInfo::new_simple(font_size, "controls rebinding")),
+                mix: Some(MixColorLch::color(ACCENT_COLOR)),
+                ..UiElement::fit_content()
+            });
+
+            add_padding_vertical(panel_between, UiSize::Pixels(TINY_PADDING).into());
+
+            let outer_separator = panel_between.update(id(ControlsPartId::Separator(SeparatorPartId::Outer)), UiElement{
+                width: UiSize::Rest(1.0).into(),
+                height: UiSize::Pixels(SEPARATOR_SIZE).into(),
+                ..Default::default()
+            });
+
+            add_padding_horizontal(outer_separator, UiSize::Pixels(MEDIUM_PADDING).into());
+            outer_separator.update(id(ControlsPartId::Separator(SeparatorPartId::Body)), UiElement{
+                texture: UiTexture::Solid,
+                mix: Some(MixColorLch::color(ACCENT_COLOR)),
+                width: UiSize::Rest(1.0).into(),
+                height: UiSize::Rest(1.0).into(),
+                ..Default::default()
+            });
+            add_padding_horizontal(outer_separator, UiSize::Pixels(MEDIUM_PADDING).into());
+
+            add_padding_vertical(panel_between, UiSize::Pixels(TINY_PADDING).into());
+
+            let panel = panel_between.update(id(ControlsPartId::Panel), UiElement{
+                height: UiSize::Rest(1.0).into(),
+                children_layout: UiLayout::Horizontal,
+                ..Default::default()
+            });
+
+            add_padding_horizontal(panel, 0.03.into());
+
+            let list_info = UiListInfo{
+                controls: ui_info.controls,
+                mouse_taken: false,
+                item_height,
+                padding: SMALL_PADDING,
+                outer_width: UiSize::Pixels(600.0).into(),
+                outer_height: UiSize::Rest(1.0).into(),
+                dt: ui_info.dt
+            };
+
+            ui_info.bindings.update(panel, |part| id(ControlsPartId::List(part)), list_info, |info, parent, item, is_selected|
+            {
+                let id = |part| id(ControlsPartId::Button(item.0, part));
+
+                let body = parent.update(id(ControlButtonPartId::Body), UiElement{
+                    texture: UiTexture::Solid,
+                    mix: Some(MixColorLch::color(if is_selected { ACCENT_COLOR } else { BACKGROUND_COLOR })),
+                    width: UiElementSize{
+                        minimum_size: Some(UiMinimumSize::FitChildren),
+                        size: UiSize::Rest(1.0)
+                    },
+                    height: item_height.into(),
+                    animation: Animation{
+                        mix: Some(MixAnimation::default()),
+                        ..Default::default()
+                    },
+                    children_layout: UiLayout::Horizontal,
+                    ..Default::default()
+                });
+
+                add_padding_horizontal(body, 0.005.into());
+
+                body.update(id(ControlButtonPartId::Text), UiElement{
+                    texture: UiTexture::Text(TextInfo::new_simple(font_size, item.0.name())),
+                    mix: Some(MixColorLch::color(if is_selected { BACKGROUND_COLOR } else { ACCENT_COLOR })),
+                    animation: Animation{
+                        mix: Some(MixAnimation::default()),
+                        ..Default::default()
+                    },
+                    ..UiElement::fit_content()
+                });
+
+                add_padding_horizontal(body, UiSize::Rest(1.0).into());
+
+                let binding_name = item.1.map(|x|
+                {
+                    from_upper_camel(&x.to_string())
+                }).unwrap_or_else(|| "unbound".to_owned());
+
+                body.update(id(ControlButtonPartId::Binding), UiElement{
+                    texture: UiTexture::Text(TextInfo::new_simple(font_size, binding_name)),
+                    mix: Some(MixColorLch::color(if is_selected { BACKGROUND_COLOR } else { ACCENT_COLOR })),
+                    height: UiSize::Rest(1.0).into(),
+                    ..UiElement::fit_content()
+                });
+
+                add_padding_horizontal(body, 0.005.into());
+
+                if is_selected && info.controls.take_click_down()
+                {
+                    *ui_info.controls_taken = Some(item.0);
+                }
+            });
+
+            add_padding_horizontal(panel, 0.03.into());
+
+            let button_panel = panel_between.update(id(ControlsPartId::Buttons), UiElement{
+                width: UiSize::Rest(1.0).into(),
+                children_layout: UiLayout::Vertical,
+                ..Default::default()
+            });
+
+            let back_clicked = {
+                let padding: UiElementSize<_> = 0.005.into();
+
+                Self::update_button(
+                    ui_info.controls,
+                    button_panel,
+                    |part| id(ControlsPartId::Back(part)),
+                    ButtonInfo{
+                        name: "back".to_owned(),
+                        width: UiSize::FitChildren.into(),
+                        height: item_height.into(),
+                        body_width: UiSize::FitChildren.into(),
+                        override_font_size: Some(font_size),
+                        padding_left: padding.clone(),
+                        padding_right: padding,
+                        align_left: false,
+                        disabled: false,
+                        invert_colors: true
+                    }
+                )
+            };
+
+            if back_clicked
+            {
+                state = MenuState::Options;
+            }
+
+            add_padding_vertical(panel, UiSize::Pixels(SMALL_PADDING).into());
+
+            add_padding_vertical(panel_outer, 0.02.into());
+        }
+
+        if let Some(control) = ui_info.controls_taken
+        {
+            if let Some((key, _)) = ui_info.controls.controls.iter().find(|(_key, state)| state.is_down())
+            {
+                action = MenuAction::Rebind(*control, key.key);
+                ui_info.controls_taken.take();
+            }
+        }
+
+        (state, action)
     }
 
     fn update_world_create(
@@ -877,10 +1162,8 @@ impl MainMenu
 
         let align_left = match self.state
         {
-            MenuState::Main => true,
-            MenuState::Options | MenuState::Controls => true,
-            MenuState::WorldSelect => false,
-            MenuState::WorldCreate => false
+            MenuState::Main | MenuState::Options => true,
+            MenuState::Controls | MenuState::WorldSelect | MenuState::WorldCreate => false,
         };
 
         self.controller.as_inserter().element().children_layout = if align_left
@@ -894,13 +1177,14 @@ impl MainMenu
         };
 
         let menu = {
-            let children_layout = match self.state
+            let (width, children_layout) = match self.state
             {
-                MenuState::Options | MenuState::Controls => UiLayout::Horizontal,
-                _ => UiLayout::Vertical
+                MenuState::Options => (UiSize::Rest(1.0).into(), UiLayout::Horizontal),
+                _ => (UiSize::FitChildren.into(), UiLayout::Vertical)
             };
 
             self.controller.update(MainMenuId::Menu, UiElement{
+                width,
                 height: UiSize::Rest(1.0).into(),
                 children_layout,
                 ..Default::default()
@@ -910,10 +1194,12 @@ impl MainMenu
         let (next_state, action) = {
             let ui_info = UiInfo{
                 controls: &mut controls,
+                bindings: &mut self.bindings,
                 sliced_textures: &self.sliced_textures,
                 fonts: &self.fonts,
                 info: &mut self.info,
                 worlds: &mut self.worlds,
+                controls_taken: &mut self.controls_taken,
                 state: self.state,
                 dt
             };
@@ -921,7 +1207,8 @@ impl MainMenu
             match self.state
             {
                 MenuState::Main => Self::update_main(ui_info, menu),
-                MenuState::Options | MenuState::Controls => Self::update_options(ui_info, menu),
+                MenuState::Options => Self::update_options(ui_info, menu),
+                MenuState::Controls => Self::update_controls(ui_info, menu),
                 MenuState::WorldSelect => Self::update_world_select(ui_info, menu),
                 MenuState::WorldCreate => Self::update_world_create(ui_info, menu)
             }

@@ -55,6 +55,7 @@ use stephanie::{
         UiControls,
         ControlsController,
         Control as GameControl,
+        default_bindings,
         ui::controller::*
     },
     common::{
@@ -571,7 +572,7 @@ impl YanyaApp for ChunkPreviewer
             panic!("error creating chunk_rules: {err}")
         });
 
-        let controls = ControlsController::new();
+        let controls = ControlsController::new(default_bindings());
 
         let camera_position = Vector2::new(-0.5, 0.0);
         let camera_zoom = 3.0;
