@@ -47,7 +47,8 @@ pub const BACKGROUND_COLOR: Lcha = Lcha{l: 94.0, c: 18.0, h: ACCENT_COLOR.h, a: 
 pub const ACCENT_COLOR: Lcha = Lcha{l: 78.0, c: 42.8, h: 5.943, a: 1.0};
 pub const ACCENT_COLOR_FADED: Lcha = Lcha{l: 90.0, c: 25.0, ..ACCENT_COLOR};
 
-pub const SPECIAL_COLOR: Lcha = Lcha{h: ACCENT_COLOR.h - f32::consts::PI, ..ACCENT_COLOR};
+pub const SPECIAL_COLOR_ONE: Lcha = Lcha{h: ACCENT_COLOR.h - f32::consts::PI * 2.0 / 3.0, ..ACCENT_COLOR};
+pub const SPECIAL_COLOR_TWO: Lcha = Lcha{l: 96.3, c: 81.2, h: ACCENT_COLOR.h + f32::consts::PI * 2.0 / 3.0, a: 1.0};
 
 #[derive(Clone)]
 pub struct TextboxInfo

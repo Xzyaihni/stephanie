@@ -1,6 +1,7 @@
 use std::{
     f32,
     fs,
+    borrow::Cow,
     path::PathBuf,
     rc::Rc,
     collections::HashMap
@@ -219,10 +220,17 @@ struct ButtonInfo
     invert_colors: bool
 }
 
+struct Binding
+{
+    pub control: GameControl,
+    pub mapping: Option<KeyMapping>,
+    pub duplicate: bool
+}
+
 struct UiInfo<'a, 'b, 'c, 'd, 'e, 'f>
 {
     controls: &'b mut UiControls<MainMenuId>,
-    bindings: &'e mut UiList<(GameControl, Option<KeyMapping>)>,
+    bindings: &'e mut UiList<Binding>,
     sliced_textures: &'a HashMap<String, SlicedTexture>,
     fonts: &'a FontsContainer,
     info: &'c mut MenuClientInfo,
@@ -244,7 +252,7 @@ pub struct MainMenu
     state: MenuState,
     ui_camera: Camera,
     controls_taken: Option<GameControl>,
-    bindings: UiList<(GameControl, Option<KeyMapping>)>,
+    bindings: UiList<Binding>,
     worlds: UiList<WorldInfo>
 }
 
@@ -296,13 +304,22 @@ impl MainMenu
 
         worlds.sort_by(|a, b| a.name.cmp(&b.name));
 
-        let default_bindings = default_bindings();
+        let current_bindings = default_bindings();
 
-        let controls = ControlsController::new(default_bindings);
+        let mut bindings = GameControl::iter().map(|control|
+        {
+            Binding{
+                control,
+                mapping: current_bindings.iter().find(|(_, check)| *check == control).map(|(x, _)| *x),
+                duplicate: false
+            }
+        }).collect::<Vec<_>>();
 
-        let bindings = Self::bindings_list(&controls);
+        bindings.sort_by(|a, b| a.control.cmp(&b.control));
 
-        Self{
+        let controls = ControlsController::new(current_bindings);
+
+        let mut this = Self{
             shaders,
             sliced_textures,
             fonts: partial_info.builder_wrapper.fonts().clone(),
@@ -315,33 +332,50 @@ impl MainMenu
             bindings: bindings.into(),
             worlds: worlds.into(),
             info
-        }
+        };
+
+        this.check_duplicates();
+
+        this
     }
 
     pub fn rebind(&mut self, control: GameControl, key: KeyMapping)
     {
-        self.controls.mappings_mut().insert(key, control);
+        if let Some(binding) = self.bindings.items.iter_mut().find(|x| x.control == control)
+        {
+            binding.mapping = Some(key);
 
-        self.bindings.items = Self::bindings_list(&self.controls);
+            self.check_duplicates();
+        }
     }
 
-    fn bindings_list(controls: &ControlsController<MainMenuId>) -> Vec<(GameControl, Option<KeyMapping>)>
+    fn check_duplicates(&mut self)
     {
-        let mut bindings = GameControl::iter().map(|control|
+        for i in 0..self.bindings.items.len()
         {
-            (control, controls.mappings().get_back(&control).copied())
-        }).collect::<Vec<_>>();
+            let this_key = self.bindings.items[i].mapping;
+            let is_duplicate = this_key.map(|key|
+            {
+                self.bindings.items.iter().enumerate().any(|(index, x)|
+                {
+                    if index == i
+                    {
+                        return false;
+                    }
 
-        bindings.sort_by(|a, b| a.0.cmp(&b.0));
+                    x.mapping.map(|x| x == key).unwrap_or(false)
+                })
+            }).unwrap_or(false);
 
-        bindings
+            self.bindings.items[i].duplicate = is_duplicate;
+        }
     }
 
     pub fn bindings(&self) -> Vec<(KeyMapping, GameControl)>
     {
-        self.bindings.items.iter().filter_map(|(control, key)|
+        self.bindings.items.iter().filter_map(|x|
         {
-            key.map(|key| (key, *control))
+            x.mapping.map(|key| (key, x.control))
         }).collect()
     }
 
@@ -768,7 +802,7 @@ impl MainMenu
 
             ui_info.bindings.update(panel, |part| id(ControlsPartId::List(part)), list_info, |info, parent, item, is_selected|
             {
-                let id = |part| id(ControlsPartId::Button(item.0, part));
+                let id = |part| id(ControlsPartId::Button(item.control, part));
 
                 let body = parent.update(id(ControlButtonPartId::Body), UiElement{
                     texture: UiTexture::Solid,
@@ -789,7 +823,7 @@ impl MainMenu
                 add_padding_horizontal(body, 0.005.into());
 
                 body.update(id(ControlButtonPartId::Text), UiElement{
-                    texture: UiTexture::Text(TextInfo::new_simple(font_size, item.0.name())),
+                    texture: UiTexture::Text(TextInfo::new_simple(font_size, item.control.name())),
                     mix: Some(MixColorLch::color(if is_selected { BACKGROUND_COLOR } else { ACCENT_COLOR })),
                     animation: Animation{
                         mix: Some(MixAnimation::default()),
@@ -800,14 +834,17 @@ impl MainMenu
 
                 add_padding_horizontal(body, UiSize::Rest(1.0).into());
 
-                let binding_name = item.1.map(|x|
+                let binding_name: Cow<'static, str> = item.mapping.map(|x|
                 {
-                    from_upper_camel(&x.to_string())
-                }).unwrap_or_else(|| "unbound".to_owned());
+                    from_upper_camel(&x.to_string()).into()
+                }).unwrap_or_else(|| "unbound".into());
 
-                body.update(id(ControlButtonPartId::Binding), UiElement{
-                    texture: UiTexture::Text(TextInfo::new_simple(font_size, binding_name)),
-                    mix: Some(MixColorLch::color(if is_selected { BACKGROUND_COLOR } else { ACCENT_COLOR })),
+                let binding_text = body.update(id(ControlButtonPartId::Binding), UiElement{
+                    texture: UiTexture::Text(TextInfo{
+                        font_size,
+                        text: TextBlocks::single((if is_selected { BACKGROUND_COLOR } else { ACCENT_COLOR }).into(), binding_name),
+                        outline: item.duplicate.then(|| TextOutline{color: SPECIAL_COLOR_TWO.into(), size: 2})
+                    }),
                     height: UiSize::Rest(1.0).into(),
                     ..UiElement::fit_content()
                 });
@@ -816,7 +853,12 @@ impl MainMenu
 
                 if is_selected && info.controls.take_click_down()
                 {
-                    *ui_info.controls_taken = Some(item.0);
+                    *ui_info.controls_taken = Some(item.control);
+                }
+
+                if *ui_info.controls_taken == Some(item.control)
+                {
+                    binding_text.element().texture = UiTexture::Text(TextInfo::new_simple(font_size, "..."));
                 }
             });
 

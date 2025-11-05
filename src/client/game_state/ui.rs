@@ -1866,7 +1866,7 @@ impl Ui
                     font_size: MEDIUM_TEXT_SIZE,
                     text: TextBlocks(vec![
                         TextInfoBlock{color: ACCENT_COLOR.into(), text: "killed ".into()},
-                        TextInfoBlock{color: SPECIAL_COLOR.into(), text: kills.to_string().into()},
+                        TextInfoBlock{color: SPECIAL_COLOR_TWO.into(), text: kills.to_string().into()},
                         TextInfoBlock{color: ACCENT_COLOR.into(), text: " enemies".into()}
                     ]),
                     ..Default::default()
