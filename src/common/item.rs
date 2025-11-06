@@ -7,7 +7,10 @@ use serde::{Serialize, Deserialize};
 use strum::{IntoEnumIterator, EnumIter};
 
 use crate::{
-    client::CommonTextures,
+    client::{
+        CommonTextures,
+        ui_common::{GREEN_COLOR, BLUE_COLOR, ACCENT_COLOR}
+    },
     common::{
         random_f32,
         watcher::*,
@@ -131,7 +134,7 @@ impl ItemRarity
         vec![damage_boost, crit_boost]
     }
 
-    pub fn name(&self) -> Option<&str>
+    pub fn name(&self) -> Option<&'static str>
     {
         match self
         {
@@ -147,9 +150,9 @@ impl ItemRarity
         match self
         {
             Self::Normal => None,
-            Self::Uncommon => Some((2.485, 60.0)),
-            Self::Rare => Some((4.311, 50.0)),
-            Self::Mythical => Some((6.166, 90.0))
+            Self::Uncommon => Some((GREEN_COLOR.h, GREEN_COLOR.c)),
+            Self::Rare => Some((BLUE_COLOR.h, BLUE_COLOR.c)),
+            Self::Mythical => Some((ACCENT_COLOR.h, ACCENT_COLOR.c + 40.0))
         }
     }
 }
@@ -167,8 +170,20 @@ impl Display for ItemBuff
     {
         match self
         {
-            Self::Damage(x) => write!(f, "+{}% damage", (x * 100.0).round() as u32),
-            Self::Crit(x) => write!(f, "+{:.1}% crit chance", x * 100.0)
+            Self::Damage(x) => write!(f, "{:+}% damage", (x * 100.0).round() as u32),
+            Self::Crit(x) => write!(f, "{:+.1}% crit chance", x * 100.0)
+        }
+    }
+}
+
+impl ItemBuff
+{
+    pub fn is_positive(&self) -> bool
+    {
+        match self
+        {
+            Self::Damage(x) => *x > 0.0,
+            Self::Crit(x) => *x > 0.0
         }
     }
 }

@@ -43,12 +43,15 @@ pub const WHITE_COLOR: Lcha = Lcha{l: 100.0, c: 0.0, h: 0.0, a: 1.0};
 pub const GRAY_COLOR: Lcha = Lcha{l: 5.0, c: 0.0, h: 0.0, a: 1.0};
 pub const BLACK_COLOR: Lcha = Lcha{l: 0.0, c: 0.0, h: 0.0, a: 1.0};
 
+pub const RED_COLOR: Lcha = Lcha{l: 61.8, c: 72.0, h: 0.476, a: 1.0};
+pub const GREEN_COLOR: Lcha = Lcha{l: 80.0, c: 60.0, h: 2.485, a: 1.0};
+pub const BLUE_COLOR: Lcha = Lcha{h: ACCENT_COLOR.h - f32::consts::PI * 2.0 / 3.0, ..ACCENT_COLOR};
+
 pub const BACKGROUND_COLOR: Lcha = Lcha{l: 94.0, c: 18.0, h: ACCENT_COLOR.h, a: 1.0};
 pub const ACCENT_COLOR: Lcha = Lcha{l: 78.0, c: 42.8, h: 5.943, a: 1.0};
 pub const ACCENT_COLOR_FADED: Lcha = Lcha{l: 90.0, c: 25.0, ..ACCENT_COLOR};
 
-pub const SPECIAL_COLOR_ONE: Lcha = Lcha{h: ACCENT_COLOR.h - f32::consts::PI * 2.0 / 3.0, ..ACCENT_COLOR};
-pub const SPECIAL_COLOR_TWO: Lcha = Lcha{l: 96.3, c: 81.2, h: ACCENT_COLOR.h + f32::consts::PI * 2.0 / 3.0, a: 1.0};
+pub const YELLOW_COLOR: Lcha = Lcha{l: 86.0, c: 50.0, h: ACCENT_COLOR.h + f32::consts::PI * 2.0 / 3.0 - 0.23, ..ACCENT_COLOR};
 
 #[derive(Clone)]
 pub struct TextboxInfo

@@ -11,6 +11,8 @@ use nalgebra::{vector, Vector2, Matrix4};
 
 use strum::IntoEnumIterator;
 
+use vulkano::buffer::BufferContents;
+
 use yanyaengine::{
     game_object::*,
     KeyCode,
@@ -44,6 +46,13 @@ use crate::{
     }
 };
 
+
+#[repr(C)]
+#[derive(BufferContents)]
+pub struct BackgroundInfo
+{
+    animation: f32
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 enum MainMenuId
@@ -251,6 +260,7 @@ pub struct MainMenu
     controls: ControlsController<MainMenuId>,
     state: MenuState,
     ui_camera: Camera,
+    animation: f32,
     controls_taken: Option<GameControl>,
     bindings: UiList<Binding>,
     worlds: UiList<WorldInfo>
@@ -328,6 +338,7 @@ impl MainMenu
             controls,
             state: MenuState::Main,
             ui_camera,
+            animation: 0.0,
             controls_taken: None,
             bindings: bindings.into(),
             worlds: worlds.into(),
@@ -843,7 +854,7 @@ impl MainMenu
                     texture: UiTexture::Text(TextInfo{
                         font_size,
                         text: TextBlocks::single((if is_selected { BACKGROUND_COLOR } else { ACCENT_COLOR }).into(), binding_name),
-                        outline: item.duplicate.then(|| TextOutline{color: SPECIAL_COLOR_TWO.into(), size: 2})
+                        outline: item.duplicate.then(|| TextOutline{color: RED_COLOR.into(), size: 2})
                     }),
                     height: UiSize::Rest(1.0).into(),
                     ..UiElement::fit_content()
@@ -1270,6 +1281,8 @@ impl MainMenu
 
         self.controls.consume_changed(controls).for_each(drop);
 
+        self.animation = (self.animation + dt * 0.1).fract();
+
         (info.partial, action)
     }
 
@@ -1294,6 +1307,8 @@ impl MainMenu
         info.next_subpass();
 
         info.bind_pipeline(self.shaders.menu_background);
+
+        info.push_constants(BackgroundInfo{animation: self.animation});
 
         self.screen_object.draw(&mut info);
 

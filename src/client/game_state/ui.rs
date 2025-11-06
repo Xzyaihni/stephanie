@@ -447,7 +447,7 @@ fn single_health_color(fraction: Option<f32>) -> Lcha
 {
     fraction.map(|x|
     {
-        let range = 0.8..=2.27;
+        let range = 0.539..=2.27;
         let h = f32_to_range(range, x);
 
         Lcha{l: 80.0, c: 100.0, h, a: 1.0}
@@ -887,27 +887,36 @@ impl WindowKind
             {
                 let item_info = info.items_info.get(item.id);
 
-                let title = format!("info about - {}", item_info.name);
-                let body = with_titlebar(parent, info, title, true, &[]);
+                let body = with_titlebar(parent, info, item_info.name.to_string(), true, &[]);
 
                 let id = move |part|
                 {
                     UiId::Window(window_id, WindowPart::ItemInfo(part))
                 };
 
-                let mut description = format!("{} weighs around {} kg", item_info.name, item_info.mass);
+                let mut blocks = Vec::new();
 
-                description += &format!("\nand is about {} meters in size!", item_info.scale_scalar());
-
-                if let Some(rarity_name) = item.rarity.name()
+                if let (Some((h, c)), Some(name)) = (item.rarity.hue_chroma(), item.rarity.name())
                 {
-                    description += &format!("\nit has {rarity_name} rarity which gives it these buffs:");
+                    blocks.push(TextInfoBlock{color: Lcha{l: 80.0, c, h, a: 1.0}.into(), text: (name.to_owned() + "\n").into()});
                 }
 
-                item.buffs.iter().for_each(|buff|
+                blocks.push(TextInfoBlock{color: ACCENT_COLOR.into(), text: "weight: ".into()});
+                blocks.push(TextInfoBlock{color: YELLOW_COLOR.into(), text: item_info.mass.to_string().into()});
+                blocks.push(TextInfoBlock{color: ACCENT_COLOR.into(), text: " kg\n".into()});
+
+                blocks.push(TextInfoBlock{color: ACCENT_COLOR.into(), text: "size: ".into()});
+                blocks.push(TextInfoBlock{color: YELLOW_COLOR.into(), text: (item_info.scale_scalar() * 100.0).to_string().into()});
+                blocks.push(TextInfoBlock{color: ACCENT_COLOR.into(), text: " cm\n".into()});
+
+                if !item.buffs.is_empty()
                 {
-                    description += &format!("\n{buff}");
-                });
+                    item.buffs.iter().for_each(|buff|
+                    {
+                        let color = if buff.is_positive() { GREEN_COLOR } else { RED_COLOR };
+                        blocks.push(TextInfoBlock{color: color.into(), text: format!("\n{buff}").into()});
+                    });
+                }
 
                 add_padding_horizontal(body, UiSize::Pixels(BODY_PADDING).into());
 
@@ -924,8 +933,11 @@ impl WindowKind
                 add_padding_horizontal(body, UiSize::Pixels(BODY_PADDING).into());
 
                 body.update(id(ItemInfoPart::Text), UiElement{
-                    texture: UiTexture::Text(TextInfo::new_simple(SMALL_TEXT_SIZE, description)),
-                    mix: Some(MixColorLch::color(ACCENT_COLOR)),
+                    texture: UiTexture::Text(TextInfo{
+                        font_size: SMALL_TEXT_SIZE,
+                        text: TextBlocks(blocks.into()),
+                        ..Default::default()
+                    }),
                     ..UiElement::fit_content()
                 });
 
@@ -945,14 +957,17 @@ impl WindowKind
                     return;
                 };
 
-                let kills = player.kills;
-                let kills_text = format!("kills: {kills}");
-
                 add_padding_horizontal(body, UiSize::Pixels(BODY_PADDING).into());
 
                 body.update(UiId::Window(window_id, WindowPart::Stats), UiElement{
-                    texture: UiTexture::Text(TextInfo::new_simple(SMALL_TEXT_SIZE, kills_text)),
-                    mix: Some(MixColorLch::color(ACCENT_COLOR)),
+                    texture: UiTexture::Text(TextInfo{
+                        font_size: SMALL_TEXT_SIZE,
+                        text: TextBlocks(vec![
+                            TextInfoBlock{color: ACCENT_COLOR.into(), text: "kills: ".into()},
+                            TextInfoBlock{color: YELLOW_COLOR.into(), text: player.kills.to_string().into()}
+                        ].into()),
+                        ..Default::default()
+                    }),
                     ..UiElement::fit_content()
                 });
 
@@ -1213,36 +1228,30 @@ impl Window
 
         let screen_size = ui.screen_size() / ui.screen_size().max();
 
+        fn limit(position: &mut f32, size: f32, screen_size: f32)
+        {
+            let half = size * 0.5;
+            let limit = screen_size * 0.5;
+
+            if (*position - half) < -limit
+            {
+                *position = half - limit;
+            }
+
+            if (*position + half) > limit
+            {
+                *position = limit - half;
+            }
+        }
+
         if let Some(width) = body.try_width()
         {
-            let half = width * 0.5;
-            let limit = screen_size.x * 0.5;
-
-            if (self.position.x - half) < -limit
-            {
-                self.position.x = half - limit;
-            }
-
-            if (self.position.x + half) > limit
-            {
-                self.position.x = limit - half;
-            }
+            limit(&mut self.position.x, width, screen_size.x);
         }
 
         if let Some(height) = body.try_height()
         {
-            let half = height * 0.5;
-            let limit = screen_size.y * 0.5;
-
-            if (self.position.y - half) < -limit
-            {
-                self.position.y = half - limit;
-            }
-
-            if (self.position.y + half) > limit
-            {
-                self.position.y = limit - half;
-            }
+            limit(&mut self.position.y, height, screen_size.y);
         }
 
         self.kind.update(body, info);
@@ -1793,7 +1802,7 @@ impl Ui
             });
 
             body.update(UiId::Loading(LoadingPart::Text), UiElement{
-                texture: UiTexture::Text(TextInfo::new_simple(BIG_TEXT_SIZE, "LOADING")),
+                texture: UiTexture::Text(TextInfo::new_simple(BIG_TEXT_SIZE, "loading...")),
                 mix: Some(MixColorLch::color(ACCENT_COLOR)),
                 ..UiElement::fit_content()
             });
@@ -1866,9 +1875,9 @@ impl Ui
                     font_size: MEDIUM_TEXT_SIZE,
                     text: TextBlocks(vec![
                         TextInfoBlock{color: ACCENT_COLOR.into(), text: "killed ".into()},
-                        TextInfoBlock{color: SPECIAL_COLOR_TWO.into(), text: kills.to_string().into()},
+                        TextInfoBlock{color: YELLOW_COLOR.into(), text: kills.to_string().into()},
                         TextInfoBlock{color: ACCENT_COLOR.into(), text: " enemies".into()}
-                    ]),
+                    ].into()),
                     ..Default::default()
                 }),
                 ..UiElement::fit_content()
@@ -1886,7 +1895,7 @@ impl Ui
             add_padding_horizontal(button, UiSize::Pixels(TINY_PADDING).into());
 
             let text = button.update(UiId::DeathScreen(DeathScreenPart::ButtonText), UiElement{
-                texture: UiTexture::Text(TextInfo::new_simple(BIG_TEXT_SIZE, "RESTART")),
+                texture: UiTexture::Text(TextInfo::new_simple(BIG_TEXT_SIZE, "restart")),
                 mix: Some(MixColorLch::color(ACCENT_COLOR)),
                 animation: Animation{
                     mix: Some(MixAnimation::default()),
@@ -2397,8 +2406,8 @@ impl Ui
                 let outside_offset = Vector2::new(-width / self.controller.screen_size().max(), 0.0);
 
                 let body = bars_body.update(UiId::BarDisplay(kind, BarDisplayPart::Body), UiElement{
-                    texture: UiTexture::Solid,
-                    mix: Some(MixColorLch::color(BACKGROUND_COLOR)),
+                    texture: UiTexture::Sliced(self.sliced_textures["outline"]),
+                    mix: Some(MixColorLch::color(WHITE_COLOR)),
                     width: UiSize::Pixels(width).into(),
                     children_layout: UiLayout::Vertical,
                     animation: Animation{
@@ -2445,7 +2454,7 @@ impl Ui
             }
         };
 
-        render_bar_display(BarDisplayKind::Cooldown, &mut self.cooldown, Lcha{h: 4.0, ..ACCENT_COLOR});
+        render_bar_display(BarDisplayKind::Cooldown, &mut self.cooldown, BLUE_COLOR);
 
         if let Some(anatomy) = entities.anatomy(self.ui_entities.player)
         {
@@ -2453,10 +2462,14 @@ impl Ui
             let color = if oxygen <= WINDED_OXYGEN
             {
                 let fraction = (oxygen / WINDED_OXYGEN).powi(3);
-                Lcha{l: lerp(50.0, ACCENT_COLOR.l, fraction), h: lerp(0.713, 1.5, fraction), ..ACCENT_COLOR}
+                Lcha{
+                    l: lerp(50.0, YELLOW_COLOR.l, fraction),
+                    h: lerp(0.713, YELLOW_COLOR.h % (f32::consts::PI * 2.0), fraction),
+                    ..YELLOW_COLOR
+                }
             } else
             {
-                Lcha{h: 1.5, ..ACCENT_COLOR}
+                YELLOW_COLOR
             };
 
             render_bar_display(BarDisplayKind::Stamina, &mut self.stamina, color);
