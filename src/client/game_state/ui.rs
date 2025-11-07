@@ -12,7 +12,7 @@ use parking_lot::Mutex;
 
 use image::RgbImage;
 
-use nalgebra::Vector2;
+use nalgebra::{vector, Vector2};
 
 use yanyaengine::{
     FontsContainer,
@@ -90,10 +90,7 @@ pub enum UiId
     Notification(Entity, NotificationKindInfo, NotificationPart),
     AnatomyNotification(Entity, AnatomyNotificationPart),
     Popup(u8, PopupPart),
-    Window(UiIdWindow, WindowPart),
-    BarsBody,
-    BarsBodyInner,
-    BarDisplay(BarDisplayKind, BarDisplayPart)
+    Window(UiIdWindow, WindowPart)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -117,7 +114,12 @@ pub enum HealthPart
     Panel,
     Body,
     Outline,
-    Anatomy(ChangedPart)
+    Anatomy(ChangedPart),
+    OuterStatsPanel,
+    InnerStatsPanel,
+    Stats,
+    Oxygen,
+    Blood
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -141,9 +143,6 @@ pub enum LoadingPart
 pub enum SeenNotificationPart
 {
     Body,
-    Clip,
-    ClipBody,
-    Back,
     Fill
 }
 
@@ -154,39 +153,11 @@ pub enum AnatomyNotificationPart
     Part(ChangedPart)
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum BarDisplayKind
-{
-    Stamina,
-    Cooldown
-}
-
-impl BarDisplayKind
-{
-    fn name(self) -> String
-    {
-        match self
-        {
-            Self::Stamina => "STAMINA".to_owned(),
-            Self::Cooldown => "COOLDOWN".to_owned()
-        }
-    }
-}
-
 impl Idable for UiId
 {
     fn screen() -> Self { Self::Screen }
 
     fn padding(id: u32) -> Self { Self::Padding(id) }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum BarDisplayPart
-{
-    Body,
-    Bar,
-    BarFill,
-    Text
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -256,6 +227,15 @@ pub enum AnatomyTooltipPart
     Body,
     Separator,
     Healthbar(BarId, BarDisplayPart)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum BarDisplayPart
+{
+    Body,
+    Text,
+    Bar,
+    BarFill
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -1275,21 +1255,6 @@ struct UpdateInfo<'a, 'b, 'c, 'd>
     dt: f32
 }
 
-#[derive(Debug, Clone, Copy)]
-struct BarDisplay
-{
-    lifetime: f32,
-    value: f32
-}
-
-impl Default for BarDisplay
-{
-    fn default() -> Self
-    {
-        Self{lifetime: 0.0, value: 0.0}
-    }
-}
-
 #[derive(Debug, Clone)]
 struct UiItemPopup
 {
@@ -1376,8 +1341,8 @@ pub struct Ui
     is_fade: bool,
     player_dead: bool,
     windows: Vec<Window>,
-    stamina: BarDisplay,
-    cooldown: BarDisplay,
+    oxygen: f32,
+    blood: f32,
     notifications: Vec<NotificationInfo>,
     seen_notifications: HashMap<Entity, f32>,
     anatomy_notifications: HashMap<Entity, (f32, Vec<AnatomyNotification>)>,
@@ -1408,6 +1373,7 @@ impl Ui
             anatomy_locations: anatomy_locations(info, "anatomy_areas"),
             anatomy_locations_small: anatomy_locations(info, "anatomy_areas_small"),
             user_receiver,
+            player_dead: false,
             ui_entities,
             controller,
             dragging_window: None,
@@ -1416,10 +1382,9 @@ impl Ui
             loading: Some(0.0),
             is_paused: false,
             is_fade: false,
-            player_dead: false,
             windows: Vec::new(),
-            stamina: BarDisplay::default(),
-            cooldown: BarDisplay::default(),
+            oxygen: 1.0,
+            blood: 1.0,
             notifications: Vec::new(),
             seen_notifications: HashMap::new(),
             anatomy_notifications: HashMap::new(),
@@ -1534,7 +1499,7 @@ impl Ui
 
     pub fn set_console(&mut self, contents: Option<String>)
     {
-        self.console_contents = contents.map(|x| TextboxInfo::new(x));
+        self.console_contents = contents.map(TextboxInfo::new);
     }
 
     fn find_window(&self, id: &UiIdWindow) -> Option<usize>
@@ -1637,20 +1602,14 @@ impl Ui
         }
     }
 
-    pub fn set_stamina(&mut self, value: f32)
+    pub fn set_oxygen(&mut self, value: f32)
     {
-        self.stamina = BarDisplay{
-            lifetime: 1.0,
-            value
-        };
+        self.oxygen = value;
     }
 
-    pub fn set_cooldown(&mut self, value: f32)
+    pub fn set_blood(&mut self, value: f32)
     {
-        self.cooldown = BarDisplay{
-            lifetime: 1.0,
-            value
-        };
+        self.blood = value;
     }
 
     pub fn set_fade(&mut self, fade: bool)
@@ -2045,6 +2004,66 @@ impl Ui
             add_padding_horizontal(panel, UiSize::Pixels(TINY_PADDING).into());
 
             add_padding_vertical(panel_vertical, UiSize::Pixels(SMALL_PADDING * 0.5).into());
+
+            let stats_outer = self.controller.update(UiId::Health(HealthPart::OuterStatsPanel), UiElement{
+                width: ui_screen_width.into(),
+                height: UiSize::Rest(1.0).into(),
+                position: UiPosition::Inherit,
+                children_layout: UiLayout::Vertical,
+                ..Default::default()
+            });
+
+            add_padding_vertical(stats_outer, UiSize::Rest(1.0).into());
+
+            let stats_inner = stats_outer.update(UiId::Health(HealthPart::InnerStatsPanel), UiElement{
+                width: UiSize::Rest(1.0).into(),
+                children_layout: UiLayout::Horizontal,
+                ..Default::default()
+            });
+
+            add_padding_horizontal(stats_inner, UiSize::Rest(1.0).into());
+
+            let stats = stats_inner.update(UiId::Health(HealthPart::Stats), UiElement{
+                children_layout: UiLayout::Vertical,
+                ..Default::default()
+            });
+
+
+            let oxygen = anatomy.oxygen().current;
+            let color = if oxygen <= WINDED_OXYGEN
+            {
+                let fraction = (oxygen / WINDED_OXYGEN).powi(3);
+                Lcha{
+                    l: lerp(50.0, BLUE_COLOR.l, fraction),
+                    c: lerp(10.0, BLUE_COLOR.c, fraction),
+                    ..BLUE_COLOR
+                }
+            } else
+            {
+                BLUE_COLOR
+            };
+
+            stats.update(UiId::Health(HealthPart::Oxygen), UiElement{
+                texture: UiTexture::Custom("ui/oxygen.png".into()),
+                fill: Some(UiElementFill{
+                    full: color,
+                    empty: color.with_added_chroma(-30.0).with_added_lightness(-10.0),
+                    amount: self.oxygen
+                }),
+                ..UiElement::fit_content()
+            });
+
+            add_padding_vertical(stats, UiSize::Pixels(2.0).into());
+
+            stats.update(UiId::Health(HealthPart::Blood), UiElement{
+                texture: UiTexture::Custom("ui/blood.png".into()),
+                fill: Some(UiElementFill{
+                    full: RED_COLOR,
+                    empty: RED_COLOR.with_added_chroma(-50.0).with_added_lightness(-10.0),
+                    amount: self.blood
+                }),
+                ..UiElement::fit_content()
+            });
         }
 
         let position_of = {
@@ -2242,9 +2261,10 @@ impl Ui
                 UiId::SeenNotification(entity, part)
             };
 
-            let enemy = some_or_value!(entities.enemy(entity), false);
-            let fraction = enemy.seen_fraction();
-            let is_attacking = enemy.is_attacking();
+            let enemy = entities.enemy(entity);
+            let enemy = enemy.as_ref();
+            let fraction = enemy.map(|x| x.seen_fraction()).unwrap_or(None);
+            let is_attacking = enemy.map(|x| x.is_attacking()).unwrap_or(false);
 
             let position = some_or_value!(position_of(entity), false);
 
@@ -2256,82 +2276,77 @@ impl Ui
             let body = self.controller.update(id(SeenNotificationPart::Body), UiElement{
                 position: body_position.clone(),
                 children_layout: UiLayout::Vertical,
-                animation: Animation{
-                    position: None,
-                    scaling: Some(ScalingAnimation{
-                        close_mode: Scaling::EaseIn(EaseInInfo::new(0.2)),
-                        close_scaling: Vector2::new(0.8, 0.0),
-                        ..Animation::normal().scaling.unwrap()
-                    }),
-                    ..Animation::normal()
-                },
                 ..Default::default()
             });
 
-            let is_detected = fraction.is_none() && is_attacking;
-
-            if fraction.is_none()
+            fn this_fill(amount: f32) -> UiElementFill
             {
-                *lifetime -= dt;
-            } else
-            {
-                *lifetime = 1.0;
+                UiElementFill{
+                    full: YELLOW_COLOR,
+                    empty: YELLOW_COLOR.with_added_chroma(-60.0).with_added_lightness(-10.0),
+                    amount
+                }
             }
 
-            let faded_id = id(SeenNotificationPart::Back);
-
-            if !is_detected
-            {
-                body.update(faded_id.clone(), UiElement{
-                    texture: UiTexture::Custom("ui/seen_faded.png".into()),
-                    position: UiPosition::Inherit,
-                    ..UiElement::fit_content()
-                });
-            }
+            const MAX_LIFETIME: f32 = 0.5;
 
             if let Some(fraction) = fraction
             {
-                let clip = body.update(id(SeenNotificationPart::Clip), UiElement{
-                    position: UiPosition::Inherit,
-                    width: UiSize::Rest(1.0).into(),
-                    height: UiSize::CopyElement(UiDirection::Vertical, 1.0, faded_id.clone()).into(),
-                    children_layout: UiLayout::Vertical,
-                    ..Default::default()
-                });
-
-                add_padding_vertical(clip, UiSize::Rest(1.0 - fraction).into());
-
-                let clip_body = clip.update(id(SeenNotificationPart::ClipBody), UiElement{
-                    width: UiSize::CopyElement(UiDirection::Horizontal, 1.0, faded_id).into(),
-                    height: UiSize::Rest(fraction).into(),
-                    scissor: true,
-                    ..Default::default()
-                });
-
-                clip_body.update(id(SeenNotificationPart::Fill), UiElement{
+                body.update(id(SeenNotificationPart::Fill), UiElement{
                     texture: UiTexture::Custom("ui/seen.png".into()),
-                    position: body_position,
+                    mix: Some(MixColorLch{only_alpha: true, ..MixColorLch::color(BLACK_COLOR)}),
+                    fill: Some(this_fill(fraction)),
+                    animation: Animation{
+                        mix: Some(MixAnimation{
+                            start_mix: Some(Lcha{a: 0.0, ..BLACK_COLOR}),
+                            ..Default::default()
+                        }),
+                        ..Default::default()
+                    },
                     ..UiElement::fit_content()
                 });
+
+                *lifetime = MAX_LIFETIME;
             } else
             {
-                if is_detected
+                let decay = 5.0;
+                let value = *lifetime / MAX_LIFETIME;
+
+                let alpha = 1.0 * ((1.0 - value) * -decay).exp();
+
+                if is_attacking
                 {
+                    let texture = UiTexture::Custom("ui/seen_done.png".into());
+                    let start_scaling = {
+                        let size = self.controller.texture_size(&texture);
+
+                        Vector2::repeat(1.0) + Vector2::repeat(0.5).component_div(&(size / size.min()))
+                    };
+
                     body.update(id(SeenNotificationPart::Fill), UiElement{
-                        texture: UiTexture::Custom("ui/seen_done.png".into()),
-                        position: UiPosition::Inherit,
+                        texture,
+                        mix: Some(MixColorLch{only_alpha: true, ..MixColorLch::color(Lcha{a: alpha, ..BLACK_COLOR})}),
                         animation: Animation{
                             scaling: Some(ScalingAnimation{
-                                start_scaling: Vector2::repeat(2.0),
-                                start_mode: Scaling::EaseOut{decay: 20.0},
-                                close_mode: Scaling::Ignore,
+                                start_scaling,
+                                start_mode: Scaling::EaseOut{decay: 15.0},
                                 ..Default::default()
                             }),
                             ..Default::default()
                         },
                         ..UiElement::fit_content()
                     });
+                } else
+                {
+                    body.update(id(SeenNotificationPart::Fill), UiElement{
+                        texture: UiTexture::Custom("ui/seen.png".into()),
+                        mix: Some(MixColorLch{only_alpha: true, ..MixColorLch::color(Lcha{a: alpha, ..BLACK_COLOR})}),
+                        fill: Some(this_fill(0.0)),
+                        ..UiElement::fit_content()
+                    });
                 }
+
+                *lifetime -= dt;
             }
 
             *lifetime > 0.0
@@ -2382,99 +2397,6 @@ impl Ui
 
         self.update_popup(controls, popup_taken);
 
-        let bars_body_outer = self.controller.update(UiId::BarsBody, UiElement{
-            width: ui_screen_width.into(),
-            height: UiSize::Rest(1.0).into(),
-            position: UiPosition::Inherit,
-            ..Default::default()
-        });
-
-        let bars_body = bars_body_outer.update(UiId::BarsBodyInner, UiElement{
-            height: UiSize::Rest(1.0).into(),
-            children_layout: UiLayout::Vertical,
-            ..Default::default()
-        });
-
-        add_padding_horizontal(bars_body_outer, UiSize::Rest(1.0).into());
-        add_padding_vertical(bars_body, UiSize::Rest(1.0).into());
-
-        let render_bar_display = |kind, bar: &mut BarDisplay, color: Lcha|
-        {
-            if bar.lifetime > 0.0
-            {
-                let width = 300.0;
-                let outside_offset = Vector2::new(-width / self.controller.screen_size().max(), 0.0);
-
-                let body = bars_body.update(UiId::BarDisplay(kind, BarDisplayPart::Body), UiElement{
-                    texture: UiTexture::Sliced(self.sliced_textures["outline"]),
-                    mix: Some(MixColorLch::color(WHITE_COLOR)),
-                    width: UiSize::Pixels(width).into(),
-                    children_layout: UiLayout::Vertical,
-                    animation: Animation{
-                        position: Some(PositionAnimation{
-                            offsets: Some(PositionOffsets{
-                                start: outside_offset,
-                                end: outside_offset
-                            }),
-                            start_mode: Connection::EaseOut{decay: 10.0, limit: None},
-                            close_mode: Connection::EaseIn(EaseInInfo::new(0.8)),
-                            ..Default::default()
-                        }),
-                        ..Default::default()
-                    },
-                    ..Default::default()
-                });
-
-                let text_id = UiId::BarDisplay(kind, BarDisplayPart::Text);
-
-                let bar_body = body.update(UiId::BarDisplay(kind, BarDisplayPart::Bar), UiElement{
-                    width: UiSize::Rest(1.0).into(),
-                    height: UiSize::CopyElement(UiDirection::Vertical, 1.0, text_id.clone()).into(),
-                    ..Default::default()
-                });
-
-                bar_body.update(UiId::BarDisplay(kind, BarDisplayPart::BarFill), UiElement{
-                    texture: UiTexture::Solid,
-                    mix: Some(MixColorLch::color(color)),
-                    width: UiSize::Rest(bar.value).into(),
-                    height: UiSize::Rest(1.0).into(),
-                    ..Default::default()
-                });
-
-                add_padding_horizontal(bar_body, UiSize::Rest(1.0 - bar.value).into());
-
-                body.update(text_id, UiElement{
-                    texture: UiTexture::Text(TextInfo::new_simple(30, kind.name())),
-                    mix: Some(MixColorLch::color(WHITE_COLOR)),
-                    position: UiPosition::Inherit,
-                    ..UiElement::fit_content()
-                });
-
-                bar.lifetime -= dt;
-            }
-        };
-
-        render_bar_display(BarDisplayKind::Cooldown, &mut self.cooldown, BLUE_COLOR);
-
-        if let Some(anatomy) = entities.anatomy(self.ui_entities.player)
-        {
-            let oxygen = anatomy.oxygen().current;
-            let color = if oxygen <= WINDED_OXYGEN
-            {
-                let fraction = (oxygen / WINDED_OXYGEN).powi(3);
-                Lcha{
-                    l: lerp(50.0, YELLOW_COLOR.l, fraction),
-                    h: lerp(0.713, YELLOW_COLOR.h % (f32::consts::PI * 2.0), fraction),
-                    ..YELLOW_COLOR
-                }
-            } else
-            {
-                YELLOW_COLOR
-            };
-
-            render_bar_display(BarDisplayKind::Stamina, &mut self.stamina, color);
-        }
-
         if self.is_paused
         {
             self.controller.update(UiId::Paused(PausedPart::Cover), UiElement{
@@ -2496,11 +2418,12 @@ impl Ui
             });
 
             self.controller.update(UiId::Paused(PausedPart::Text), UiElement{
-                texture: UiTexture::Text(TextInfo::new_simple(BIG_TEXT_SIZE, "PAUSED")),
+                texture: UiTexture::Text(TextInfo::new_simple(BIG_TEXT_SIZE, "stephy is paused...")),
                 mix: Some(MixColorLch::color(ACCENT_COLOR)),
                 position: UiPosition::Absolute{position: Vector2::zeros(), align: Default::default()},
                 animation: Animation{
                     scaling: Some(ScalingAnimation{
+                        close_scaling: vector![1.0, 0.0],
                         close_mode: Scaling::EaseOut{decay: 20.0},
                         ..Default::default()
                     }),
@@ -2552,5 +2475,13 @@ impl Ui
     )
     {
         self.controller.draw(info);
+    }
+
+    pub fn draw_fill(
+        &self,
+        info: &mut DrawInfo
+    )
+    {
+        self.controller.draw_fill(info);
     }
 }

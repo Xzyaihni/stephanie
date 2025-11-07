@@ -25,7 +25,10 @@ use yanyaengine::{
     Transform,
     TextureId,
     SolidObject,
+    ObjectVertex,
     DefaultTexture,
+    DefaultModel,
+    TransformContainer,
     camera::Camera,
     game_object::*
 };
@@ -35,6 +38,7 @@ use crate::{
     app::{ProgramShaders, TimestampQuery},
     client::{self, SlicedTexture, PartCreator},
     common::{
+        with_z,
         some_or_value,
         some_or_return,
         receiver_loop,
@@ -113,6 +117,16 @@ pub mod ui;
 
 
 const DEFAULT_ZOOM: f32 = 3.0;
+
+const DEFAULT_MOUSE_SIZE: f32 = 57.0;
+
+fn mouse_object_size(size: [f32; 2]) -> Vector3<f32>
+{
+    let size = Vector2::from(size);
+    let size = Vector2::repeat(DEFAULT_MOUSE_SIZE).component_div(&size);
+
+    with_z(size, 1.0)
+}
 
 #[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -784,8 +798,10 @@ pub struct GameState
     pub common_textures: Rc<CommonTextures>,
     pub connected_and_ready: bool,
     pub world: World,
+    pub cooldown_fraction: f32,
     loot: Loot,
     screen_object: SolidObject,
+    mouse_object: SolidObject<ObjectVertex>,
     ui_camera: Camera,
     timestamp_query: TimestampQuery,
     shaders: ProgramShaders,
@@ -896,6 +912,16 @@ impl GameState
         let assets = object_info.partial.assets.clone();
 
         let screen_object = client::create_screen_object(&object_info.partial);
+        let mouse_object = {
+            let assets = assets.lock();
+
+            let scale = mouse_object_size(object_info.partial.size);
+
+            object_info.partial.object_factory.create_solid(
+                assets.model(assets.default_model(DefaultModel::Square)).clone(),
+                Transform{scale, ..Default::default()}
+            )
+        };
 
         let ui = {
             let mut anatomy_locations = info.anatomy_locations.borrow_mut();
@@ -931,6 +957,7 @@ impl GameState
             controls: ControlsController::new(client_info.controls.clone()),
             running: true,
             screen_object,
+            mouse_object,
             ui_camera,
             timestamp_query: info.timestamp_query,
             shaders: info.shaders,
@@ -950,6 +977,7 @@ impl GameState
             is_trusted: false,
             is_loading: true,
             is_paused: false,
+            cooldown_fraction: 0.0,
             user_receiver,
             debug_visibility,
             connections_handler: handler,
@@ -1320,6 +1348,14 @@ impl GameState
         info.with_projection(Matrix4::identity(), |info|
         {
             self.screen_object.update_buffers(info);
+
+            self.mouse_object.set_transform(Transform{
+                position: with_z(self.mouse_position * 2.0 - Vector2::repeat(1.0), 0.0),
+                scale: mouse_object_size(info.partial.size),
+                ..Default::default()
+            });
+
+            self.mouse_object.update_buffers(info);
         });
 
         self.debug_visibility.update(&self.camera.read());
@@ -1371,6 +1407,7 @@ impl GameState
 
         let draw_entities = render_system::DrawEntities{
             solid: &self.screen_object,
+            mouse_solid: &self.mouse_object,
             renders: &self.entities.visible_renders,
             above_world: &self.entities.above_world_renders,
             occluders: &self.entities.occluders,
@@ -1382,7 +1419,9 @@ impl GameState
         let info = render_system::DrawingInfo{
             shaders: &self.shaders,
             info,
-            timestamp_query: self.timestamp_query.clone()
+            timestamp_query: self.timestamp_query.clone(),
+            is_loading: self.is_loading,
+            cooldown_fraction: self.cooldown_fraction
         };
 
         let sky_colors = {

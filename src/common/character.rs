@@ -531,7 +531,7 @@ impl Character
         self.attack_cooldown
     }
 
-    pub fn stamina_fraction(&self, entities: &ClientEntities) -> Option<f32>
+    pub fn oxygen_fraction(&self, entities: &ClientEntities) -> Option<f32>
     {
         let anatomy = self.anatomy(entities)?;
 
@@ -554,7 +554,7 @@ impl Character
 
     fn held_attack_cooldown(&self) -> f32
     {
-        0.5
+        2.0
     }
 
     fn bash_attack_cooldown(&self) -> f32
@@ -868,7 +868,7 @@ impl Character
 
             entities.inventory_mut(info.this).unwrap().remove(held);
 
-            self.consume_attack_stamina(combined_info);
+            self.consume_attack_oxygen(combined_info);
         }
 
         self.held_update = true;
@@ -884,15 +884,15 @@ impl Character
         }).unwrap_or(true)
     }
 
-    fn attack_stamina_cost(&self, combined_info: CombinedInfo) -> Option<f32>
+    fn attack_oxygen_cost(&self, combined_info: CombinedInfo) -> Option<f32>
     {
-        Some(self.held_info(combined_info).stamina_cost(self.newtons(combined_info)?))
+        Some(self.held_info(combined_info).oxygen_cost(self.newtons(combined_info)?))
     }
 
-    fn consume_attack_stamina(&mut self, combined_info: CombinedInfo)
+    fn consume_attack_oxygen(&mut self, combined_info: CombinedInfo)
     {
         let info = some_or_return!(self.info.as_ref());
-        let cost = some_or_return!(self.attack_stamina_cost(combined_info));
+        let cost = some_or_return!(self.attack_oxygen_cost(combined_info));
 
         let mut anatomy = some_or_return!(combined_info.entities.anatomy_mut_no_change(info.this));
 
@@ -913,7 +913,7 @@ impl Character
 
     pub fn can_attack(&self, combined_info: CombinedInfo) -> bool
     {
-        let cost = some_or_value!(self.attack_stamina_cost(combined_info), false);
+        let cost = some_or_value!(self.attack_oxygen_cost(combined_info), false);
         let current = some_or_value!(self.anatomy(combined_info.entities), false).oxygen().current;
 
         let attackable_item = cost <= current;
@@ -1037,7 +1037,7 @@ impl Character
 
         self.bash_side = self.bash_side.opposite();
 
-        self.consume_attack_stamina(combined_info);
+        self.consume_attack_oxygen(combined_info);
 
         self.bash_projectile(combined_info);
 
@@ -1173,7 +1173,7 @@ impl Character
 
         self.attack_cooldown = self.held_attack_cooldown();
 
-        self.consume_attack_stamina(combined_info);
+        self.consume_attack_oxygen(combined_info);
 
         self.poke_projectile(combined_info, item);
 

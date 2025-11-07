@@ -1,6 +1,6 @@
 use std::{
     f32,
-    fs,
+    fs::{self, ReadDir},
     borrow::Cow,
     path::PathBuf,
     rc::Rc,
@@ -23,6 +23,7 @@ use yanyaengine::{
 };
 
 use crate::{
+    VERSION,
     app::ProgramShaders,
     client::{
         self,
@@ -39,8 +40,14 @@ use crate::{
     common::{
         sanitized_name,
         from_upper_camel,
+        world_path,
+        world_save_path,
+        player_save_path,
         some_or_value,
         render_info::*,
+        EntityInfo,
+        world::WorldSave,
+        chunk_saver::load_world_file,
         colors::Lcha,
         lazy_transform::SpringScalingInfo
     }
@@ -59,7 +66,11 @@ enum MainMenuId
 {
     Screen,
     Padding(u32),
+    MenuScreen,
     Menu,
+    RightMenu,
+    VerticalMenu,
+    Version,
     Main(MainPartId),
     Options(OptionsPartId),
     Controls(ControlsPartId),
@@ -199,18 +210,57 @@ enum MenuState
 const BUTTON_SIZE: f32 = 0.05;
 
 #[derive(Clone)]
+pub struct NameInfo
+{
+    info: TextboxInfo,
+    last_text: Option<String>,
+    duplicate: bool
+}
+
+impl NameInfo
+{
+    pub fn new(info: TextboxInfo) -> Self
+    {
+        Self{info, last_text: None, duplicate: false}
+    }
+
+    fn recalculate_allowed(&mut self, worlds: &[WorldInfo])
+    {
+        self.last_text = Some(self.info.text.clone());
+
+        let world_name = self.world_name();
+        self.duplicate = worlds.iter().any(|x| x.world_name == world_name);
+    }
+
+    pub fn is_allowed(&self) -> bool
+    {
+        !self.info.text.is_empty() && !self.duplicate
+    }
+
+    pub fn display_name(self) -> String
+    {
+        self.info.text
+    }
+
+    pub fn world_name(&self) -> String
+    {
+        sanitized_name(&self.info.text)
+    }
+}
+
+#[derive(Clone)]
 pub struct MenuClientInfo
 {
     pub address: Option<String>,
-    pub name: TextboxInfo,
+    pub name: NameInfo,
     pub host: bool,
     pub debug: bool
 }
 
-struct WorldInfo
+pub struct WorldInfo
 {
-    name: String,
-    path: PathBuf,
+    world_name: String,
+    display_name: String,
     id: usize
 }
 
@@ -278,7 +328,7 @@ impl MainMenu
 
         let info = MenuClientInfo{
             address: None,
-            name: TextboxInfo::new_with_limit("stephanie".to_owned(), 30),
+            name: NameInfo::new(TextboxInfo::new_with_limit("stephanie".to_owned(), 30)),
             host: true,
             debug: false
         };
@@ -288,19 +338,71 @@ impl MainMenu
         let worlds_path = PathBuf::from("worlds");
         let mut worlds = if worlds_path.exists()
         {
-            fs::read_dir(worlds_path).and_then(|iter| -> Result<Vec<_>, _>
+            fs::read_dir(worlds_path).map(|iter: ReadDir|
             {
-                iter.enumerate().map(|(id, x)|
+                iter.enumerate().filter_map(|(id, x)|
                 {
-                    x.map(|x|
+                    let entry = (match x
                     {
-                        WorldInfo{
-                            name: x.file_name().to_string_lossy().into_owned(),
-                            path: x.path(),
-                            id
+                        Ok(x) => Some(x),
+                        Err(err) =>
+                        {
+                            eprintln!("error loading world: {err}");
+
+                            None
                         }
+                    })?;
+
+                    let world_name = entry.file_name();
+                    let world_name = world_name.to_string_lossy().into_owned();
+
+                    fn notify_none<T>(name: &str, x: Option<T>) -> Option<T>
+                    {
+                        if x.is_none()
+                        {
+                            eprintln!("cant load info in {name}");
+                        }
+
+                        x
+                    }
+
+                    let world_save = {
+                        let name = format!("world `{world_name}`");
+                        notify_none(
+                            &name,
+                            load_world_file::<WorldSave>(name.clone(), &world_save_path(&world_name))
+                        )?
+                    };
+
+                    let player_save = {
+                        let name = format!("player `{world_name}`");
+                        notify_none(
+                            &name,
+                            load_world_file::<EntityInfo>(
+                                name.clone(),
+                                &player_save_path(world_path(&world_name), &world_name)
+                            )
+                        )?
+                    };
+
+                    let display_name = player_save.named?;
+
+                    if world_save.version != VERSION
+                    {
+                        eprintln!(
+                            "skipping {display_name}, version mismatch (save: {}, current: {VERSION})",
+                            world_save.version
+                        );
+
+                        return None;
+                    }
+
+                    Some(WorldInfo{
+                        world_name,
+                        display_name,
+                        id
                     })
-                }).collect()
+                }).collect::<Vec<_>>()
             }).unwrap_or_else(|err|
             {
                 eprintln!("error reading worlds: {err}");
@@ -312,7 +414,7 @@ impl MainMenu
             Vec::new()
         };
 
-        worlds.sort_by(|a, b| a.name.cmp(&b.name));
+        worlds.sort_by(|a, b| a.display_name.cmp(&b.display_name));
 
         let current_bindings = default_bindings();
 
@@ -975,7 +1077,7 @@ impl MainMenu
             ..Default::default()
         });
 
-        ui_info.info.name.update(ui_info.dt);
+        ui_info.info.name.info.update(ui_info.dt);
 
         textbox_update(
             ui_info.controls,
@@ -983,14 +1085,19 @@ impl MainMenu
             |part| MainMenuId::WorldCreate(WorldCreatePartId::Textbox(part)),
             textbox,
             font_size,
-            &mut ui_info.info.name
+            &mut ui_info.info.name.info
         );
 
         add_padding_vertical(panel, 0.01.into());
 
         let buttons = panel.update(id(WorldCreatePartId::Buttons), UiElement::default());
 
-        let confirm_allowed = !ui_info.info.name.text.is_empty();
+        if ui_info.info.name.last_text.as_ref().map(|x| *x != ui_info.info.name.info.text).unwrap_or(true)
+        {
+            ui_info.info.name.recalculate_allowed(&ui_info.worlds.items);
+        }
+
+        let confirm_allowed = ui_info.info.name.is_allowed();
 
         let confirm_info = {
             let padding: UiElementSize<_> = 0.005.into();
@@ -1043,24 +1150,6 @@ impl MainMenu
 
         add_padding_vertical(panel, panel_padding.into());
         add_padding_horizontal(panel_outer, panel_padding_horizontal.into());
-
-        if let MenuAction::Start = action
-        {
-            fn unique_name(worlds: &[WorldInfo], name: String) -> String
-            {
-                if worlds.iter().any(|x| x.name == name)
-                {
-                    unique_name(worlds, name + "_")
-                } else
-                {
-                    name
-                }
-            }
-
-            let world_name = sanitized_name(&ui_info.info.name.text);
-
-            ui_info.info.name.text = unique_name(&ui_info.worlds.items, world_name);
-        }
 
         (state, action)
     }
@@ -1130,7 +1219,7 @@ impl MainMenu
 
                 add_padding_horizontal(body, 0.005.into());
                 body.update(id(WorldButtonPartId::Text), UiElement{
-                    texture: UiTexture::Text(TextInfo::new_simple(font_size, item.name.clone())),
+                    texture: UiTexture::Text(TextInfo::new_simple(font_size, item.display_name.clone())),
                     mix: Some(MixColorLch::color(if is_selected { BACKGROUND_COLOR } else { ACCENT_COLOR })),
                     animation: Animation{
                         mix: Some(MixAnimation::default()),
@@ -1142,12 +1231,12 @@ impl MainMenu
 
                 if is_selected && info.controls.take_click_down()
                 {
-                    ui_info.info.name = TextboxInfo::new(item.name.clone());
+                    ui_info.info.name.info = TextboxInfo::new(item.display_name.clone());
+
                     action = MenuAction::Start;
                 }
             });
 
-            add_padding_vertical(outer_panel, UiSize::Rest(1.0).into());
             let buttons = outer_panel.update(id(WorldSelectPartId::Buttons), UiElement{
                 ..Default::default()
             });
@@ -1213,21 +1302,25 @@ impl MainMenu
     {
         let mut controls = self.controls.changed_this_frame();
 
+        self.controller.as_inserter().element().children_layout = UiLayout::Horizontal;
+
         let align_left = match self.state
         {
             MenuState::Main | MenuState::Options => true,
             MenuState::Controls | MenuState::WorldSelect | MenuState::WorldCreate => false,
         };
 
-        self.controller.as_inserter().element().children_layout = if align_left
+        if align_left
         {
             add_padding_horizontal(self.controller.as_inserter(), 0.08.into());
+        }
 
-            UiLayout::Horizontal
-        } else
-        {
-            UiLayout::Vertical
-        };
+        let menu_screen = self.controller.update(MainMenuId::MenuScreen, UiElement{
+            width: UiSize::Rest(1.0).into(),
+            height: UiSize::Rest(1.0).into(),
+            children_layout: if align_left { UiLayout::Horizontal } else { UiLayout::Vertical },
+            ..Default::default()
+        });
 
         let menu = {
             let (width, children_layout) = match self.state
@@ -1236,7 +1329,7 @@ impl MainMenu
                 _ => (UiSize::FitChildren.into(), UiLayout::Vertical)
             };
 
-            self.controller.update(MainMenuId::Menu, UiElement{
+            menu_screen.update(MainMenuId::Menu, UiElement{
                 width,
                 height: UiSize::Rest(1.0).into(),
                 children_layout,
@@ -1266,6 +1359,33 @@ impl MainMenu
                 MenuState::WorldCreate => Self::update_world_create(ui_info, menu)
             }
         };
+
+        if let MenuState::Main = self.state
+        {
+            let right_menu = menu_screen.update(MainMenuId::RightMenu, UiElement{
+                width: UiSize::Rest(1.0).into(),
+                height: UiSize::Rest(1.0).into(),
+                children_layout: UiLayout::Vertical,
+                ..Default::default()
+            });
+
+            add_padding_vertical(right_menu, UiSize::Rest(1.0).into());
+            let vertical_menu = right_menu.update(MainMenuId::VerticalMenu, UiElement{
+                width: UiSize::Rest(1.0).into(),
+                children_layout: UiLayout::Horizontal,
+                ..Default::default()
+            });
+
+            add_padding_horizontal(vertical_menu, UiSize::Rest(1.0).into());
+            vertical_menu.update(MainMenuId::Version, UiElement{
+                texture: UiTexture::Text(TextInfo{
+                    font_size: SMALLEST_TEXT_SIZE,
+                    text: TextBlocks::single(ACCENT_COLOR.into(), VERSION.to_string().into()),
+                    outline: Some(TextOutline{color: BACKGROUND_COLOR.into(), size: 2})
+                }),
+                ..UiElement::fit_content()
+            });
+        }
 
         self.state = next_state;
 

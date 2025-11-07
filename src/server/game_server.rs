@@ -2,9 +2,8 @@ use std::{
     f32,
     fmt,
     mem,
-    io,
-    fs::{self, File},
-    path::{Path, PathBuf},
+    fs,
+    path::PathBuf,
     rc::Rc,
     thread::JoinHandle,
     ops::ControlFlow,
@@ -18,8 +17,6 @@ use std::{
 use parking_lot::Mutex;
 
 use nalgebra::Vector3;
-
-use serde::de::DeserializeOwned;
 
 use yanyaengine::Transform;
 
@@ -37,6 +34,8 @@ use crate::{
         some_or_return,
         sender_loop,
         receiver_loop,
+        sanitized_name,
+        player_save_path,
         ENTITY_SCALE,
         render_info::*,
         lazy_transform::*,
@@ -63,7 +62,7 @@ use crate::{
         OnConnectInfo,
         character::SpriteState,
         world::{TILE_SIZE, CHUNK_VISUAL_SIZE, Pos3},
-        chunk_saver::{with_temp_save, load_compressed, LoadError},
+        chunk_saver::{with_temp_save, load_world_file},
         message::{
             Message,
             MessageBuffer
@@ -121,34 +120,6 @@ impl From<MessageDeError> for ConnectionError
     fn from(value: MessageDeError) -> Self
     {
         ConnectionError::MessageDeError(value)
-    }
-}
-
-pub enum LoadWorldFileError
-{
-    Io(io::Error),
-    Load(LoadError)
-}
-
-pub fn load_world_file<T: DeserializeOwned>(path: &Path) -> Result<Option<T>, LoadWorldFileError>
-{
-    let file = match File::open(path)
-    {
-        Ok(x) => x,
-        Err(ref err) if err.kind() == io::ErrorKind::NotFound => return Ok(None),
-        Err(err) =>
-        {
-            return Err(LoadWorldFileError::Io(err));
-        }
-    };
-
-    match load_compressed(file)
-    {
-        Ok(x) => Ok(Some(x)),
-        Err(err) =>
-        {
-            Err(LoadWorldFileError::Load(err))
-        }
     }
 }
 
@@ -414,31 +385,7 @@ impl GameServer
     {
         let path = self.player_info_path(player_name);
 
-        match load_world_file(&path)
-        {
-            Ok(x) =>
-            {
-                eprintln!("loading player \"{player_name}\"");
-
-                x
-            },
-            Err(err) =>
-            {
-                match err
-                {
-                    LoadWorldFileError::Io(err) =>
-                    {
-                        eprintln!("error trying to open \"{player_name}\" save file: {err}");
-                    },
-                    LoadWorldFileError::Load(err) =>
-                    {
-                        eprintln!("error trying to load player \"{player_name}\": {err}");
-                    }
-                }
-
-                None
-            }
-        }
+        load_world_file(format!("player `{player_name}`"), &path)
     }
 
     fn create_new_player(&self, name: String) -> EntityInfo
@@ -667,18 +614,9 @@ impl GameServer
 
     fn player_info_path(&self, player_name: &str) -> PathBuf
     {
-        let formatted_name = player_name.chars().map(|c|
-        {
-            if c.is_ascii_graphic()
-            {
-                c
-            } else
-            {
-                char::REPLACEMENT_CHARACTER
-            }
-        }).collect::<String>();
+        let formatted_name = sanitized_name(player_name);
 
-        PathBuf::from("worlds").join(&self.world_name).join(format!("{formatted_name}.save"))
+        player_save_path(PathBuf::from("worlds").join(&self.world_name), &formatted_name)
     }
 
     fn process_message_inner(

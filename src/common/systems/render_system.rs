@@ -3,7 +3,7 @@ use vulkano::{
     buffer::BufferContents,
 };
 
-use yanyaengine::{game_object::*, SolidObject};
+use yanyaengine::{game_object::*, SolidObject, ObjectVertex};
 
 use crate::{
     debug_config::*,
@@ -25,9 +25,17 @@ pub struct BackgroundColor
     pub color: [f32; 3]
 }
 
+#[derive(BufferContents)]
+#[repr(C)]
+pub struct MouseInfo
+{
+    pub amount: f32
+}
+
 pub struct DrawEntities<'a>
 {
     pub solid: &'a SolidObject,
+    pub mouse_solid: &'a SolidObject<ObjectVertex>,
     pub renders: &'a [Vec<Entity>],
     pub above_world: &'a [Entity],
     pub occluders: &'a [Entity],
@@ -40,7 +48,9 @@ pub struct DrawingInfo<'a, 'b, 'c>
 {
     pub shaders: &'a ProgramShaders,
     pub info: &'b mut DrawInfo<'c>,
-    pub timestamp_query: TimestampQuery
+    pub timestamp_query: TimestampQuery,
+    pub is_loading: bool,
+    pub cooldown_fraction: f32
 }
 
 pub struct SkyColors
@@ -53,6 +63,7 @@ pub fn draw(
     ui: &Ui,
     DrawEntities{
         solid,
+        mouse_solid,
         renders,
         above_world,
         occluders,
@@ -63,7 +74,9 @@ pub fn draw(
     DrawingInfo{
         shaders,
         info,
-        timestamp_query
+        timestamp_query,
+        is_loading,
+        cooldown_fraction
     }: DrawingInfo,
     SkyColors{
         light_color
@@ -225,6 +238,19 @@ pub fn draw(
     info.bind_pipeline(shaders.ui);
 
     ui.draw(info);
+
+    info.bind_pipeline(shaders.ui_fill);
+
+    ui.draw_fill(info);
+
+    info.bind_pipeline(shaders.mouse);
+
+    if !is_loading && cooldown_fraction > 0.0
+    {
+        info.push_constants(MouseInfo{amount: cooldown_fraction});
+
+        mouse_solid.draw(info);
+    }
 
     timing_end!(8);
 }

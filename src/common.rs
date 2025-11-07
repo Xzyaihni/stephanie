@@ -1,5 +1,6 @@
 use std::{
     f32,
+    path::PathBuf,
     fmt::Debug,
     sync::Arc,
     net::TcpStream
@@ -522,6 +523,21 @@ pub const ENTITY_PIXEL_SCALE: u32 = 32;
 pub fn texture_scale(texture: &Texture) -> Vector2<f32>
 {
     texture.size() / ENTITY_PIXEL_SCALE as f32 * ENTITY_SCALE
+}
+
+pub fn world_path(name: &str) -> PathBuf
+{
+    PathBuf::from("worlds").join(name)
+}
+
+pub fn world_save_path(name: &str) -> PathBuf
+{
+    world_path(name).join("world.wsave")
+}
+
+pub fn player_save_path(path: PathBuf, name: &str) -> PathBuf
+{
+    path.join(format!("{name}.save"))
 }
 
 #[derive(Clone)]

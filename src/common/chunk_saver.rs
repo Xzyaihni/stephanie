@@ -11,7 +11,7 @@ use std::{
     sync::mpsc::{self, Sender, Receiver}
 };
 
-use serde::{Serialize, Deserialize};
+use serde::{Serialize, Deserialize, de::DeserializeOwned};
 
 use crate::{
     server::world::world_generator::{CHUNK_RATIO, WorldChunk},
@@ -44,6 +44,33 @@ impl Saveable for WorldChunksBlock {}
 impl AutoSaveable for Chunk {}
 impl AutoSaveable for SaveEntities {}
 impl AutoSaveable for WorldChunksBlock {}
+
+pub fn load_world_file<T: DeserializeOwned>(
+    name: String,
+    path: &Path
+) -> Option<T>
+{
+    let file = match File::open(path)
+    {
+        Ok(x) => x,
+        Err(ref err) if err.kind() == io::ErrorKind::NotFound => return None,
+        Err(err) =>
+        {
+            eprintln!("error trying to open {name} save file: {err}");
+            return None;
+        }
+    };
+
+    match load_compressed(file)
+    {
+        Ok(x) => Some(x),
+        Err(err) =>
+        {
+            eprintln!("error trying to load {name}: {err}");
+            None
+        }
+    }
+}
 
 pub trait SaveLoad<T>
 {

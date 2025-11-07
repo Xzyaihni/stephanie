@@ -9,12 +9,13 @@ layout(set = 0, binding = 0) uniform sampler2D tex;
 layout(push_constant) uniform OutlineInfo{
     vec4 other_color;
     float other_mix;
-    bool keep_transparency;
+    int flags;
 } outline;
 
 vec4 with_mix(vec4 color)
 {
-    vec4 other_color = outline.keep_transparency ? vec4(outline.other_color.rgb, min(color.a, outline.other_color.a)) : outline.other_color;
+    vec4 target_mix = ((outline.flags >> 1) & 1) == 1 ? vec4(color.rgb, outline.other_color.a) : outline.other_color;
+    vec4 other_color = (outline.flags & 1) == 1 ? vec4(target_mix.rgb, min(color.a, target_mix.a)) : target_mix;
 
     return mix(color, other_color, outline.other_mix);
 }

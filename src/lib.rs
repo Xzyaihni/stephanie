@@ -18,9 +18,11 @@
 // consistency????????
 #![allow(clippy::excessive_precision)]
 
-use std::{process, fmt::Display};
+use std::{process, fmt::{self, Display}};
 
 use nalgebra::Vector3;
+
+use serde::{Serialize, Deserialize};
 
 pub mod common;
 
@@ -33,6 +35,23 @@ pub mod app;
 
 pub mod debug_config;
 
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Version
+{
+    pub major: u32,
+    pub minor: u32
+}
+
+impl Display for Version
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
+    {
+        write!(f, "v{}.{}", self.major, self.minor)
+    }
+}
+
+pub const VERSION: Version = Version{major: 0, minor: 4};
 
 pub const LOG_PATH: &str = "log.txt";
 pub const LONGEST_FRAME: f64 = 1.0 / 20.0;

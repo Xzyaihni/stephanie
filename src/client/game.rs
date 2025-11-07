@@ -1081,7 +1081,7 @@ struct PlayerInfo
     other_entity: Option<Entity>,
     console: ConsoleInfo,
     animation: Option<PlayerAnimation>,
-    previous_stamina: Option<f32>,
+    previous_oxygen: Option<f32>,
     previous_cooldown: (f32, f32),
     mouse_highlighted: Option<Entity>,
     interacted: bool
@@ -1100,7 +1100,7 @@ impl PlayerInfo
             other_entity: None,
             console,
             animation: None,
-            previous_stamina: None,
+            previous_oxygen: None,
             previous_cooldown: (0.0, 0.0),
             mouse_highlighted: None,
             interacted: false
@@ -1134,6 +1134,12 @@ impl<'a> PlayerContainer<'a>
 
     pub fn on_player_connected(&mut self)
     {
+        let is_dead = self.game_state.entities().anatomy(self.info.entity).map(|x| x.is_dead()).unwrap_or(false);
+        if is_dead
+        {
+            self.game_state.ui.borrow_mut().player_dead();
+        }
+
         self.camera_sync_instant();
     }
 
@@ -1556,21 +1562,21 @@ impl<'a> PlayerContainer<'a>
         self.update_camera_follow();
 
         let entities = &mut self.game_state.entities.entities;
-        if let Some((current_stamina, current_cooldown)) = entities.character(self.info.entity).map(|x|
+        if let Some((current_oxygen, current_cooldown)) = entities.character(self.info.entity).map(|x|
         {
-            (x.stamina_fraction(entities), x.attack_cooldown())
+            (x.oxygen_fraction(entities), x.attack_cooldown())
         })
         {
-            if self.info.previous_stamina != current_stamina
+            if self.info.previous_oxygen != current_oxygen
             {
-                let was_none = self.info.previous_stamina.is_none();
-                self.info.previous_stamina = current_stamina;
+                let was_none = self.info.previous_oxygen.is_none();
+                self.info.previous_oxygen = current_oxygen;
 
                 if !was_none
                 {
-                    let stamina = current_stamina.unwrap_or(0.0);
+                    let oxygen = current_oxygen.unwrap_or(0.0);
 
-                    self.game_state.ui.borrow_mut().set_stamina(stamina);
+                    self.game_state.ui.borrow_mut().set_oxygen(oxygen);
                 }
             }
 
@@ -1594,7 +1600,7 @@ impl<'a> PlayerContainer<'a>
                     0.0
                 };
 
-                self.game_state.ui.borrow_mut().set_cooldown(fraction);
+                self.game_state.cooldown_fraction = fraction;
             }
         }
 

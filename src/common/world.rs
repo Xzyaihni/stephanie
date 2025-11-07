@@ -11,9 +11,13 @@ use vulkano::{
     pipeline::graphics::vertex_input::Vertex
 };
 
+use serde::{Serialize, Deserialize};
+
 use yanyaengine::{Transform, game_object::*};
 
 use crate::{
+    Version,
+    VERSION,
     client::{
         VisibilityChecker,
         TilesFactory,
@@ -126,6 +130,24 @@ pub struct ChunkWithEntities
 {
     pub chunk: Chunk,
     pub entities: Vec<Entity>
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct WorldSave
+{
+    pub version: Version,
+    pub time: f64
+}
+
+impl Default for WorldSave
+{
+    fn default() -> Self
+    {
+        Self{
+            version: VERSION,
+            time: 0.0
+        }
+    }
 }
 
 pub struct World

@@ -23,7 +23,7 @@ use stephanie::common::{
 enum RunMode
 {
     Hits,
-    Stamina
+    Oxygen
 }
 
 fn parse_mode(s: &str) -> Option<RunMode>
@@ -34,10 +34,10 @@ fn parse_mode(s: &str) -> Option<RunMode>
 fn print_info(ItemStats{
     name,
     kill_hits,
-    kill_stamina
+    kill_oxygen
 }: &ItemStats)
 {
-    println!("{name} - hits: {kill_hits:.1}, stamina: {kill_stamina:.1}");
+    println!("{name} - hits: {kill_hits:.1}, oxygen: {kill_oxygen:.1}");
 }
 
 fn print_infos(infos: &[ItemStats])
@@ -51,7 +51,7 @@ fn print_infos(infos: &[ItemStats])
 struct AnatomyStats
 {
     kill_hits: f32,
-    kill_stamina: f32
+    kill_oxygen: f32
 }
 
 impl AnatomyStats
@@ -60,7 +60,7 @@ impl AnatomyStats
     {
         Self{
             kill_hits: (self.kill_hits + other.kill_hits) / 2.0,
-            kill_stamina: (self.kill_stamina + other.kill_stamina) / 2.0
+            kill_oxygen: (self.kill_oxygen + other.kill_oxygen) / 2.0
         }
     }
 }
@@ -72,7 +72,7 @@ fn anatomy_stats_single(
 {
     let mut stats = AnatomyStats{
         kill_hits: 0.0,
-        kill_stamina: 0.0
+        kill_oxygen: 0.0
     };
 
     while !anatomy.take_killed()
@@ -86,7 +86,7 @@ fn anatomy_stats_single(
         };
 
         stats.kill_hits += 1.0;
-        stats.kill_stamina += item.stamina_cost(30.0);
+        stats.kill_oxygen += item.oxygen_cost(30.0);
 
         anatomy.damage(damage);
     }
@@ -106,7 +106,7 @@ struct ItemStats
 {
     name: String,
     kill_hits: f32,
-    kill_stamina: f32
+    kill_oxygen: f32
 }
 
 fn main()
@@ -129,7 +129,7 @@ fn main()
         }
     } else
     {
-        RunMode::Stamina
+        RunMode::Oxygen
     };
 
     let mut infos = ItemsInfo::parse(None, "", "items/items.json").items().iter().map(|info: &ItemInfo| -> ItemStats
@@ -140,13 +140,13 @@ fn main()
 
         let AnatomyStats{
             kill_hits,
-            kill_stamina
+            kill_oxygen
         } = anatomy_stats(anatomy, info);
 
         ItemStats{
             name,
             kill_hits,
-            kill_stamina
+            kill_oxygen
         }
     }).collect::<Vec<_>>();
 
@@ -156,9 +156,9 @@ fn main()
         {
             infos.sort_unstable_by(|a, b| a.kill_hits.partial_cmp(&b.kill_hits).unwrap());
         },
-        RunMode::Stamina =>
+        RunMode::Oxygen =>
         {
-            infos.sort_unstable_by(|a, b| a.kill_stamina.partial_cmp(&b.kill_stamina).unwrap());
+            infos.sort_unstable_by(|a, b| a.kill_oxygen.partial_cmp(&b.kill_oxygen).unwrap());
         }
     }
 

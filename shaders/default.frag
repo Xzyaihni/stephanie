@@ -12,7 +12,7 @@ layout(push_constant) uniform OutlineInfo{
     float other_mix;
     float animation;
     float outlined;
-    bool keep_transparency;
+    int flags;
 } outline;
 
 const vec3 BACKGROUND_COLOR = vec3(0.831, 0.941, 0.988);
@@ -21,7 +21,8 @@ const float LINE_WIDTH = 0.5;
 
 vec4 with_mix(vec4 color)
 {
-    vec4 other_color = outline.keep_transparency ? vec4(outline.other_color.rgb, min(color.a, outline.other_color.a)) : outline.other_color;
+    vec4 target_mix = ((outline.flags >> 1) & 1) == 1 ? vec4(color.rgb, outline.other_color.a) : outline.other_color;
+    vec4 other_color = (outline.flags & 1) == 1 ? vec4(target_mix.rgb, min(color.a, target_mix.a)) : target_mix;
 
     return mix(color, other_color, outline.other_mix);
 }

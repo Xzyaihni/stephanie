@@ -567,7 +567,7 @@ fn flash_white_single(entities: &ClientEntities, entity: Entity)
 {
     if let Some(mut mix_color) = entities.mix_color_target(entity)
     {
-        *mix_color = Some(MixColor{color: [1.0; 4], amount: 0.8, keep_transparency: true});
+        *mix_color = Some(MixColor{color: [1.0; 4], amount: 0.8, ..Default::default()});
 
         entities.add_watcher(entity, Watcher{
             kind: WatcherType::Lifetime(HIGHLIGHT_DURATION.into()),

@@ -10,9 +10,12 @@ use std::{
 use parking_lot::Mutex;
 
 use crate::{
-    server::{DataInfos, ConnectionsHandler, game_server::{load_world_file, LoadWorldFileError}},
+    VERSION,
+    server::{DataInfos, ConnectionsHandler},
     common::{
         self,
+        world_path,
+        world_save_path,
         Loot,
         TileMap,
         WorldChunkSaver,
@@ -26,12 +29,13 @@ use crate::{
         FullEntityInfo,
         ConnectionId,
         ChunksContainer,
-        chunk_saver::with_temp_save,
+        chunk_saver::{with_temp_save, load_world_file},
         entity::ServerEntities,
         message::Message,
         world::{
             CLIENT_OVERMAP_SIZE,
             CLIENT_OVERMAP_SIZE_Z,
+            WorldSave,
             TilePos,
             Tile,
             Chunk,
@@ -161,7 +165,7 @@ impl World
     {
         let loot = Loot::new(data_infos.items_info.clone(), "items/loot.scm")?;
 
-        let world_path = Self::world_path_associated(&world_name);
+        let world_path = world_path(&world_name);
         let chunk_saver = ChunkSaver::new(world_path.join("chunks"), 100);
         let entities_saver = EntitiesSaver::new(world_path.join("entities"), 0);
 
@@ -176,26 +180,9 @@ impl World
         let overmaps = Rc::new(RefCell::new(HashMap::new()));
         let client_indexers = HashMap::new();
 
-        let time = match load_world_file(&Self::world_save_path_associated(&world_name))
-        {
-            Ok(x) => x.unwrap_or(0.0),
-            Err(err) =>
-            {
-                match err
-                {
-                    LoadWorldFileError::Io(err) =>
-                    {
-                        eprintln!("error trying to open world save file: {err}");
-                    },
-                    LoadWorldFileError::Load(err) =>
-                    {
-                        eprintln!("error trying to load world: {err}");
-                    }
-                }
+        let save = load_world_file::<WorldSave>("world".to_owned(), &world_save_path(&world_name)).unwrap_or_default();
 
-                0.0
-            }
-        };
+        let time = save.time;
 
         Ok(Self{
             message_handler,
@@ -323,7 +310,12 @@ impl World
             eprintln!("error trying to create world directory: {err}");
         }
 
-        if let Err(err) = with_temp_save(self.world_save_path(), self.time)
+        let save = WorldSave{
+            version: VERSION,
+            time: self.time
+        };
+
+        if let Err(err) = with_temp_save(self.world_save_path(), save)
         {
             eprintln!("error trying to save world info: {err}");
         }
@@ -518,22 +510,12 @@ impl World
     #[allow(dead_code)]
     fn world_path(&self) -> PathBuf
     {
-        Self::world_path_associated(&self.world_name)
-    }
-
-    fn world_path_associated(name: &str) -> PathBuf
-    {
-        PathBuf::from("worlds").join(name)
+        world_path(&self.world_name)
     }
 
     fn world_save_path(&self) -> PathBuf
     {
-        Self::world_save_path_associated(&self.world_name)
-    }
-
-    fn world_save_path_associated(name: &str) -> PathBuf
-    {
-        Self::world_path_associated(name).join("world.save")
+        world_save_path(&self.world_name)
     }
 
     pub fn sync_camera(

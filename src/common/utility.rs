@@ -912,7 +912,7 @@ fn direction_like_info(
                 object: Some(RenderObjectKind::Texture{
                     name: texture.into()
                 }.into()),
-                mix: Some(MixColor{color: [color[0], color[1], color[2], 1.0], amount: 1.0, keep_transparency: true}),
+                mix: Some(MixColor{color: [color[0], color[1], color[2], 1.0], amount: 1.0, ..Default::default()}),
                 above_world: true,
                 ..Default::default()
             }),

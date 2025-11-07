@@ -43,7 +43,6 @@ use crate::{
         PartCreator
     },
     common::{
-        sanitized_name,
         TileMap,
         TileMapWithTextures,
         DataInfos,
@@ -197,6 +196,8 @@ pub struct ProgramShaders
     pub clear_alpha: ShaderId,
     pub menu_background: ShaderId,
     pub ui: ShaderId,
+    pub ui_fill: ShaderId,
+    pub mouse: ShaderId,
     pub final_mix: ShaderId
 }
 
@@ -475,7 +476,7 @@ impl YanyaApp for App
                         let tilemap = self.tilemap.clone();
                         let data_infos = self.data_infos.clone();
 
-                        let world_name = sanitized_name(&client_info.name.text);
+                        let world_name = client_info.name.world_name();
 
                         self.server_handle = Some(thread::spawn(move ||
                         {
@@ -520,7 +521,7 @@ impl YanyaApp for App
 
                         let client_info = ClientInfo{
                             address: client_info.address.unwrap_or_else(|| format!("127.0.0.1:{port}")),
-                            name: client_info.name.text,
+                            name: client_info.name.display_name(),
                             host: client_info.host,
                             debug: client_info.debug,
                             controls: x.bindings()

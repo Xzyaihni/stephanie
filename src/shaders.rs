@@ -183,6 +183,24 @@ mod ui_fragment
     }
 }
 
+mod ui_fill_fragment
+{
+    vulkano_shaders::shader!
+    {
+        ty: "fragment",
+        path: "shaders/ui_fill.frag"
+    }
+}
+
+mod mouse_fragment
+{
+    vulkano_shaders::shader!
+    {
+        ty: "fragment",
+        path: "shaders/mouse.frag"
+    }
+}
+
 mod final_vertex
 {
     vulkano_shaders::shader!
@@ -212,7 +230,7 @@ mod menu_background_fragment
 
 
 pub const DARKEN: f32 = 0.97;
-pub const SHADOW_COLOR: Vector3<f32> = Vector3::new(0.07, 0.02, 0.1);
+pub const SHADOW_COLOR: Vector3<f32> = Vector3::new(0.0116, 0.0096, 0.0245);
 
 pub struct ShadersCreated
 {
@@ -482,6 +500,26 @@ pub fn create() -> ShadersCreated
         ..Default::default()
     });
 
+    let ui_fill_shader = shaders.push(Shader{
+        shader: ShadersGroup::new(
+            ui_vertex::load,
+            ui_fill_fragment::load
+        ),
+        per_vertex: Some(vec![Object::per_vertex()]),
+        subpass: 4,
+        ..Default::default()
+    });
+
+    let mouse_shader = shaders.push(Shader{
+        shader: ShadersGroup::new(
+            ui_vertex::load,
+            mouse_fragment::load
+        ),
+        per_vertex: Some(vec![Object::per_vertex()]),
+        subpass: 4,
+        ..Default::default()
+    });
+
     ShadersCreated{
         shaders,
         group: ProgramShaders{
@@ -499,6 +537,8 @@ pub fn create() -> ShadersCreated
             clear_alpha: clear_alpha_shader,
             menu_background: menu_background_shader,
             ui: ui_shader,
+            ui_fill: ui_fill_shader,
+            mouse: mouse_shader,
             final_mix: final_mix_shader
         }
     }

@@ -26,6 +26,7 @@ impl LazyMix
         MixColor{
             color,
             amount: current.amount.ease_out(self.target.amount, self.decay, dt),
+            only_alpha: current.only_alpha,
             keep_transparency: current.keep_transparency
         }
     }

@@ -3,7 +3,7 @@ use std::{
     borrow::Cow
 };
 
-use nalgebra::Vector2;
+use nalgebra::{vector, Vector2};
 
 use yanyaengine::TextureId;
 
@@ -629,8 +629,8 @@ impl Default for ScalingAnimation
         Self{
             start_scaling: Vector2::repeat(1.0),
             start_mode: Scaling::Instant,
-            close_scaling: Vector2::new(1.0, 0.0),
-            close_mode: Scaling::Instant
+            close_scaling: Vector2::new(1.0, 1.0),
+            close_mode: Scaling::Ignore
         }
     }
 }
@@ -751,8 +751,9 @@ impl Animation
     {
         Self{
             scaling: Some(ScalingAnimation{
-                start_scaling: Vector2::new(2.0, 0.1),
+                start_scaling: vector![2.0, 0.1],
                 start_mode: Scaling::EaseOut{decay: 20.0},
+                close_scaling: vector![1.0, 0.0],
                 close_mode: Scaling::EaseOut{decay: 30.0},
                 ..Default::default()
             }),
@@ -768,6 +769,7 @@ impl Animation
     {
         Self{
             scaling: Some(ScalingAnimation{
+                close_scaling: vector![1.0, 0.0],
                 close_mode: Scaling::EaseOut{decay: 40.0},
                 ..Default::default()
             }),
@@ -781,6 +783,7 @@ impl Animation
             scaling: Some(ScalingAnimation{
                 start_scaling: Vector2::new(1.0, 0.1),
                 start_mode: Scaling::EaseOut{decay: 20.0},
+                close_scaling: vector![1.0, 0.0],
                 close_mode: Scaling::Ignore,
                 ..Default::default()
             }),
@@ -796,9 +799,9 @@ impl Animation
     {
         Self{
             scaling: Some(ScalingAnimation{
-                start_scaling: Vector2::new(1.0, 0.01),
+                start_scaling: vector![1.0, 0.01],
                 start_mode: Scaling::EaseOut{decay: 30.0},
-                close_scaling: Vector2::new(1.0, 0.0),
+                close_scaling: vector![1.0, 0.0],
                 close_mode: Scaling::EaseOut{decay: 10.0}
             }),
             ..Default::default()
@@ -822,6 +825,7 @@ impl Animation
             scaling: Some(ScalingAnimation{
                 start_scaling: Vector2::new(1.0, 0.1),
                 start_mode: Scaling::EaseOut{decay: 30.0},
+                close_scaling: vector![1.0, 0.0],
                 close_mode: Scaling::Ignore,
                 ..Default::default()
             }),
@@ -837,19 +841,6 @@ impl Animation
 
         button
     }
-
-    pub fn typing_text() -> Self
-    {
-        Self{
-            scaling: Some(ScalingAnimation{
-                start_scaling: Vector2::new(1.0, 1.3),
-                start_mode: Scaling::EaseOut{decay: 10.0},
-                close_mode: Scaling::Ignore,
-                ..Default::default()
-            }),
-            ..Default::default()
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -857,6 +848,7 @@ pub struct UiElement<Id>
 {
     pub texture: UiTexture,
     pub mix: Option<MixColorLch>,
+    pub fill: Option<UiElementFill>,
     pub animation: Animation,
     pub inherit_animation: bool,
     pub position: UiPosition<Id>,
@@ -874,6 +866,7 @@ impl<Id> Default for UiElement<Id>
         Self{
             texture: UiTexture::None,
             mix: None,
+            fill: None,
             animation: Animation::default(),
             inherit_animation: true,
             position: UiPosition::default(),

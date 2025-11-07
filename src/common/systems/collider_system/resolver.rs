@@ -707,7 +707,7 @@ impl ContactResolver
                         name: "circle.png".into()
                     }.into()),
                     above_world: true,
-                    mix: Some(MixColor{color, amount: 1.0, keep_transparency: true}),
+                    mix: Some(MixColor{color, amount: 1.0, ..Default::default()}),
                     ..Default::default()
                 }),
                 ..Default::default()

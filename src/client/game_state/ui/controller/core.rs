@@ -1790,6 +1790,9 @@ impl<Id: Idable> Controller<Id>
         shared.tree.for_each(|_, id|
         {
             let element = shared.elements.get(id).unwrap();
+
+            if element.element.fill.is_some() { return; }
+
             let cached = &element.cached;
             if let Some(object) = cached.object.as_ref()
             {
@@ -1805,6 +1808,39 @@ impl<Id: Idable> Controller<Id>
                 if cached.scissor.is_some()
                 {
                     info.reset_scissor();
+                }
+            }
+        });
+    }
+
+    pub fn draw_fill(
+        &self,
+        info: &mut DrawInfo
+    )
+    {
+        let shared = self.shared.borrow();
+        shared.tree.for_each(|_, id|
+        {
+            let element = shared.elements.get(id).unwrap();
+
+            if let Some(fill) = element.element.fill
+            {
+                let cached = &element.cached;
+                if let Some(object) = cached.object.as_ref()
+                {
+                    if let Some(scissor) = cached.scissor
+                    {
+                        info.set_scissor(scissor);
+                    }
+
+                    info.push_constants(fill.into_info(cached.mix.map(|x| x.into())));
+
+                    object.draw(info);
+
+                    if cached.scissor.is_some()
+                    {
+                        info.reset_scissor();
+                    }
                 }
             }
         });

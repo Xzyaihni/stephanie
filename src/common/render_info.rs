@@ -59,7 +59,7 @@ pub struct OutlinedInfo
     other_mix: f32,
     animation: f32,
     outlined: f32,
-    keep_transparency: u32
+    flags: u32
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -67,14 +67,28 @@ pub struct MixColorGeneric<T>
 {
     pub color: T,
     pub amount: f32,
+    pub only_alpha: bool,
     pub keep_transparency: bool
+}
+
+impl<T: Default> Default for MixColorGeneric<T>
+{
+    fn default() -> Self
+    {
+        Self{
+            color: T::default(),
+            amount: 0.0,
+            only_alpha: false,
+            keep_transparency: true
+        }
+    }
 }
 
 impl<T> MixColorGeneric<T>
 {
     pub fn color(color: T) -> Self
     {
-        Self{color, amount: 1.0, keep_transparency: true}
+        Self{color, amount: 1.0, only_alpha: false, keep_transparency: true}
     }
 }
 
@@ -88,6 +102,7 @@ impl From<MixColorLch> for MixColor
         Self{
             color: color.color.into(),
             amount: color.amount,
+            only_alpha: color.only_alpha,
             keep_transparency: color.keep_transparency
         }
     }
@@ -97,13 +112,18 @@ struct RawMixColor
 {
     other_color: [f32; 4],
     other_mix: f32,
-    keep_transparency: u32
+    flags: u32
 }
 
 impl From<Option<MixColor>> for RawMixColor
 {
     fn from(color: Option<MixColor>) -> Self
     {
+        fn flags(only_alpha: bool, keep_transparency: bool) -> u32
+        {
+            ((only_alpha as u32) << 1) | keep_transparency as u32
+        }
+
         if let Some(color) = color
         {
             let [r, g, b, a] = color.color;
@@ -112,14 +132,14 @@ impl From<Option<MixColor>> for RawMixColor
             Self{
                 other_color: [new_r, new_g, new_b, a],
                 other_mix: color.amount,
-                keep_transparency: color.keep_transparency as u32
+                flags: flags(color.only_alpha, color.keep_transparency)
             }
         } else
         {
             Self{
                 other_color: [0.0; 4],
                 other_mix: 0.0,
-                keep_transparency: 1
+                flags: flags(false, true)
             }
         }
     }
@@ -140,7 +160,7 @@ impl OutlinedInfo
             other_mix: other_color.other_mix,
             animation,
             outlined: if outlined { 1.0 } else { 0.0 },
-            keep_transparency: other_color.keep_transparency
+            flags: other_color.flags
         }
     }
 }
@@ -151,7 +171,7 @@ pub struct UiOutlinedInfo
 {
     other_color: [f32; 4],
     other_mix: f32,
-    keep_transparency: u32
+    flags: u32
 }
 
 impl UiOutlinedInfo
@@ -165,7 +185,51 @@ impl UiOutlinedInfo
         Self{
             other_color: other_color.other_color,
             other_mix: other_color.other_mix,
-            keep_transparency: other_color.keep_transparency
+            flags: other_color.flags
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct UiElementFill
+{
+    pub full: Lcha,
+    pub empty: Lcha,
+    pub amount: f32
+}
+
+#[derive(Debug, BufferContents)]
+#[repr(C)]
+pub struct FillInfo
+{
+    other_color: [f32; 4],
+    full_color: [f32; 4],
+    empty_color: [f32; 4],
+    other_mix: f32,
+    flags: u32,
+    amount: f32
+}
+
+impl UiElementFill
+{
+    pub fn into_info(&self, color: Option<MixColor>) -> FillInfo
+    {
+        fn color_convert([r, g, b, a]: [f32; 4]) -> [f32; 4]
+        {
+            let [r, g, b] = srgb_to_linear([r, g, b]);
+
+            [r, g, b, a]
+        }
+
+        let color = RawMixColor::from(color);
+
+        FillInfo{
+            other_color: color.other_color,
+            full_color: color_convert(self.full.into()),
+            empty_color: color_convert(self.empty.into()),
+            other_mix: color.other_mix,
+            flags: color.flags,
+            amount: self.amount
         }
     }
 }

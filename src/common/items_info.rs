@@ -189,7 +189,7 @@ impl ItemInfo
         }
     }
 
-    pub fn stamina_cost(&self, strength: f32) -> f32
+    pub fn oxygen_cost(&self, strength: f32) -> f32
     {
         let raw_use = self.mass / strength * 4.0;
 
