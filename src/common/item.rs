@@ -18,6 +18,7 @@ use crate::{
         lazy_transform::*,
         physics::*,
         particle_creator::*,
+        SimpleF32,
         Transform,
         ItemInfo,
         ItemsInfo
@@ -84,7 +85,7 @@ pub fn item_lazy_transform(
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, EnumIter, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, EnumIter, Serialize, Deserialize)]
 pub enum ItemRarity
 {
     Normal,
@@ -116,7 +117,7 @@ impl ItemRarity
             Self::Uncommon => 0.05..=0.1,
             Self::Rare => 0.1..=0.2,
             Self::Mythical => 0.2..=0.4
-        }));
+        }).into());
 
         let crit_boost = ItemBuff::Crit(random_f32(match self
         {
@@ -124,7 +125,7 @@ impl ItemRarity
             Self::Uncommon => 0.005..=0.01,
             Self::Rare => 0.01..=0.02,
             Self::Mythical => 0.02..=0.05
-        }));
+        }).into());
 
         if let Self::Uncommon = self
         {
@@ -157,11 +158,11 @@ impl ItemRarity
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum ItemBuff
 {
-    Damage(f32),
-    Crit(f32)
+    Damage(SimpleF32),
+    Crit(SimpleF32)
 }
 
 impl Display for ItemBuff
@@ -170,8 +171,8 @@ impl Display for ItemBuff
     {
         match self
         {
-            Self::Damage(x) => write!(f, "{:+}% damage", (x * 100.0).round() as u32),
-            Self::Crit(x) => write!(f, "{:+.1}% crit chance", x * 100.0)
+            Self::Damage(x) => write!(f, "{:+}% damage", (**x * 100.0).round() as u32),
+            Self::Crit(x) => write!(f, "{:+.1}% crit chance", **x * 100.0)
         }
     }
 }
@@ -182,13 +183,13 @@ impl ItemBuff
     {
         match self
         {
-            Self::Damage(x) => *x > 0.0,
-            Self::Crit(x) => *x > 0.0
+            Self::Damage(x) => **x > 0.0,
+            Self::Crit(x) => **x > 0.0
         }
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Item
 {
     pub rarity: ItemRarity,
@@ -218,11 +219,11 @@ impl Item
 
     pub fn damage_scale(&self) -> Option<f32>
     {
-        self.buffs.iter().find_map(|x| if let ItemBuff::Damage(x) = x { Some(x + 1.0) } else { None })
+        self.buffs.iter().find_map(|x| if let ItemBuff::Damage(x) = x { Some(**x + 1.0) } else { None })
     }
 
     pub fn crit_chance(&self) -> Option<f32>
     {
-        self.buffs.iter().find_map(|x| if let ItemBuff::Crit(x) = x { Some(*x) } else { None })
+        self.buffs.iter().find_map(|x| if let ItemBuff::Crit(x) = x { Some(**x) } else { None })
     }
 }

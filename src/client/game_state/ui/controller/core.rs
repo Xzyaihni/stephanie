@@ -1022,6 +1022,7 @@ impl<Id: Idable> TreeElement<Id>
 
     pub fn resolve_backward(
         trees: &mut Vec<TreeElement<Id>>,
+        resolved: &mut HashMap<Id, UiDeferredInfo<Id>>,
         index: usize,
         sizer: &TextureSizer
     ) -> ResolvedBackward
@@ -1035,7 +1036,7 @@ impl<Id: Idable> TreeElement<Id>
             {
                 let x = trees[index].children[i];
 
-                infos.push(Self::resolve_backward(trees, x, sizer));
+                infos.push(Self::resolve_backward(trees, resolved, x, sizer));
             }
 
             infos
@@ -1044,13 +1045,22 @@ impl<Id: Idable> TreeElement<Id>
         let resolved = {
             let this = &mut trees[index];
 
+            let previously_resolved = this.deferred.resolved();
+
             let ignored_total = !this.is_first_child.unwrap() && this.element.position.is_inherit();
-            this.deferred.resolve_backward(
+            let resolved_info = this.deferred.resolve_backward(
                 sizer,
                 &this.element,
                 !ignored_total,
                 infos
-            )
+            );
+
+            if !previously_resolved && this.deferred.resolved()
+            {
+                resolved.insert(this.id.clone(), this.deferred.clone());
+            }
+
+            resolved_info
         };
 
         macro_rules! for_children
@@ -1487,7 +1497,7 @@ impl<Id: Idable> Controller<Id>
         for i in 0..LIMIT
         {
             TreeElement::resolve_forward(&mut created_trees, 0, None, &mut resolved, None);
-            TreeElement::resolve_backward(&mut created_trees, 0, &self.sizer);
+            TreeElement::resolve_backward(&mut created_trees, &mut resolved, 0, &self.sizer);
 
             if created_trees[0].resolved(&created_trees)
             {

@@ -344,7 +344,7 @@ impl Client
 
     fn check_timings(&self)
     {
-        #[cfg(debug_assertions)]
+        #[cfg(any(debug_assertions, stimings))]
         {
             use crate::common::TimingsTrait;
 
@@ -367,7 +367,7 @@ impl Client
     {
         some_or_return!(self.game_state.as_ref()).borrow_mut().render_pass_ended();
 
-        if DebugConfig::is_enabled(DebugTool::FrameTimings)
+        if DebugConfig::is_enabled(DebugTool::FrameTimings) || cfg!(stimings)
         {
             self.check_timings()
         }

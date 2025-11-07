@@ -89,8 +89,6 @@ pub const DAY_LENGTH: f64 = 60.0 * 6.0;
 pub const BETWEEN_LENGTH: f64 = 60.0 * 2.0;
 pub const NIGHT_LENGTH: f64 = 60.0 * 5.0;
 
-const ENTITY_SETS_MAX: usize = 25;
-
 #[derive(BufferContents, Vertex, Debug, Clone, Copy)]
 #[repr(C)]
 pub struct SkyOccludingVertex
@@ -453,27 +451,29 @@ impl World
 
     fn chunked_entities<T>(
         delayed_messages: &mut VecDeque<Message>,
+        entity_sets_max: usize,
         entities: Vec<T>,
         f: impl Fn(Vec<T>) -> Message
     )
     {
-        if entities.len() <= ENTITY_SETS_MAX
+        if entities.len() <= entity_sets_max
         {
             delayed_messages.push_back(f(entities));
         } else
         {
             let mut head = entities;
-            let tail = head.split_off(ENTITY_SETS_MAX);
+            let tail = head.split_off(entity_sets_max);
 
             delayed_messages.push_back(f(head));
 
-            Self::chunked_entities(delayed_messages, tail, f)
+            Self::chunked_entities(delayed_messages, entity_sets_max, tail, f)
         }
     }
 
     pub fn handle_message(
         &mut self,
         delayed_messages: &mut VecDeque<Message>,
+        entity_sets_max: usize,
         is_trusted: bool,
         message: Message
     ) -> Option<Message>
@@ -491,7 +491,7 @@ impl World
 
                 if !entities.is_empty()
                 {
-                    Self::chunked_entities(delayed_messages, entities, |entities| Message::EntitySetMany{entities});
+                    Self::chunked_entities(delayed_messages, entity_sets_max, entities, |entities| Message::EntitySetMany{entities});
                 }
 
                 None
@@ -501,7 +501,7 @@ impl World
                 let entities = entities.into_inner();
                 if !entities.is_empty()
                 {
-                    Self::chunked_entities(delayed_messages, entities.clone(), Message::EntityRemoveManyRaw);
+                    Self::chunked_entities(delayed_messages, entity_sets_max, entities.clone(), Message::EntityRemoveManyRaw);
                 }
 
                 if is_trusted

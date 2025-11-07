@@ -51,7 +51,6 @@ use crate::{
         Sprite,
         Item,
         ItemRarity,
-        ItemId,
         InventoryItem,
         InventorySorter,
         Entity,
@@ -187,6 +186,7 @@ pub enum PopupButtonPart
 pub enum WindowPart
 {
     Panel,
+    Shadow,
     Body,
     Separator(SeparatorPart),
     Title(TitlePart),
@@ -289,11 +289,11 @@ pub enum TitlePart
     Button(UiIdTitleButton)
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum UiIdWindow
 {
     Inventory(Entity),
-    ItemInfo(ItemId),
+    ItemInfo(Item),
     Stats(Entity),
     Anatomy(Entity)
 }
@@ -543,7 +543,7 @@ impl WindowKind
     fn update(&mut self, parent: UiParentElement, info: &mut UpdateInfo)
     {
         let this_window_id = self.as_id();
-        let window_id = this_window_id;
+        let window_id = this_window_id.clone();
 
         fn with_titlebar<'a, 'b>(
             window_id: UiIdWindow,
@@ -554,9 +554,12 @@ impl WindowKind
             buttons: &[UiTitleButton]
         ) -> UiParentElement<'a>
         {
-            let id = move |part|
-            {
-                UiId::Window(window_id, part)
+            let id = {
+                let window_id = window_id.clone();
+                move |part|
+                {
+                    UiId::Window(window_id.clone(), part)
+                }
             };
 
             let titlebar_id = id(WindowPart::Title(TitlePart::Body));
@@ -653,10 +656,13 @@ impl WindowKind
                 UiIdTitleButton::Close,
                 UiTexture::Sliced(top_right_rounded),
                 "ui/close_button.png".to_owned(),
-                Rc::new(move |game_state|
                 {
-                    game_state.ui.borrow_mut().remove_window(&window_id);
-                })
+                    let window_id = window_id.clone();
+                    Rc::new(move |game_state|
+                    {
+                        game_state.ui.borrow_mut().remove_window(&window_id);
+                    })
+                }
             );
 
             add_padding_vertical(parent, UiSize::Pixels(TINY_PADDING).into());
@@ -693,9 +699,12 @@ impl WindowKind
             body
         }
 
-        let with_titlebar = move |parent, info, title, prepad, buttons|
-        {
-            with_titlebar(window_id, parent, info, title, prepad, buttons)
+        let with_titlebar = {
+            let window_id = window_id.clone();
+            move |parent, info, title, prepad, buttons|
+            {
+                with_titlebar(window_id.clone(), parent, info, title, prepad, buttons)
+            }
         };
 
         let name_of = |entity|
@@ -704,21 +713,27 @@ impl WindowKind
                 .unwrap_or_else(|| "unnamed".to_owned())
         };
 
-        let close_this = move |info: &mut UpdateInfo|
-        {
-            info.user_receiver.push(UiEvent::Action(Rc::new(move |game_state|
+        let close_this = {
+            let window_id = window_id.clone();
+            move |info: &mut UpdateInfo|
             {
-                game_state.ui.borrow_mut().remove_window(&window_id);
-            })));
+                info.user_receiver.push(UiEvent::Action(Rc::new(move |game_state|
+                {
+                    game_state.ui.borrow_mut().remove_window(&window_id);
+                })));
+            }
         };
 
         match self
         {
             Self::Inventory(inventory) =>
             {
-                let id = move |part|
-                {
-                    UiId::Window(window_id, WindowPart::Inventory(part))
+                let id = {
+                    let window_id = window_id.clone();
+                    move |part|
+                    {
+                        UiId::Window(window_id.clone(), WindowPart::Inventory(part))
+                    }
                 };
 
                 let name = name_of(inventory.entity);
@@ -869,9 +884,12 @@ impl WindowKind
 
                 let body = with_titlebar(parent, info, item_info.name.to_string(), true, &[]);
 
-                let id = move |part|
-                {
-                    UiId::Window(window_id, WindowPart::ItemInfo(part))
+                let id = {
+                    let window_id = window_id.clone();
+                    move |part|
+                    {
+                        UiId::Window(window_id.clone(), WindowPart::ItemInfo(part))
+                    }
                 };
 
                 let mut blocks = Vec::new();
@@ -882,11 +900,11 @@ impl WindowKind
                 }
 
                 blocks.push(TextInfoBlock{color: ACCENT_COLOR.into(), text: "weight: ".into()});
-                blocks.push(TextInfoBlock{color: YELLOW_COLOR.into(), text: item_info.mass.to_string().into()});
+                blocks.push(TextInfoBlock{color: YELLOW_COLOR.into(), text: format!("{:.2}", item_info.mass).into()});
                 blocks.push(TextInfoBlock{color: ACCENT_COLOR.into(), text: " kg\n".into()});
 
                 blocks.push(TextInfoBlock{color: ACCENT_COLOR.into(), text: "size: ".into()});
-                blocks.push(TextInfoBlock{color: YELLOW_COLOR.into(), text: (item_info.scale_scalar() * 100.0).to_string().into()});
+                blocks.push(TextInfoBlock{color: YELLOW_COLOR.into(), text: format!("{:.2}", (item_info.scale_scalar() * 100.0)).into()});
                 blocks.push(TextInfoBlock{color: ACCENT_COLOR.into(), text: " cm\n".into()});
 
                 if !item.buffs.is_empty()
@@ -939,7 +957,7 @@ impl WindowKind
 
                 add_padding_horizontal(body, UiSize::Pixels(BODY_PADDING).into());
 
-                body.update(UiId::Window(window_id, WindowPart::Stats), UiElement{
+                body.update(UiId::Window(window_id.clone(), WindowPart::Stats), UiElement{
                     texture: UiTexture::Text(TextInfo{
                         font_size: SMALL_TEXT_SIZE,
                         text: TextBlocks(vec![
@@ -959,9 +977,12 @@ impl WindowKind
                 let body = with_titlebar(parent, info, title, true, &[]);
                 body.element().children_layout = UiLayout::Vertical;
 
-                let id = move |part|
-                {
-                    UiId::Window(window_id, WindowPart::Anatomy(part))
+                let id = {
+                    let window_id = window_id.clone();
+                    move |part|
+                    {
+                        UiId::Window(window_id.clone(), WindowPart::Anatomy(part))
+                    }
                 };
 
                 let anatomy = if let Some(x) = info.entities.anatomy(*owner)
@@ -1148,7 +1169,7 @@ impl WindowKind
             }
         }
 
-        let titlebar_id = UiId::Window(this_window_id, WindowPart::Title(TitlePart::Body));
+        let titlebar_id = UiId::Window(this_window_id.clone(), WindowPart::Title(TitlePart::Body));
         if !info.mouse_taken
             && parent.input_of(&titlebar_id).is_mouse_inside()
             && info.controls.poll_action_held(&titlebar_id)
@@ -1165,7 +1186,7 @@ impl WindowKind
         match self
         {
             Self::Inventory(inventory) => UiIdWindow::Inventory(inventory.entity),
-            Self::ItemInfo(item) => UiIdWindow::ItemInfo(item.id),
+            Self::ItemInfo(item) => UiIdWindow::ItemInfo(item.clone()),
             Self::Stats(owner) => UiIdWindow::Stats(*owner),
             Self::Anatomy(owner) => UiIdWindow::Anatomy(*owner)
         }
@@ -1197,10 +1218,48 @@ impl Window
             info.mouse_position - start
         }).unwrap_or_default();
 
+        {
+            let body = ui.input_of(&id);
+            if let (Some(width), Some(height)) = (body.try_width(), body.try_height())
+            {
+                let body_size = vector![width, height];
+                let screen_size = ui.screen_size().max();
+
+                let shadow_size = 10.0;
+                let scale = (((body_size * screen_size) + Vector2::repeat(shadow_size)) / screen_size).component_div(&body_size);
+
+                ui.update(UiId::Window(self.kind.as_id(), WindowPart::Shadow), UiElement{
+                    texture: UiTexture::Sliced(info.sliced_textures["shadow"]),
+                    mix: Some(MixColorLch::color(Lcha{a: 0.1, ..BLACK_COLOR})),
+                    width: UiSize::CopyElement(UiDirection::Horizontal, scale.x, id.clone()).into(),
+                    height: UiSize::CopyElement(UiDirection::Vertical, scale.y, id.clone()).into(),
+                    position: UiPosition::Offset(id.clone(), Vector2::zeros()),
+                    animation: Animation{
+                        mix: Some(MixAnimation{
+                            decay: MixDecay::all(30.0),
+                            start_mix: Some(Lcha{a: 0.0, ..BACKGROUND_COLOR}),
+                            close_mix: Some(Lcha{a: 0.0, ..BACKGROUND_COLOR}),
+                            ..Default::default()
+                        }),
+                        ..Animation::normal()
+                    },
+                    ..Default::default()
+                });
+            }
+        }
+
         let body = ui.update(id, UiElement{
             texture: UiTexture::Sliced(info.sliced_textures["rounded"]),
             mix: Some(MixColorLch::color(BACKGROUND_COLOR)),
-            animation: Animation::normal(),
+            animation: Animation{
+                mix: Some(MixAnimation{
+                    decay: MixDecay::all(30.0),
+                    start_mix: Some(Lcha{a: 0.0, ..BACKGROUND_COLOR}),
+                    close_mix: Some(Lcha{a: 0.0, ..BACKGROUND_COLOR}),
+                    ..Default::default()
+                }),
+                ..Animation::normal()
+            },
             position: UiPosition::Absolute{position, align: Default::default()},
             children_layout: UiLayout::Vertical,
             ..Default::default()
@@ -1908,6 +1967,15 @@ impl Ui
 
         if let Some(anatomy) = entities.anatomy(self.ui_entities.player)
         {
+            let animation = Animation{
+                mix: Some(MixAnimation{
+                    decay: MixDecay::all(10.0),
+                    start_mix: Some(Lcha{a: 0.0, ..BACKGROUND_COLOR}),
+                    ..Default::default()
+                }),
+                ..Animation::normal()
+            };
+
             let vertical_panel_id = UiId::Health(HealthPart::PanelVertical);
 
             if let Some(position) = self.controller.input_of(&vertical_panel_id).try_position()
@@ -1916,6 +1984,7 @@ impl Ui
                     texture: UiTexture::CustomId(self.health_panel.outline),
                     mix: Some(MixColorLch::color(WHITE_COLOR)),
                     position: UiPosition::Absolute{position, align: UiPositionAlign::default()},
+                    animation: animation.clone(),
                     ..UiElement::fit_content()
                 });
             }
@@ -1925,6 +1994,7 @@ impl Ui
                 height: UiSize::Rest(1.0).into(),
                 position: UiPosition::Inherit,
                 children_layout: UiLayout::Vertical,
+                animation,
                 ..Default::default()
             });
 

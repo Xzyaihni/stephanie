@@ -4,13 +4,13 @@ use std::{
     iter,
     borrow::{Cow, Borrow},
     cmp::Ordering,
-    hash::Hash,
+    hash::{Hash, Hasher},
     io::Write,
     fmt::{Display, Debug},
     fs::File,
     collections::HashMap,
     path::{Path, Component},
-    ops::{Index, Range, RangeInclusive}
+    ops::{Deref, DerefMut, Index, Range, RangeInclusive}
 };
 
 use serde::{Deserialize, Serialize};
@@ -129,10 +129,10 @@ macro_rules! some_or_unexpected_return
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
-pub struct SortableF32(f32);
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Serialize, Deserialize)]
+pub struct SimpleF32(f32);
 
-impl From<f32> for SortableF32
+impl From<f32> for SimpleF32
 {
     fn from(value: f32) -> Self
     {
@@ -141,16 +141,42 @@ impl From<f32> for SortableF32
             panic!("cant sort nans");
         }
 
-        Self(value)
+        Self(if value == -0.0 { 0.0 } else { value })
     }
 }
 
-impl Eq for SortableF32 {}
+impl Deref for SimpleF32
+{
+    type Target = f32;
+
+    fn deref(&self) -> &Self::Target
+    {
+        &self.0
+    }
+}
+
+impl DerefMut for SimpleF32
+{
+    fn deref_mut(&mut self) -> &mut Self::Target
+    {
+        &mut self.0
+    }
+}
+
+impl Hash for SimpleF32
+{
+    fn hash<H: Hasher>(&self, state: &mut H)
+    {
+        self.0.to_le_bytes().hash(state);
+    }
+}
+
+impl Eq for SimpleF32 {}
 
 // this is okay because in the constructor im making sure it cant be a nan
 // and afaik nans are the only reason floats dont have full ord
 #[allow(clippy::derive_ord_xor_partial_ord)]
-impl Ord for SortableF32
+impl Ord for SimpleF32
 {
     fn cmp(&self, other: &Self) -> Ordering
     {

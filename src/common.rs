@@ -245,7 +245,7 @@ macro_rules! time_this_additive
         {
             use $crate::debug_config::*;
 
-            if DebugConfig::is_enabled(DebugTool::FrameTimings)
+            if DebugConfig::is_enabled(DebugTool::FrameTimings) || cfg!(stimings)
             {
                 let start_time = std::time::Instant::now();
 
@@ -457,7 +457,7 @@ define_timings!
     }
 }
 
-#[cfg(debug_assertions)]
+#[cfg(any(debug_assertions, stimings))]
 pub static THIS_FRAME_TIMINGS: LazyLock<Mutex<Timings>> = LazyLock::new(|| Mutex::new(Timings::default()));
 
 pub const TARGET_FPS: u32 = 60;
@@ -467,7 +467,7 @@ macro_rules! frame_timed
 {
     ([$($parent:ident),* $(,)?] -> $name:ident, $time_ms:expr) =>
     {
-        #[cfg(debug_assertions)]
+        #[cfg(any(debug_assertions, stimings))]
         {
             let time = $time_ms;
             let mut timings = $crate::common::THIS_FRAME_TIMINGS.lock();
@@ -502,7 +502,7 @@ macro_rules! frame_time_this
                 eprintln!("currently in {}", stringify!($name));
             }
 
-            if DebugConfig::is_enabled(DebugTool::FrameTimings)
+            if DebugConfig::is_enabled(DebugTool::FrameTimings) || cfg!(stimings)
             {
                 let (_time, value) = $crate::get_time_this!($($tt)*);
 

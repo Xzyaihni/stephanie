@@ -23,7 +23,7 @@ use crate::{
         with_z,
         line_info,
         aabb_points,
-        SortableF32,
+        SimpleF32,
         render_info::*,
         TileMap,
         OccludingCaster,
@@ -1304,7 +1304,7 @@ impl VisualOvermap
         visible_occluders.sort_unstable_by_key(|(occluder, _, _, _)|
         {
             let distance = occluder.front_position().metric_distance(&Vector3::from(*player_position).xy());
-            SortableF32::from(distance)
+            SimpleF32::from(distance)
         });
 
         visible_occluders.into_iter().for_each(|(occluder, indices, occluder_index, pos)|

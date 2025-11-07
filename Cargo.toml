@@ -21,6 +21,9 @@ bincode = { version = "2.0", features = ["serde"] }
 arboard = "3.6"
 serde_with = "3.12.0"
 
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(stimings)'] }
+
 [profile.dev]
 opt-level = 1
 

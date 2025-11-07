@@ -1181,12 +1181,14 @@ impl GameState
 
             let (exists, missing) = self.world.exists_missing();
 
+            let has_messages = !self.delayed_messages.is_empty();
+
             let is_loading = if DebugConfig::is_enabled(DebugTool::SkipLoading)
             {
                 false
             } else
             {
-                missing != 0 || !self.connected_and_ready
+                missing != 0 || !self.connected_and_ready || has_messages
             };
 
             let loading = is_loading.then(||
@@ -1197,7 +1199,16 @@ impl GameState
 
                 if self.connected_and_ready
                 {
-                    f + world_progress * (1.0 - f)
+                    let messages_f = 0.05;
+                    let messages_progress = if missing == 0
+                    {
+                        if has_messages { 0.0 } else { messages_f }
+                    } else
+                    {
+                        0.0
+                    };
+
+                    f + world_progress * (1.0 - f - messages_f) + messages_progress
                 } else
                 {
                     world_progress * f
@@ -1223,9 +1234,10 @@ impl GameState
             }
         }
 
+        let entity_sets_max = if self.is_loading { usize::MAX } else { 25 };
         let message = crate::frame_time_this!{
             [update, game_state_update, process_messages] -> world_handle_message,
-            some_or_value!{self.world.handle_message(&mut self.delayed_messages, self.is_trusted, message), true}
+            some_or_value!{self.world.handle_message(&mut self.delayed_messages, entity_sets_max, self.is_trusted, message), true}
         };
 
         let message = some_or_value!{
@@ -1530,12 +1542,12 @@ impl GameState
             self.world.update(&mut self.connections_handler)
         };
 
-        if !self.is_paused
+        if !self.is_loading && !self.is_paused
         {
             self.world.update_time(dt);
         }
 
-        if self.connected_and_ready && !self.is_paused
+        if self.connected_and_ready && !self.is_loading && !self.is_paused
         {
             self.entities.update(
                 &mut self.world,

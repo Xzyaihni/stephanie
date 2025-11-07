@@ -1340,6 +1340,7 @@ macro_rules! define_entities_both
 
         impl<$($component_type: Debug,)+> Entities<$($component_type,)+>
         {
+            #[allow(unused_mut)]
             pub fn with_seed(&self, mut entity: Entity) -> Entity
             {
                 #[cfg(debug_assertions)]
