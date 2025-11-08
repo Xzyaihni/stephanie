@@ -195,7 +195,8 @@ pub struct UiElementFill
 {
     pub full: Lcha,
     pub empty: Lcha,
-    pub amount: f32
+    pub amount: f32,
+    pub horizontal: bool
 }
 
 #[derive(Debug, BufferContents)]
@@ -223,12 +224,14 @@ impl UiElementFill
 
         let color = RawMixColor::from(color);
 
+        debug_assert!(color.flags & ((1 << 2) - 1) == color.flags, "uh oh colors shouldnt have more than 2 flags");
+
         FillInfo{
             other_color: color.other_color,
             full_color: color_convert(self.full.into()),
             empty_color: color_convert(self.empty.into()),
             other_mix: color.other_mix,
-            flags: color.flags,
+            flags: color.flags | ((self.horizontal as u32) << 2),
             amount: self.amount
         }
     }

@@ -22,6 +22,7 @@ use crate::{
     },
     common::{
         with_z,
+        some_or_unexpected_return,
         some_or_return,
         some_or_value,
         some_or_false,
@@ -500,6 +501,22 @@ impl Character
     pub fn push_action(&mut self, action: CharacterAction)
     {
         self.actions.push(action);
+    }
+
+    pub fn damage_held_durability(&mut self, entities: &ClientEntities)
+    {
+        let info = some_or_return!(self.info.as_ref());
+        let held = some_or_return!(self.holding);
+
+        let mut inventory = some_or_return!(entities.inventory_mut(info.this));
+
+        let item = some_or_unexpected_return!(inventory.get_mut(held));
+
+        if item.damage_durability()
+        {
+            inventory.remove(held);
+            self.set_holding(None);
+        }
     }
 
     pub fn set_holding(&mut self, holding: Option<InventoryItem>)
@@ -1290,6 +1307,7 @@ impl Character
                 damage: DamagingType::Raycast{info, damage, start, target, scale_pierce: Some(ENTITY_SCALE.recip())},
                 faction: Some(self.faction),
                 source,
+                ranged: true,
                 ..Default::default()
             }.into()),
             ..Default::default()
@@ -1412,6 +1430,7 @@ impl Character
                     predicate: DamagingPredicate::ParentAngleLess{angle: f32::consts::PI, minimum_distance},
                     knockback: 1.0,
                     faction: Some(self.faction),
+                    source: Some(info.this),
                     ..Default::default()
                 }.into()),
                 ..Default::default()

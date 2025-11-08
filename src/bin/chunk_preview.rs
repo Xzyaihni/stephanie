@@ -96,6 +96,15 @@ mod ui_fragment
     }
 }
 
+mod ui_fill_fragment
+{
+    vulkano_shaders::shader!
+    {
+        ty: "fragment",
+        path: "shaders/ui_fill.frag"
+    }
+}
+
 mod textured_fragment
 {
     vulkano_shaders::shader!
@@ -557,7 +566,8 @@ impl ChunkPreviewer
 struct DrawShaders
 {
     normal: ShaderId,
-    ui: ShaderId
+    ui: ShaderId,
+    ui_fill: ShaderId
 }
 
 impl YanyaApp for ChunkPreviewer
@@ -1106,7 +1116,7 @@ impl YanyaApp for ChunkPreviewer
 
         info.bind_pipeline(self.shaders.ui);
 
-        self.controller.draw(&mut info);
+        self.controller.draw(&mut info, &UiShaders{ui: self.shaders.ui, ui_fill: self.shaders.ui_fill});
     }
 
     fn resize(&mut self, aspect: f32)
@@ -1150,11 +1160,26 @@ fn main()
         ..Default::default()
     });
 
+    let ui_fill = shaders.push(Shader{
+        shader: ShadersGroup::new(
+            ui_vertex::load,
+            ui_fill_fragment::load
+        ),
+        depth: Some(DepthState{
+            write_enable: true,
+            compare_op: CompareOp::Always
+        }),
+        per_vertex: Some(vec![Object::per_vertex()]),
+        subpass: 0,
+        cull: CullMode::None,
+        ..Default::default()
+    });
+
     App::<ChunkPreviewer>::new()
         .with_title("chunk preview")
         .with_textures_path("textures")
         .with_shaders(shaders)
-        .with_app_init(Some(DrawShaders{normal, ui}))
+        .with_app_init(Some(DrawShaders{normal, ui, ui_fill}))
         .with_clear_color([0.4, 0.4, 0.45])
         .run();
 }

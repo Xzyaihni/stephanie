@@ -53,6 +53,11 @@ impl Inventory
         self.items.get(id.0)
     }
 
+    pub fn get_mut(&mut self, id: InventoryItem) -> Option<&mut Item>
+    {
+        self.items.get_mut(id.0)
+    }
+
     pub fn remove(&mut self, id: InventoryItem) -> Option<Item>
     {
         self.items.remove(id.0)

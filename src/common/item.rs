@@ -9,7 +9,7 @@ use strum::{IntoEnumIterator, EnumIter};
 use crate::{
     client::{
         CommonTextures,
-        ui_common::{GREEN_COLOR, BLUE_COLOR, ACCENT_COLOR}
+        ui_common::{RED_COLOR, GREEN_COLOR, BLUE_COLOR, ACCENT_COLOR}
     },
     common::{
         random_f32,
@@ -22,7 +22,9 @@ use crate::{
         SimpleF32,
         Transform,
         ItemInfo,
-        ItemsInfo
+        ItemsInfo,
+        items_info::DEFAULT_ITEM_DURABILITY,
+        colors::Lcha
     }
 };
 
@@ -82,7 +84,7 @@ pub fn item_lazy_transform(
             scale: info.scale3(),
             ..Default::default()
         },
-        connection: Connection::Constant{speed: TILE_SIZE * 0.5},
+        connection: Connection::Constant{speed: TILE_SIZE * 0.3},
         scaling: Scaling::EaseOut{decay: 10.0},
         ..Default::default()
     }
@@ -91,6 +93,7 @@ pub fn item_lazy_transform(
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, EnumIter, Serialize, Deserialize)]
 pub enum ItemRarity
 {
+    Broken,
     Normal,
     Uncommon,
     Rare,
@@ -101,47 +104,73 @@ impl ItemRarity
 {
     pub fn random() -> Self
     {
-        Self::iter().find(|_|
+        Self::iter().skip(1).find(|_|
         {
             fastrand::u32(0..5) != 0
         }).unwrap_or(Self::Mythical)
     }
 
-    pub fn random_buffs(&self) -> Vec<ItemBuff>
-    {
-        if let Self::Normal = self
+        pub fn random_buffs(&self) -> Vec<ItemBuff>
         {
-            return Vec::new();
+            if let Self::Normal = self
+            {
+                return Vec::new();
+            }
+
+            let durability_boost = ItemBuff::Durability((-random_f32(match self
+            {
+                Self::Broken => -0.3..=-0.1,
+                Self::Normal => unreachable!(),
+                Self::Uncommon => 0.1..=0.2,
+                Self::Rare => 0.2..=0.3,
+                Self::Mythical => 0.3..=0.5,
+            })).into());
+
+            let damage_boost = ItemBuff::Damage(random_f32(match self
+            {
+                Self::Broken => -0.1..=-0.05,
+                Self::Normal => unreachable!(),
+                Self::Uncommon => 0.05..=0.1,
+                Self::Rare => 0.1..=0.2,
+                Self::Mythical => 0.2..=0.4
+            }).into());
+
+            let crit_boost = ItemBuff::Crit(random_f32(match self
+            {
+                Self::Broken => -0.01..=-0.005,
+                Self::Normal => unreachable!(),
+                Self::Uncommon => 0.005..=0.01,
+                Self::Rare => 0.01..=0.02,
+                Self::Mythical => 0.02..=0.05
+            }).into());
+
+            let amount = match self
+            {
+                Self::Broken => 1,
+                Self::Normal => unreachable!(),
+                Self::Uncommon => 1,
+                Self::Rare => 2,
+                Self::Mythical => 3
+            };
+
+            (0..amount).scan(vec![durability_boost, damage_boost, crit_boost], |possible_boosts, _|
+            {
+                if possible_boosts.is_empty()
+                {
+                    return None;
+                }
+
+                let i = fastrand::usize(0..possible_boosts.len());
+
+                Some(possible_boosts.swap_remove(i))
+            }).collect()
         }
-
-        let damage_boost = ItemBuff::Damage(random_f32(match self
-        {
-            Self::Normal => unreachable!(),
-            Self::Uncommon => 0.05..=0.1,
-            Self::Rare => 0.1..=0.2,
-            Self::Mythical => 0.2..=0.4
-        }).into());
-
-        let crit_boost = ItemBuff::Crit(random_f32(match self
-        {
-            Self::Normal => unreachable!(),
-            Self::Uncommon => 0.005..=0.01,
-            Self::Rare => 0.01..=0.02,
-            Self::Mythical => 0.02..=0.05
-        }).into());
-
-        if let Self::Uncommon = self
-        {
-            return vec![(if fastrand::bool() { damage_boost } else { crit_boost })];
-        }
-
-        vec![damage_boost, crit_boost]
-    }
 
     pub fn name(&self) -> Option<&'static str>
     {
         match self
         {
+            Self::Broken => Some("broken"),
             Self::Normal => None,
             Self::Uncommon => Some("uncommon"),
             Self::Rare => Some("rare"),
@@ -149,14 +178,15 @@ impl ItemRarity
         }
     }
 
-    pub fn hue_chroma(&self) -> Option<(f32, f32)>
+    pub fn color(&self) -> Option<Lcha>
     {
         match self
         {
+            Self::Broken => Some(Lcha{l: 50.0, c: 10.0, h: RED_COLOR.h, a: 1.0}),
             Self::Normal => None,
-            Self::Uncommon => Some((GREEN_COLOR.h, GREEN_COLOR.c)),
-            Self::Rare => Some((BLUE_COLOR.h, BLUE_COLOR.c)),
-            Self::Mythical => Some((ACCENT_COLOR.h, ACCENT_COLOR.c + 40.0))
+            Self::Uncommon => Some(GREEN_COLOR),
+            Self::Rare => Some(BLUE_COLOR),
+            Self::Mythical => Some(Lcha{c: ACCENT_COLOR.c + 40.0, ..ACCENT_COLOR})
         }
     }
 }
@@ -164,6 +194,7 @@ impl ItemRarity
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum ItemBuff
 {
+    Durability(SimpleF32),
     Damage(SimpleF32),
     Crit(SimpleF32)
 }
@@ -174,7 +205,8 @@ impl Display for ItemBuff
     {
         match self
         {
-            Self::Damage(x) => write!(f, "{:+}% damage", (**x * 100.0).round() as u32),
+            Self::Durability(x) => write!(f, "{:+.1}% durability use", **x * 100.0),
+            Self::Damage(x) => write!(f, "{:+.1}% damage", **x * 100.0),
             Self::Crit(x) => write!(f, "{:+.1}% crit chance", **x * 100.0)
         }
     }
@@ -186,6 +218,7 @@ impl ItemBuff
     {
         match self
         {
+            Self::Durability(x) => **x < 0.0,
             Self::Damage(x) => **x > 0.0,
             Self::Crit(x) => **x > 0.0
         }
@@ -197,6 +230,7 @@ pub struct Item
 {
     pub rarity: ItemRarity,
     pub buffs: Vec<ItemBuff>,
+    pub durability: SimpleF32,
     pub id: ItemId
 }
 
@@ -206,6 +240,7 @@ impl Default for Item
     {
         Self{
             id: ItemId::from(0),
+            durability: DEFAULT_ITEM_DURABILITY.into(),
             buffs: Vec::new(),
             rarity: ItemRarity::Normal
         }
@@ -216,8 +251,24 @@ impl Item
 {
     pub fn new(info: &ItemsInfo, id: ItemId) -> Self
     {
-        let rarity = if info.get(id).rarity_rolls { ItemRarity::random() } else { ItemRarity::Normal };
-        Item{rarity, buffs: rarity.random_buffs(), id}
+        let info = info.get(id);
+        let rarity = if info.rarity_rolls { ItemRarity::random() } else { ItemRarity::Normal };
+
+        Item{rarity, buffs: rarity.random_buffs(), durability: info.durability.into(), id}
+    }
+
+    pub fn damage_durability(&mut self) -> bool
+    {
+        let amount = self.durability_scale().unwrap_or(1.0);
+
+        *self.durability -= amount;
+
+        *self.durability <= 0.0
+    }
+
+    pub fn durability_scale(&self) -> Option<f32>
+    {
+        self.buffs.iter().find_map(|x| if let ItemBuff::Durability(x) = x { Some(**x + 1.0) } else { None })
     }
 
     pub fn damage_scale(&self) -> Option<f32>

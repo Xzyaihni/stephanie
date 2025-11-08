@@ -84,6 +84,7 @@ pub enum UiId
     DeathScreen(DeathScreenPart),
     Fade,
     Padding(u32),
+    Oxygen(OxygenPartId),
     Console(TextboxPartId),
     SeenNotification(Entity, SeenNotificationPart),
     Notification(Entity, NotificationKindInfo, NotificationPart),
@@ -119,6 +120,14 @@ pub enum HealthPart
     Stats,
     Oxygen,
     Blood
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum OxygenPartId
+{
+    Outer,
+    Inner,
+    Bar
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -448,6 +457,7 @@ struct UiInventoryItem
 {
     item: InventoryItem,
     name: String,
+    durability_fraction: f32,
     rarity: ItemRarity,
     texture: Sprite
 }
@@ -487,6 +497,7 @@ impl UiInventory
             UiInventoryItem{
                 item: index,
                 name: item.name.clone(),
+                durability_fraction: *x.durability / item.durability,
                 rarity: x.rarity,
                 texture: item.texture
             }
@@ -780,22 +791,21 @@ impl WindowKind
                         id(InventoryPart::Item(item.item, part))
                     };
 
-                    let rarity_hue_chroma = item.rarity.hue_chroma();
-
-                    let rarity_color = rarity_hue_chroma.map(|(h, c)| Lcha{l: 80.0, c, h, a: 1.0});
+                    let rarity_color = item.rarity.color();
 
                     let colors_inverted = is_picked || is_selected;
 
-                    let body_color = Lcha{
-                        a: if colors_inverted { 1.0 } else { 0.0 },
-                        ..ACCENT_COLOR
+                    let (color_primary, color_secondary) = if !colors_inverted
+                    {
+                        (ACCENT_COLOR, BACKGROUND_COLOR)
+                    } else
+                    {
+                        (BACKGROUND_COLOR, ACCENT_COLOR)
                     };
-
-                    let text_color = if colors_inverted { BACKGROUND_COLOR } else { ACCENT_COLOR };
 
                     let body = parent.update(id(ItemPart::Body), UiElement{
                         texture: UiTexture::Solid,
-                        mix: Some(MixColorLch::color(body_color)),
+                        mix: Some(MixColorLch::color(color_secondary)),
                         width: UiSize::Rest(1.0).into(),
                         animation: Animation{
                             mix: Animation::button().mix,
@@ -814,23 +824,30 @@ impl WindowKind
                         ..Default::default()
                     });
 
-                    if let Some(color) = rarity_color
+                    let half_padding = ITEM_PADDING * 0.5;
+
+                    let (indicator_full, indicator_empty) = if let Some(color) = rarity_color
                     {
-                        let half_padding = ITEM_PADDING * 0.5;
-
-                        body.update(id(ItemPart::Indicator), UiElement{
-                            texture: UiTexture::Solid,
-                            mix: Some(MixColorLch::color(color)),
-                            width: UiSize::Pixels(half_padding).into(),
-                            height: UiSize::Rest(1.0).into(),
-                            ..Default::default()
-                        });
-
-                        add_padding_horizontal(body, UiSize::Pixels(half_padding).into());
+                        (color, color.with_added_chroma(-30.0).with_added_lightness(-5.0))
                     } else
                     {
-                        add_padding_horizontal(body, UiSize::Pixels(ITEM_PADDING).into());
-                    }
+                        (BACKGROUND_COLOR, BACKGROUND_COLOR.with_added_chroma(-5.0).with_added_lightness(-30.0))
+                    };
+
+                    body.update(id(ItemPart::Indicator), UiElement{
+                        texture: UiTexture::Custom("solid.png".into()),
+                        fill: Some(UiElementFill{
+                            full: indicator_full,
+                            empty: indicator_empty,
+                            amount: item.durability_fraction,
+                            horizontal: false
+                        }),
+                        width: UiSize::Pixels(half_padding).into(),
+                        height: UiSize::Rest(1.0).into(),
+                        ..Default::default()
+                    });
+
+                    add_padding_horizontal(body, UiSize::Pixels(half_padding).into());
 
                     let icon_size = item_height * 0.9;
 
@@ -846,7 +863,7 @@ impl WindowKind
 
                     body.update(id(ItemPart::Name), UiElement{
                         texture: UiTexture::Text(TextInfo::new_simple(font_size, item.name.clone())),
-                        mix: Some(MixColorLch::color(text_color)),
+                        mix: Some(MixColorLch::color(color_primary)),
                         animation: Animation{
                             mix: Some(MixAnimation::default()),
                             ..Default::default()
@@ -894,9 +911,9 @@ impl WindowKind
 
                 let mut blocks = Vec::new();
 
-                if let (Some((h, c)), Some(name)) = (item.rarity.hue_chroma(), item.rarity.name())
+                if let (Some(color), Some(name)) = (item.rarity.color(), item.rarity.name())
                 {
-                    blocks.push(TextInfoBlock{color: Lcha{l: 80.0, c, h, a: 1.0}.into(), text: (name.to_owned() + "\n").into()});
+                    blocks.push(TextInfoBlock{color: color.into(), text: (name.to_owned() + "\n").into()});
                 }
 
                 blocks.push(TextInfoBlock{color: ACCENT_COLOR.into(), text: "weight: ".into()});
@@ -1965,6 +1982,60 @@ impl Ui
             size.x / size.max()
         };
 
+        if self.oxygen != 1.0
+        {
+            let outer = self.controller.update(UiId::Oxygen(OxygenPartId::Outer), UiElement{
+                width: ui_screen_width.into(),
+                height: UiSize::Rest(1.0).into(),
+                position: UiPosition::Inherit,
+                children_layout: UiLayout::Vertical,
+                ..Default::default()
+            });
+
+            add_padding_vertical(outer, UiSize::Rest(1.0).into());
+
+            let inner = outer.update(UiId::Oxygen(OxygenPartId::Inner), UiElement{
+                width: UiSize::Rest(1.0).into(),
+                children_layout: UiLayout::Horizontal,
+                ..Default::default()
+            });
+
+            let oxygen = entities.anatomy(self.ui_entities.player).map(|x| x.oxygen().current).unwrap_or(0.0);
+            let color = if oxygen <= WINDED_OXYGEN
+            {
+                let fraction = (oxygen / WINDED_OXYGEN).powi(3);
+                Lcha{
+                    l: lerp(10.0, BLUE_COLOR.l, fraction),
+                    c: lerp(10.0, BLUE_COLOR.c, fraction),
+                    ..BLUE_COLOR
+                }
+            } else
+            {
+                BLUE_COLOR
+            };
+
+            inner.update(UiId::Oxygen(OxygenPartId::Bar), UiElement{
+                texture: UiTexture::Custom("ui/oxygen_bar.png".into()),
+                fill: Some(UiElementFill{
+                    full: color,
+                    empty: BLUE_COLOR.with_added_chroma(-30.0).with_added_lightness(-10.0),
+                    amount: self.oxygen,
+                    horizontal: true
+                }),
+                mix: Some(MixColorLch{only_alpha: true, ..MixColorLch::color(Lcha{a: 1.0, ..BLACK_COLOR})}),
+                animation: Animation{
+                    mix: Some(MixAnimation{
+                        close_mix: Some(Lcha{a: 0.0, ..BLACK_COLOR}),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+                ..UiElement::fit_content()
+            });
+
+            add_padding_horizontal(inner, UiSize::Rest(1.0).into());
+        }
+
         if let Some(anatomy) = entities.anatomy(self.ui_entities.player)
         {
             let animation = Animation{
@@ -2098,39 +2169,13 @@ impl Ui
                 ..Default::default()
             });
 
-
-            let oxygen = anatomy.oxygen().current;
-            let color = if oxygen <= WINDED_OXYGEN
-            {
-                let fraction = (oxygen / WINDED_OXYGEN).powi(3);
-                Lcha{
-                    l: lerp(50.0, BLUE_COLOR.l, fraction),
-                    c: lerp(10.0, BLUE_COLOR.c, fraction),
-                    ..BLUE_COLOR
-                }
-            } else
-            {
-                BLUE_COLOR
-            };
-
-            stats.update(UiId::Health(HealthPart::Oxygen), UiElement{
-                texture: UiTexture::Custom("ui/oxygen.png".into()),
-                fill: Some(UiElementFill{
-                    full: color,
-                    empty: color.with_added_chroma(-30.0).with_added_lightness(-10.0),
-                    amount: self.oxygen
-                }),
-                ..UiElement::fit_content()
-            });
-
-            add_padding_vertical(stats, UiSize::Pixels(2.0).into());
-
             stats.update(UiId::Health(HealthPart::Blood), UiElement{
                 texture: UiTexture::Custom("ui/blood.png".into()),
                 fill: Some(UiElementFill{
                     full: RED_COLOR,
                     empty: RED_COLOR.with_added_chroma(-50.0).with_added_lightness(-10.0),
-                    amount: self.blood
+                    amount: self.blood,
+                    horizontal: false
                 }),
                 ..UiElement::fit_content()
             });
@@ -2251,17 +2296,25 @@ impl Ui
             *lifetime -= dt;
 
             let position = some_or_value!(position_of(*entity), false);
+            let anatomy = some_or_value!(entities.anatomy(*entity), false);
 
-            let alpha = {
+            let lowest_alpha = 0.05;
+
+            let alpha = if !anatomy.can_move()
+            {
+                lowest_alpha
+            } else
+            {
                 let other_position = some_or_value!(entities.transform(*entity), false).position;
                 let player_position = some_or_value!(entities.transform(self.ui_entities.player), false).position;
 
                 let distance = player_position.metric_distance(&other_position);
 
-                lerp(0.9, 0.1, (distance / (TILE_SIZE * 4.0)).min(1.0))
+                lerp(1.0, lowest_alpha, (distance / (TILE_SIZE * 4.0) - TILE_SIZE).clamp(0.0, 1.0))
             };
 
-            let body = self.controller.update(UiId::AnatomyNotification(*entity, AnatomyNotificationPart::Body), UiElement{
+            let body_id = UiId::AnatomyNotification(*entity, AnatomyNotificationPart::Body);
+            let body = self.controller.update(body_id.clone(), UiElement{
                 texture: UiTexture::CustomId(self.anatomy_locations_small.outline),
                 mix: Some(MixColorLch::color(Lcha{a: alpha, ..WHITE_COLOR})),
                 position: UiPosition::Absolute{position, align: UiPositionAlign{
@@ -2275,9 +2328,6 @@ impl Ui
                 ..UiElement::fit_content()
             });
 
-            let position = some_or_value!(body.try_position(), true);
-
-            let anatomy = some_or_value!(entities.anatomy(*entity), false);
             self.anatomy_locations_small.locations.iter().for_each(|(part_id, location)|
             {
                 let selected = parts.iter().any(|x|
@@ -2299,10 +2349,7 @@ impl Ui
                 body.update(UiId::AnatomyNotification(*entity, AnatomyNotificationPart::Part(*part_id)), UiElement{
                     texture: UiTexture::CustomId(location.id),
                     mix: Some(MixColorLch::color(Lcha{a: health_color.a * alpha, ..health_color})),
-                    position: UiPosition::Absolute{position, align: UiPositionAlign{
-                        horizontal: AlignHorizontal::Middle,
-                        vertical: AlignVertical::Middle
-                    }},
+                    position: UiPosition::Offset(body_id.clone(), Vector2::zeros()),
                     animation: Animation{
                         mix: Some(MixAnimation{
                             decay: MixDecay{l: lightness_decay, c: lightness_decay, ..MixDecay::all(20.0)},
@@ -2354,7 +2401,8 @@ impl Ui
                 UiElementFill{
                     full: YELLOW_COLOR,
                     empty: YELLOW_COLOR.with_added_chroma(-60.0).with_added_lightness(-10.0),
-                    amount
+                    amount,
+                    horizontal: false
                 }
             }
 
@@ -2541,17 +2589,10 @@ impl Ui
 
     pub fn draw(
         &self,
-        info: &mut DrawInfo
+        info: &mut DrawInfo,
+        shaders: &UiShaders
     )
     {
-        self.controller.draw(info);
-    }
-
-    pub fn draw_fill(
-        &self,
-        info: &mut DrawInfo
-    )
-    {
-        self.controller.draw_fill(info);
+        self.controller.draw(info, shaders);
     }
 }

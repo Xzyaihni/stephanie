@@ -16,6 +16,14 @@
         "groups": ["special"]
     },
     {
+        "name": "smol hand",
+        "rarity_rolls": false,
+        "damage_scale": 1.0,
+        "comfort": 2.0,
+        "mass": 0.3,
+        "groups": ["special"]
+    },
+    {
         "name": "bigy hand",
         "rarity_rolls": false,
         "damage_scale": 1.0,

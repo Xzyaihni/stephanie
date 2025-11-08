@@ -20,6 +20,7 @@ use yanyaengine::{
     TextObject,
     DefaultTexture,
     TextureId,
+    ShaderId,
     game_object::*
 };
 
@@ -80,6 +81,12 @@ pub trait Inputable
     {
         self.is_inside(self.mouse_position())
     }
+}
+
+pub struct UiShaders
+{
+    pub ui: ShaderId,
+    pub ui_fill: ShaderId
 }
 
 #[derive(Debug)]
@@ -1793,15 +1800,22 @@ impl<Id: Idable> Controller<Id>
 
     pub fn draw(
         &self,
-        info: &mut DrawInfo
+        info: &mut DrawInfo,
+        shaders: &UiShaders
     )
     {
+        let switch_to_shader = |info: &mut DrawInfo, shader|
+        {
+            if info.current_pipeline_id() != Some(shader)
+            {
+                info.bind_pipeline(shader);
+            }
+        };
+
         let shared = self.shared.borrow();
         shared.tree.for_each(|_, id|
         {
             let element = shared.elements.get(id).unwrap();
-
-            if element.element.fill.is_some() { return; }
 
             let cached = &element.cached;
             if let Some(object) = cached.object.as_ref()
@@ -1811,46 +1825,21 @@ impl<Id: Idable> Controller<Id>
                     info.set_scissor(scissor);
                 }
 
-                info.push_constants(UiOutlinedInfo::new(cached.mix.map(|x| x.into())));
+                if let Some(fill) = element.element.fill
+                {
+                    switch_to_shader(info, shaders.ui_fill);
+                    info.push_constants(fill.into_info(cached.mix.map(|x| x.into())));
+                } else
+                {
+                    switch_to_shader(info, shaders.ui);
+                    info.push_constants(UiOutlinedInfo::new(cached.mix.map(|x| x.into())));
+                }
 
                 object.draw(info);
 
                 if cached.scissor.is_some()
                 {
                     info.reset_scissor();
-                }
-            }
-        });
-    }
-
-    pub fn draw_fill(
-        &self,
-        info: &mut DrawInfo
-    )
-    {
-        let shared = self.shared.borrow();
-        shared.tree.for_each(|_, id|
-        {
-            let element = shared.elements.get(id).unwrap();
-
-            if let Some(fill) = element.element.fill
-            {
-                let cached = &element.cached;
-                if let Some(object) = cached.object.as_ref()
-                {
-                    if let Some(scissor) = cached.scissor
-                    {
-                        info.set_scissor(scissor);
-                    }
-
-                    info.push_constants(fill.into_info(cached.mix.map(|x| x.into())));
-
-                    object.draw(info);
-
-                    if cached.scissor.is_some()
-                    {
-                        info.reset_scissor();
-                    }
                 }
             }
         });

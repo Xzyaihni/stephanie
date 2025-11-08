@@ -8,7 +8,7 @@ use yanyaengine::{game_object::*, SolidObject, ObjectVertex};
 use crate::{
     debug_config::*,
     app::{ProgramShaders, TimestampQuery},
-    client::Ui,
+    client::{Ui, game_state::ui::controller::UiShaders},
     common::{
         render_info::*,
         Entity,
@@ -237,11 +237,7 @@ pub fn draw(
 
     info.bind_pipeline(shaders.ui);
 
-    ui.draw(info);
-
-    info.bind_pipeline(shaders.ui_fill);
-
-    ui.draw_fill(info);
+    ui.draw(info, &UiShaders{ui: shaders.ui, ui_fill: shaders.ui_fill});
 
     info.bind_pipeline(shaders.mouse);
 

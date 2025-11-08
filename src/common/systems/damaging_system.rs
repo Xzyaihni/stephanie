@@ -89,6 +89,7 @@ pub struct DamagingResult
     pub damage_entry: Vector3<f32>,
     pub damage_exit: Option<Vector3<f32>>,
     pub angle: f32,
+    pub ranged: bool,
     pub damage: DamagePartial
 }
 
@@ -226,6 +227,11 @@ pub fn damager<'a, 'b, 'c>(
 
                 damage_entity(entities, textures, loot, entity, result.other_entity, damage);
 
+                if !result.ranged
+                {
+                    reduce_durability(entities, result.other_entity);
+                }
+
                 create_particles(textures, particle, true, result.damage_entry);
                 if let Some(position) = result.damage_exit
                 {
@@ -298,6 +304,11 @@ pub fn damager<'a, 'b, 'c>(
                     action: Box::new(|entities, entity| entities.remove(entity)),
                     ..Default::default()
                 });
+
+                if !result.ranged
+                {
+                    reduce_durability(entities, result.other_entity);
+                }
             }
         }
     }
@@ -378,7 +389,15 @@ fn damaging_raycasting(
 
         let damage_exit = if is_last_hit { None } else { damage_exit };
 
-        DamagingResult{kind, other_entity, damage_entry, damage_exit, angle, damage}
+        DamagingResult{
+            kind,
+            other_entity,
+            damage_entry,
+            damage_exit,
+            angle,
+            ranged: damaging.ranged,
+            damage
+        }
     }).collect()
 }
 
@@ -522,6 +541,7 @@ fn damaging_colliding(
                     damage_entry,
                     damage_exit,
                     angle,
+                    ranged: damaging.ranged,
                     damage
                 }
             })
@@ -746,6 +766,14 @@ fn flash_white(entities: &ClientEntities, entity: Entity)
     }
 
     entities.for_every_child(entity, flash_single);
+}
+
+fn reduce_durability(entities: &ClientEntities, entity: Entity)
+{
+    if let Some(mut character) = entities.character_mut(entity)
+    {
+        character.damage_held_durability(entities);
+    }
 }
 
 fn turn_towards_other(

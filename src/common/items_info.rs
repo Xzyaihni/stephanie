@@ -24,6 +24,8 @@ use crate::{
 };
 
 
+pub const DEFAULT_ITEM_DURABILITY: f32 = 25.0;
+
 define_info_id!{ItemId}
 
 #[derive(Debug, Clone, Deserialize)]
@@ -84,6 +86,7 @@ pub struct ItemInfoRaw
     sharpness: Option<f32>,
     side_sharpness: Option<f32>,
     mass: Option<f32>,
+    durability: Option<f32>,
     lighting: Option<f32>,
     groups: Vec<String>,
     texture: Option<String>
@@ -103,6 +106,7 @@ pub struct ItemInfo
     pub sharpness: f32,
     pub side_sharpness: f32,
     pub mass: f32,
+    pub durability: f32,
     pub lighting: Light,
     pub texture: Sprite
 }
@@ -150,6 +154,7 @@ impl ItemInfo
             sharpness: raw.sharpness.unwrap_or(0.0),
             side_sharpness: raw.side_sharpness.unwrap_or(0.0),
             mass: raw.mass.unwrap_or(1.0),
+            durability: raw.durability.unwrap_or(DEFAULT_ITEM_DURABILITY),
             lighting: raw.lighting.map(|strength| Light{strength, ..Default::default()}).unwrap_or_default(),
             texture
         }
