@@ -74,6 +74,11 @@ impl TextboxInfo
         Self::new_inner(text, Some(limit))
     }
 
+    pub fn limit(&self) -> &Option<usize>
+    {
+        &self.limit
+    }
+
     fn new_inner(text: String, limit: Option<usize>) -> Self
     {
         Self{

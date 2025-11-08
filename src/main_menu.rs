@@ -330,7 +330,7 @@ impl MainMenu
             address: None,
             name: NameInfo::new(TextboxInfo::new_with_limit("stephanie".to_owned(), 30)),
             host: true,
-            debug: false
+            debug: cfg!(debug_assertions)
         };
 
         let ui_camera = Camera::new(partial_info.aspect(), -1.0..1.0);
@@ -1176,6 +1176,13 @@ impl MainMenu
                 mix: Some(MixColorLch::color(BACKGROUND_COLOR)),
                 width: UiSize::FitChildren.into(),
                 height: UiSize::Rest(1.0).into(),
+                animation: Animation{
+                    scaling: Some(ScalingAnimation{
+                        start_mode: Scaling::EaseOut{decay: 20.0},
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
                 children_layout: UiLayout::Vertical,
                 ..Default::default()
             });

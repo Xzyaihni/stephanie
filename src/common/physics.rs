@@ -169,7 +169,7 @@ impl Physical
 
         self.force = Vector3::zeros();
 
-        if self.inverse_mass != 0.0
+        if self.inverse_mass != 0.0 && !self.fixed.rotation
         {
             let inverse_inertia = inverse_inertia(self, transform);
             let angular_acceleration = self.angular_acceleration + self.torque * inverse_inertia;

@@ -198,16 +198,10 @@ impl Connection
             },
             Connection::Constant{speed} =>
             {
-                let max_move = Vector3::repeat(*speed * dt);
+                let mut difference = target - *current;
+                if difference.magnitude() > *speed { difference.set_magnitude(*speed); }
 
-                let current_difference = target - *current;
-
-                let move_amount = current_difference.zip_map(&max_move, |diff, limit: f32|
-                {
-                    diff.clamp(-limit, limit)
-                });
-
-                *current += move_amount;
+                *current += difference;
             },
             Connection::Limit{mode} =>
             {

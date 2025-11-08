@@ -118,8 +118,13 @@ impl ColliderType
         scale: &Vector3<f32>
     ) -> f32
     {
+        fn is_zero(x: f32) -> bool
+        {
+            x.classify() == FpCategory::Zero
+        }
+
         // to prevent div by zero cuz floating points suck and i hate them
-        if (physical.inverse_mass.classify() == FpCategory::Zero) || physical.fixed.rotation
+        if is_zero(physical.inverse_mass) || scale.amin() == 0.0 || physical.fixed.rotation
         {
             return 0.0;
         }

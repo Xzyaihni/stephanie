@@ -18,6 +18,7 @@ use crate::{
         lazy_transform::*,
         physics::*,
         particle_creator::*,
+        TILE_SIZE,
         SimpleF32,
         Transform,
         ItemInfo,
@@ -81,6 +82,8 @@ pub fn item_lazy_transform(
             scale: info.scale3(),
             ..Default::default()
         },
+        connection: Connection::Constant{speed: TILE_SIZE * 0.5},
+        scaling: Scaling::EaseOut{decay: 10.0},
         ..Default::default()
     }
 }

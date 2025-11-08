@@ -6,7 +6,7 @@ use std::{
     cell::{RefMut, RefCell}
 };
 
-use nalgebra::{Unit, Vector3};
+use nalgebra::{Unit, Vector2, Vector3};
 
 use yanyaengine::{
     Transform,
@@ -17,10 +17,12 @@ use yanyaengine::{
 use crate::{
     debug_config::*,
     common::{
+        with_z,
         some_or_value,
         some_or_return,
         collider::*,
         character::*,
+        watcher::*,
         Damageable,
         SpecialTile,
         AnyEntities,
@@ -31,8 +33,9 @@ use crate::{
         EntityInfo,
         OnChangeInfo,
         entity::ClientEntities,
+        lazy_transform::{Scaling, EaseInInfo},
         lisp::{self, *},
-        systems::{collider_system, mouse_highlight_system},
+        systems::{collider_system, mouse_highlight_system, damaging_system::spawn_item},
         world::{CHUNK_VISUAL_SIZE, TILE_SIZE, Pos3, TilePos}
     }
 };
@@ -1297,7 +1300,25 @@ impl<'a> PlayerContainer<'a>
                         {
                             inventory.push(item);
 
-                            entities.remove_deferred(mouse_touched);
+                            if let Some(mut lazy) = entities.lazy_transform_mut(mouse_touched)
+                            {
+                                lazy.scaling = Scaling::EaseIn(EaseInInfo::new(0.015));
+
+                                if let Some(transform) = entities.transform(self.info.entity)
+                                {
+                                    lazy.target_local.position = transform.position;
+                                    lazy.target_local.scale = with_z(Vector2::zeros(), lazy.target_local.scale.z);
+
+                                    entities.add_watcher(mouse_touched, Watcher{
+                                        kind: WatcherType::Lifetime(1.0.into()),
+                                        action: Box::new(|entities: &mut ClientEntities, entity|
+                                        {
+                                            entities.remove_deferred(entity);
+                                        }),
+                                        ..Default::default()
+                                    });
+                                }
+                            }
                         }
                     } else
                     {
@@ -1415,13 +1436,27 @@ impl<'a> PlayerContainer<'a>
             },
             GameUiEvent::Drop{which, item} =>
             {
-                if self.get_inventory(which)
+                if which != InventoryWhich::Player
+                {
+                    return;
+                }
+
+                if let Some(dropped_item) = self.get_inventory(which)
                     .and_then(|mut inventory| inventory.remove(item))
-                    .is_some() && which == InventoryWhich::Player
                 {
                     if let Some(mut character) = self.game_state.entities().character_mut(self.info.entity)
                     {
                         character.dropped_item(item);
+                    }
+
+                    if let Some(player_transform) = self.game_state.entities().transform(self.info.entity).as_ref()
+                    {
+                        spawn_item(
+                            self.game_state.entities(),
+                            &self.game_state.common_textures,
+                            player_transform,
+                            &dropped_item
+                        );
                     }
                 } else
                 {

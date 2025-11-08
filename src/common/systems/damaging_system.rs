@@ -583,7 +583,7 @@ fn flash_white_single(entities: &ClientEntities, entity: Entity)
     }
 }
 
-fn spawn_item(entities: &ClientEntities, textures: &CommonTextures, transform: &Transform, item: &Item)
+pub fn spawn_item(entities: &ClientEntities, textures: &CommonTextures, transform: &Transform, item: &Item)
 {
     let item_info = entities.infos().items_info.get(item.id);
 
@@ -608,6 +608,8 @@ fn spawn_item(entities: &ClientEntities, textures: &CommonTextures, transform: &
 
     let lazy_transform = item_lazy_transform(item_info, position, rotation);
 
+    let start_scale = lazy_transform.transform.scale * 0.3;
+
     let entity = entities.push(true, EntityInfo{
         render: Some(RenderInfo{
             object: Some(RenderObjectKind::TextureId{
@@ -617,6 +619,10 @@ fn spawn_item(entities: &ClientEntities, textures: &CommonTextures, transform: &
             ..Default::default()
         }),
         physical: Some(item_physical(item_info).into()),
+        transform: Some(Transform{
+            scale: start_scale,
+            ..lazy_transform.transform.clone()
+        }),
         lazy_transform: Some(lazy_transform.into()),
         collider: Some(ColliderInfo{
             layer: ColliderLayer::ThrownDecal,
