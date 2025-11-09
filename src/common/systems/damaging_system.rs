@@ -227,11 +227,6 @@ pub fn damager<'a, 'b, 'c>(
 
                 damage_entity(entities, textures, loot, entity, result.other_entity, damage);
 
-                if !result.ranged
-                {
-                    reduce_durability(entities, result.other_entity);
-                }
-
                 create_particles(textures, particle, true, result.damage_entry);
                 if let Some(position) = result.damage_exit
                 {
@@ -305,11 +300,12 @@ pub fn damager<'a, 'b, 'c>(
                     ..Default::default()
                 });
 
-                if !result.ranged
-                {
-                    reduce_durability(entities, result.other_entity);
-                }
             }
+        }
+
+        if !result.ranged
+        {
+            reduce_durability(entities, textures, result.other_entity);
         }
     }
 }
@@ -768,8 +764,26 @@ fn flash_white(entities: &ClientEntities, entity: Entity)
     entities.for_every_child(entity, flash_single);
 }
 
-fn reduce_durability(entities: &ClientEntities, entity: Entity)
+fn reduce_durability(
+    entities: &ClientEntities,
+    textures: &CommonTextures,
+    entity: Entity
+)
 {
+    if let Some(mut item) = entities.item_mut(entity)
+    {
+        if item.damage_durability()
+        {
+            let disappear_action = item_disappear_watcher(textures).action;
+
+            entities.add_watcher(entity, Watcher{
+                kind: WatcherType::Instant,
+                action: disappear_action,
+                ..Default::default()
+            });
+        }
+    }
+
     if let Some(mut character) = entities.character_mut(entity)
     {
         character.damage_held_durability(entities);

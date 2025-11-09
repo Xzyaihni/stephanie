@@ -39,30 +39,35 @@
         "sharpness": 0.1,
         "side_sharpness": 0.05,
         "mass": 0.4,
+        "durability": 1.1,
         "groups": ["trash"]
     },
     {
         "name": "baseball bat",
         "comfort": 1.5,
         "mass": 0.95,
+        "durability": 1.5,
         "groups": ["weapons"]
     },
     {
         "name": "rock",
         "comfort": 0.6,
         "mass": 0.5,
+        "durability": 1.5,
         "groups": ["trash"]
     },
     {
         "name": "boulder",
         "comfort": 0.3,
         "mass": 5.0,
+        "durability": 5.0,
         "groups": ["trash"]
     },
     {
         "name": "pipe",
         "comfort": 1.0,
         "mass": 0.7,
+        "durability": 2.0,
         "groups": ["trash"]
     },
     {
@@ -70,6 +75,7 @@
         "damage_scale": 0.5,
         "comfort": 0.5,
         "mass": 0.02,
+        "durability": 0.2,
         "groups": ["trash", "utility"]
     },
     {
@@ -77,12 +83,14 @@
         "comfort": 1.1,
         "side_sharpness": 0.5,
         "mass": 2.2,
+        "durability": 2.0,
         "groups": ["weapons"]
     },
     {
         "name": "sledgehammer",
         "comfort": 1.1,
         "mass": 9.0,
+        "durability": 2.0,
         "groups": ["weapons"]
     },
     {
@@ -90,6 +98,7 @@
         "comfort": 1.4,
         "side_sharpness": 0.3,
         "mass": 0.9,
+        "durability": 1.5,
         "groups": ["utility", "weapons"]
     },
     {
@@ -97,6 +106,7 @@
         "comfort": 0.3,
         "sharpness": 0.4,
         "mass": 0.1,
+        "durability": 0.8,
         "groups": ["utility"]
     },
     {
@@ -112,11 +122,13 @@
         "comfort": 1.4,
         "side_sharpness": 0.8,
         "mass": 0.25,
+        "durability": 1.5,
         "groups": ["utility"]
     },
     {
         "name": "duct tape",
         "mass": 0.1,
+        "durability": 0.2,
         "groups": ["utility"]
     },
     {
@@ -124,6 +136,7 @@
         "comfort": 1.5,
         "sharpness": 0.03,
         "mass": 0.2,
+        "durability": 0.8,
         "groups": ["weapons", "utility"]
     },
     {
@@ -137,6 +150,7 @@
         "name": "plank",
         "comfort": 0.5,
         "mass": 1.0,
+        "durability": 1.5,
         "groups": ["trash", "utility"]
     },
     {
@@ -145,6 +159,7 @@
         "damage_scale": 0.01,
         "comfort": 0.5,
         "mass": 0.02,
+        "durability": 0.1,
         "groups": ["trash", "utility"]
     },
     {
@@ -153,6 +168,7 @@
         "sharpness": 0.9,
         "side_sharpness": 0.9,
         "mass": 0.05,
+        "durability": 0.1,
         "groups": ["trash"]
     },
     {
@@ -161,6 +177,7 @@
         "sharpness": 0.3,
         "side_sharpness": 0.3,
         "mass": 0.2,
+        "durability": 1.5,
         "groups": ["trash"]
     },
     {
@@ -169,6 +186,7 @@
         "sharpness": 0.4,
         "side_sharpness": 0.4,
         "mass": 0.15,
+        "durability": 0.8,
         "groups": ["trash"]
     },
     {
@@ -193,13 +211,15 @@
         "rarity_rolls": false,
         "comfort": 0.5,
         "mass": 0.05,
+        "durability": 0.2,
         "groups": ["drugs"]
     },
     {
         "name": "lamp",
         "comfort": 0.5,
         "mass": 0.4,
-	"lighting": 2.0,
+        "durability": 0.5,
+        "lighting": 2.0,
         "groups": ["utility"]
     }
 ]

@@ -154,7 +154,7 @@ impl ItemInfo
             sharpness: raw.sharpness.unwrap_or(0.0),
             side_sharpness: raw.side_sharpness.unwrap_or(0.0),
             mass: raw.mass.unwrap_or(1.0),
-            durability: raw.durability.unwrap_or(DEFAULT_ITEM_DURABILITY),
+            durability: raw.durability.unwrap_or(1.0) * DEFAULT_ITEM_DURABILITY,
             lighting: raw.lighting.map(|strength| Light{strength, ..Default::default()}).unwrap_or_default(),
             texture
         }

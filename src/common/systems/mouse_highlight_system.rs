@@ -35,7 +35,7 @@ pub fn is_lootable(entities: &ClientEntities, entity: Entity) -> bool
 
     if entities.item_exists(entity)
     {
-        return true;
+        return !entities.damaging_exists(entity);
     }
 
     if let Some(inventory) = entities.inventory(entity)

@@ -850,6 +850,7 @@ impl Character
                     }),
                     collider: Some(collider.clone().into()),
                     light: Some(item_info.lighting),
+                    item: Some(item),
                     damaging: Some(DamagingInfo{
                         damage: DamagingType::Mass(mass * damage_scale),
                         faction: Some(self.faction),
@@ -866,7 +867,7 @@ impl Character
                 kind: WatcherType::Collision,
                 action: Box::new(move |entities, entity|
                 {
-                    entities.set_item(entity, Some(item));
+                    entities.set_damaging(entity, None);
 
                     entities.set_collider(entity, Some(ColliderInfo{
                         layer: ColliderLayer::ThrownDecal,
@@ -1226,10 +1227,19 @@ impl Character
 
         let end = extend_time + extend_time;
 
+        let this_entity = info.this;
+        let current_holding = self.holding;
+
         entities.add_watcher(info.hand_left, Watcher{
             kind: WatcherType::Lifetime(end.into()),
             action: Box::new(move |entities, entity|
             {
+                let character = some_or_return!(entities.character(this_entity));
+                if character.holding() != current_holding
+                {
+                    return;
+                }
+
                 if let Some(mut lazy) = entities.lazy_transform_mut(entity)
                 {
                     lazy.rotation = Self::default_lazy_rotation();
@@ -1338,9 +1348,9 @@ impl Character
     {
         match self.sprite_state.value()
         {
-            SpriteState::Normal => fastrand::choice([DamageHeight::Top, DamageHeight::Middle, DamageHeight::Middle]).unwrap(),
+            SpriteState::Normal => fastrand::choice([DamageHeight::Top, DamageHeight::Middle, DamageHeight::Middle, DamageHeight::Bottom]).unwrap(),
             SpriteState::Crawling
-            | SpriteState::Lying => DamageHeight::Bottom
+            | SpriteState::Lying => fastrand::choice([DamageHeight::Middle, DamageHeight::Bottom, DamageHeight::Bottom]).unwrap()
         }
     }
 
@@ -1572,6 +1582,11 @@ impl Character
         {
             self.hand_item_info(combined_info)
         })
+    }
+
+    pub fn holding(&self) -> Option<InventoryItem>
+    {
+        self.holding
     }
 
     fn held_item(&self, combined_info: CombinedInfo) -> Option<Item>
