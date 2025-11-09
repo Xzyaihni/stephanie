@@ -59,6 +59,7 @@ impl MarkerTile
                 enemies_info,
                 characters_info,
                 furnitures_info,
+                items_info,
                 ..
             }
         }: CreateInfos,
@@ -89,6 +90,7 @@ impl MarkerTile
                 Some(enemy_creator::create(
                     enemies_info,
                     characters_info,
+                    items_info,
                     loot,
                     id,
                     position
@@ -107,7 +109,14 @@ impl MarkerTile
                     return None;
                 };
 
-                Some(furniture_creator::create(furnitures_info, loot, id, rotation, position + offset.get(rotation)))
+                Some(furniture_creator::create(
+                    furnitures_info,
+                    items_info,
+                    loot,
+                    id,
+                    rotation,
+                    position + offset.get(rotation)
+                ))
             },
             MarkerKind::Light{strength, offset} =>
             {

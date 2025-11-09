@@ -649,7 +649,8 @@ impl Game
                             lisp::Error::Custom(format!("item named {name} doesnt exist"))
                         })?;
 
-                        inventory.push(Item::new(&game_state.data_infos.items_info, id));
+                        let items_info = &game_state.data_infos.items_info;
+                        inventory.push(items_info, Item::new(items_info, id));
 
                         Ok(().into())
                     })
@@ -1298,7 +1299,7 @@ impl<'a> PlayerContainer<'a>
 
                         if let Some(mut inventory) = entities.inventory_mut(self.info.entity)
                         {
-                            inventory.push(item);
+                            inventory.push(&self.game_state.data_infos.items_info, item);
 
                             if let Some(mut lazy) = entities.lazy_transform_mut(mouse_touched)
                             {
@@ -1425,7 +1426,7 @@ impl<'a> PlayerContainer<'a>
                         {
                             if let Some(mut inventory) = self.get_inventory(which)
                             {
-                                inventory.remove(item);
+                                inventory.remove(&self.game_state.data_infos.items_info, item);
                             }
                         }
                     }
@@ -1442,7 +1443,7 @@ impl<'a> PlayerContainer<'a>
                 }
 
                 if let Some(dropped_item) = self.get_inventory(which)
-                    .and_then(|mut inventory| inventory.remove(item))
+                    .and_then(|mut inventory| inventory.remove(&self.game_state.data_infos.items_info, item))
                 {
                     if let Some(mut character) = self.game_state.entities().character_mut(self.info.entity)
                     {
@@ -1473,11 +1474,11 @@ impl<'a> PlayerContainer<'a>
             GameUiEvent::Take(item) =>
             {
                 if let Some(taken) = self.get_inventory(InventoryWhich::Other)
-                    .and_then(|mut inventory| inventory.remove(item))
+                    .and_then(|mut inventory| inventory.remove(&self.game_state.data_infos.items_info, item))
                 {
                     if let Some(mut inventory) = self.game_state.entities().inventory_mut(self.info.entity)
                     {
-                        inventory.push(taken);
+                        inventory.push(&self.game_state.data_infos.items_info, taken);
                     }
                 } else
                 {
@@ -1530,8 +1531,8 @@ impl<'a> PlayerContainer<'a>
             {
                 let mut actions = vec![
                     GameUiEvent::Wield(item_id),
-                    GameUiEvent::Drop{which: InventoryWhich::Player, item: item_id},
-                    GameUiEvent::Info{which: InventoryWhich::Player, item: item_id}
+                    GameUiEvent::Info{which: InventoryWhich::Player, item: item_id},
+                    GameUiEvent::Drop{which: InventoryWhich::Player, item: item_id}
                 ];
 
                 if let Some(usage) = info.usage()

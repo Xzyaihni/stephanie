@@ -17,6 +17,7 @@ use crate::common::{
     FurnituresInfo,
     FurnitureInfo,
     FurnitureId,
+    ItemsInfo,
     Inventory,
     AnyEntities,
     Entity,
@@ -113,6 +114,7 @@ pub fn furniture_position(
 
 pub fn create(
     furnitures_info: &FurnituresInfo,
+    items_info: &ItemsInfo,
     loot: &Loot,
     id: FurnitureId,
     rotation: TileRotation,
@@ -135,8 +137,8 @@ pub fn create(
 
     let inventory = info.container.then(||
     {
-        let mut inventory = Inventory::new();
-        loot.create(LootState::Create, &info.name).into_iter().for_each(|item| { inventory.push(item); });
+        let mut inventory = Inventory::new(f32::INFINITY);
+        loot.create(LootState::Create, &info.name).into_iter().for_each(|item| { inventory.push(items_info, item); });
 
         inventory
     });

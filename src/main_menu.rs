@@ -224,12 +224,12 @@ impl NameInfo
         Self{info, last_text: None, duplicate: false}
     }
 
-    fn recalculate_allowed(&mut self, worlds: &[WorldInfo])
+    fn recalculate_allowed(&mut self, worlds: &[String])
     {
         self.last_text = Some(self.info.text.clone());
 
         let world_name = self.world_name();
-        self.duplicate = worlds.iter().any(|x| x.world_name == world_name);
+        self.duplicate = worlds.contains(&world_name);
     }
 
     pub fn is_allowed(&self) -> bool
@@ -259,7 +259,6 @@ pub struct MenuClientInfo
 
 pub struct WorldInfo
 {
-    world_name: String,
     display_name: String,
     id: usize
 }
@@ -293,6 +292,7 @@ struct UiInfo<'a, 'b, 'c, 'd, 'e, 'f>
     sliced_textures: &'a HashMap<String, SlicedTexture>,
     fonts: &'a FontsContainer,
     info: &'c mut MenuClientInfo,
+    world_check_names: &'a Vec<String>,
     worlds: &'d mut UiList<WorldInfo>,
     controls_taken: &'f mut Option<GameControl>,
     state: MenuState,
@@ -313,6 +313,7 @@ pub struct MainMenu
     animation: f32,
     controls_taken: Option<GameControl>,
     bindings: UiList<Binding>,
+    world_check_names: Vec<String>,
     worlds: UiList<WorldInfo>
 }
 
@@ -336,11 +337,12 @@ impl MainMenu
         let ui_camera = Camera::new(partial_info.aspect(), -1.0..1.0);
 
         let worlds_path = PathBuf::from("worlds");
-        let mut worlds = if worlds_path.exists()
+
+        let world_check_names = if worlds_path.exists()
         {
             fs::read_dir(worlds_path).map(|iter: ReadDir|
             {
-                iter.enumerate().filter_map(|(id, x)|
+                iter.filter_map(|x|
                 {
                     let entry = (match x
                     {
@@ -354,54 +356,8 @@ impl MainMenu
                     })?;
 
                     let world_name = entry.file_name();
-                    let world_name = world_name.to_string_lossy().into_owned();
 
-                    fn notify_none<T>(name: &str, x: Option<T>) -> Option<T>
-                    {
-                        if x.is_none()
-                        {
-                            eprintln!("cant load info in {name}");
-                        }
-
-                        x
-                    }
-
-                    let world_save = {
-                        let name = format!("world `{world_name}`");
-                        notify_none(
-                            &name,
-                            load_world_file::<WorldSave>(name.clone(), &world_save_path(&world_name))
-                        )?
-                    };
-
-                    let player_save = {
-                        let name = format!("player `{world_name}`");
-                        notify_none(
-                            &name,
-                            load_world_file::<EntityInfo>(
-                                name.clone(),
-                                &player_save_path(world_path(&world_name), &world_name)
-                            )
-                        )?
-                    };
-
-                    let display_name = player_save.named?;
-
-                    if world_save.version != VERSION
-                    {
-                        eprintln!(
-                            "skipping {display_name}, version mismatch (save: {}, current: {VERSION})",
-                            world_save.version
-                        );
-
-                        return None;
-                    }
-
-                    Some(WorldInfo{
-                        world_name,
-                        display_name,
-                        id
-                    })
+                    Some(world_name.to_string_lossy().into_owned())
                 }).collect::<Vec<_>>()
             }).unwrap_or_else(|err|
             {
@@ -413,6 +369,55 @@ impl MainMenu
         {
             Vec::new()
         };
+
+        let mut worlds = world_check_names.iter().enumerate().filter_map(|(id, world_name)|
+        {
+            fn notify_none<T>(name: &str, x: Option<T>) -> Option<T>
+            {
+                if x.is_none()
+                {
+                    eprintln!("cant load info in {name}");
+                }
+
+                x
+            }
+
+            let world_save = {
+                let name = format!("world `{world_name}`");
+                notify_none(
+                    &name,
+                    load_world_file::<WorldSave>(name.clone(), &world_save_path(world_name))
+                )?
+            };
+
+            let player_save = {
+                let name = format!("player `{world_name}`");
+                notify_none(
+                    &name,
+                    load_world_file::<EntityInfo>(
+                        name.clone(),
+                        &player_save_path(world_path(world_name), world_name)
+                    )
+                )?
+            };
+
+            let display_name = player_save.named?;
+
+            if world_save.version != VERSION
+            {
+                eprintln!(
+                    "skipping {display_name}, version mismatch (save: {}, current: {VERSION})",
+                    world_save.version
+                );
+
+                return None;
+            }
+
+            Some(WorldInfo{
+                display_name,
+                id
+            })
+        }).collect::<Vec<_>>();
 
         worlds.sort_by(|a, b| a.display_name.cmp(&b.display_name));
 
@@ -443,6 +448,7 @@ impl MainMenu
             animation: 0.0,
             controls_taken: None,
             bindings: bindings.into(),
+            world_check_names,
             worlds: worlds.into(),
             info
         };
@@ -1094,7 +1100,7 @@ impl MainMenu
 
         if ui_info.info.name.last_text.as_ref().map(|x| *x != ui_info.info.name.info.text).unwrap_or(true)
         {
-            ui_info.info.name.recalculate_allowed(&ui_info.worlds.items);
+            ui_info.info.name.recalculate_allowed(ui_info.world_check_names);
         }
 
         let confirm_allowed = ui_info.info.name.is_allowed();
@@ -1351,6 +1357,7 @@ impl MainMenu
                 sliced_textures: &self.sliced_textures,
                 fonts: &self.fonts,
                 info: &mut self.info,
+                world_check_names: &self.world_check_names,
                 worlds: &mut self.worlds,
                 controls_taken: &mut self.controls_taken,
                 state: self.state,

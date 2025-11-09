@@ -21,7 +21,9 @@ use crate::common::{
     EnemyId,
     EnemiesInfo,
     CharactersInfo,
+    ItemsInfo,
     EntityInfo,
+    inventory::anatomy_weight_limit,
     lazy_transform::*
 };
 
@@ -31,6 +33,7 @@ pub const ENEMY_MASS: f32 = 50.0;
 pub fn create(
     enemies_info: &EnemiesInfo,
     characters_info: &CharactersInfo,
+    items_info: &ItemsInfo,
     loot: &Loot,
     id: EnemyId,
     pos: Vector3<f32>
@@ -40,8 +43,10 @@ pub fn create(
 
     let name = info.name.clone();
 
-    let mut inventory = Inventory::new();
-    loot.create(LootState::Create, &name).into_iter().for_each(|item| { inventory.push(item); });
+    let anatomy = Anatomy::Human(HumanAnatomy::new(info.anatomy.clone()));
+
+    let mut inventory = Inventory::new(anatomy_weight_limit(&anatomy));
+    loot.create(LootState::Create, &name).into_iter().for_each(|item| { inventory.push(items_info, item); });
 
     let character = Character::new(info.character, Faction::Zob);
 
@@ -75,7 +80,7 @@ pub fn create(
             ..Default::default()
         }.into()),
         inventory: Some(inventory),
-        anatomy: Some(Anatomy::Human(HumanAnatomy::new(info.anatomy.clone()))),
+        anatomy: Some(anatomy),
         character: Some(character),
         named: Some(name),
         enemy: Some(Enemy::new(enemies_info, id)),

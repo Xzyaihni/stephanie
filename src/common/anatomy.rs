@@ -282,6 +282,14 @@ impl Anatomy
         }
     }
 
+    pub fn set_encumbrance_speed(&mut self, speed: f32)
+    {
+        match self
+        {
+            Self::Human(x) => x.set_encumbrance_speed(speed)
+        }
+    }
+
     pub fn set_speed(&mut self, speed: f32)
     {
         match self

@@ -510,11 +510,9 @@ impl Character
 
         let mut inventory = some_or_return!(entities.inventory_mut(info.this));
 
-        let item = some_or_unexpected_return!(inventory.get_mut(held));
-
-        if item.damage_durability()
+        if some_or_unexpected_return!(inventory.get_mut(&entities.infos().items_info, held)).damage_durability()
         {
-            inventory.remove(held);
+            inventory.remove(&entities.infos().items_info, held);
             self.set_holding(None);
         }
     }
@@ -884,7 +882,7 @@ impl Character
                 ..Default::default()
             });
 
-            entities.inventory_mut(info.this).unwrap().remove(held);
+            entities.inventory_mut(info.this).unwrap().remove(combined_info.items_info, held);
 
             self.consume_attack_oxygen(combined_info);
         }

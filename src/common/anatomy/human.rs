@@ -47,6 +47,15 @@ use parts::*;
 mod parts;
 
 
+fn maybe_update(current_value: &mut f32, new_value: f32) -> bool
+{
+    let changed = *current_value != new_value;
+
+    *current_value = new_value;
+
+    changed
+}
+
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 struct Speeds<T=f32>
 {
@@ -236,6 +245,7 @@ pub struct HumanAnatomyValues
 {
     base_speed: f32,
     base_strength: f32,
+    encumbrance_speed: f32,
     override_crawling: bool,
     blood: SimpleHealth,
     oxygen: SimpleHealth,
@@ -428,6 +438,7 @@ impl HumanAnatomyValues
         Self{
             base_speed,
             base_strength,
+            encumbrance_speed: 1.0,
             override_crawling: false,
             blood: SimpleHealth::new(4.0),
             oxygen: SimpleHealth::new(1.0),
@@ -761,11 +772,20 @@ impl HumanAnatomy
         self.this.override_crawling || (self.cached().speed.legs < crawl_threshold)
     }
 
+    pub fn set_encumbrance_speed(&mut self, speed: f32)
+    {
+        if maybe_update(&mut self.this.encumbrance_speed, speed)
+        {
+            self.update_cache();
+        }
+    }
+
     pub fn set_speed(&mut self, speed: f32)
     {
-        self.this.base_speed = speed;
-
-        self.update_cache();
+        if maybe_update(&mut self.this.base_speed, speed)
+        {
+            self.update_cache();
+        }
     }
 
     pub fn for_accessed_parts(&mut self, mut f: impl FnMut(ChangedPart))
@@ -882,7 +902,7 @@ impl HumanAnatomy
     {
         self.speed_scale().map(|x|
         {
-            self.this.base_speed * x
+            self.this.base_speed * self.this.encumbrance_speed * x
         })
     }
 

@@ -60,6 +60,7 @@ use crate::{
         MessagePasser,
         ConnectionId,
         OnConnectInfo,
+        inventory::anatomy_weight_limit,
         character::SpriteState,
         world::{TILE_SIZE, CHUNK_VISUAL_SIZE, Pos3},
         chunk_saver::{with_temp_save, load_world_file},
@@ -404,6 +405,7 @@ impl GameServer
         };
 
         let base_health = 0.6;
+
         let anatomy = Anatomy::Human(HumanAnatomy::new(HumanAnatomyInfo{
             bone: base_health,
             muscle: base_health,
@@ -430,7 +432,7 @@ impl GameServer
                 ..Default::default()
             }.into()),
             collider: Some(Character::collider_with_state(SpriteState::Normal, true).into()),
-            inventory: Some(Inventory::new()),
+            inventory: Some(Inventory::new(anatomy_weight_limit(&anatomy))),
             character: Some(Character::new(self.data_infos.player_character, Faction::Player)),
             anatomy: Some(anatomy),
             ..Default::default()

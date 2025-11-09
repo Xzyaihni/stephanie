@@ -269,9 +269,12 @@ impl Display for BarId
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum InventoryPart
 {
+    VerticalBody,
     Body,
     List(UiListPart),
     Item(InventoryItem, ItemPart),
+    BottomInfo,
+    Weight
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -753,11 +756,18 @@ impl WindowKind
 
                 body.element().height = UiSize::Pixels(SCROLLBAR_HEIGHT).into();
 
-                let body = body.update(id(InventoryPart::Body), UiElement{
+                let vertical_body = body.update(id(InventoryPart::VerticalBody), UiElement{
                     width: UiElementSize{
                         minimum_size: Some(UiMinimumSize::FitChildren),
                         size: UiSize::Pixels(SCROLLBAR_HEIGHT * 2.0)
                     },
+                    height: UiSize::Rest(1.0).into(),
+                    children_layout: UiLayout::Vertical,
+                    ..Default::default()
+                });
+
+                let body = vertical_body.update(id(InventoryPart::Body), UiElement{
+                    width: UiSize::Rest(1.0).into(),
                     height: UiSize::Rest(1.0).into(),
                     ..Default::default()
                 });
@@ -872,15 +882,43 @@ impl WindowKind
                     });
                 });
 
-                if let Some(index) = selected
-                {
-                    if info.controls.take_click_down()
-                    {
-                        let item_id = inventory.list.items[index].item;
-                        let entity = inventory.entity;
+                let bottom_bar = vertical_body.update(id(InventoryPart::BottomInfo), UiElement{
+                    width: UiSize::Rest(1.0).into(),
+                    ..Default::default()
+                });
 
-                        if let Some(items_inventory) = info.entities.inventory(entity)
+                let entity = inventory.entity;
+                if let Some(items_inventory) = info.entities.inventory(entity)
+                {
+                    let weight = items_inventory.weight_total();
+                    let weight_limit = items_inventory.weight_limit();
+
+                    let is_encumbered = weight > weight_limit;
+
+                    if weight_limit != f32::INFINITY
+                    {
+                        bottom_bar.update(id(InventoryPart::Weight), UiElement{
+                            texture: UiTexture::Text(TextInfo{
+                                font_size,
+                                text: TextBlocks(vec![
+                                    TextInfoBlock{
+                                        color: if is_encumbered { RED_COLOR.into() } else { ACCENT_COLOR.into() },
+                                        text: format!("{weight:.2}").into()
+                                    },
+                                    TextInfoBlock{color: ACCENT_COLOR.into(), text: format!("/{weight_limit:.2}").into()}
+                                ].into()),
+                                outline: None
+                            }),
+                            ..UiElement::fit_content()
+                        });
+                    }
+
+                    if let Some(index) = selected
+                    {
+                        if info.controls.take_click_down()
                         {
+                            let item_id = inventory.list.items[index].item;
+
                             if let Some(item) = items_inventory.get(item_id)
                             {
                                 let events = (inventory.on_click)(item, info.items_info.get(item.id), item_id);

@@ -62,6 +62,7 @@ use crate::{
         sender_loop::BufferSender,
         message::Message,
         character::PartialCombinedInfo,
+        inventory::anatomy_weight_limit,
         systems::{
             render_system,
             physical_system,
@@ -1002,6 +1003,12 @@ impl GameState
             {
                 if let Some(mut anatomy) = entities.anatomy_mut_no_change(entity)
                 {
+                    if let Some(mut inventory) = entities.inventory_mut_no_change(entity)
+                    {
+                        inventory.set_weight_limit(anatomy_weight_limit(&anatomy));
+                        anatomy.set_encumbrance_speed(inventory.encumbrance());
+                    }
+
                     if anatomy.take_killed()
                     {
                         if entity == player_entity
@@ -1014,14 +1021,18 @@ impl GameState
                             });
 
                             *follow_target.borrow_mut() = death_follow;
-
-                            return;
-                        }
-
-                        if let Some(mut player) = entities.player_mut(player_entity)
+                        } else
                         {
-                            player.kills += 1;
+                            if let Some(mut player) = entities.player_mut(player_entity)
+                            {
+                                player.kills += 1;
+                            }
                         }
+                    }
+
+                    if let Some(mut character) = entities.character_mut_no_change(entity)
+                    {
+                        character.anatomy_changed(&anatomy);
                     }
                 }
             }));
@@ -1029,6 +1040,14 @@ impl GameState
 
         self.entities.entities.on_inventory(Box::new(move |OnChangeInfo{entities, entity, ..}|
         {
+            if let Some(mut anatomy) = entities.anatomy_mut(entity)
+            {
+                if let Some(inventory) = entities.inventory(entity)
+                {
+                    anatomy.set_encumbrance_speed(inventory.encumbrance());
+                }
+            }
+
             if let Some(mut character) = entities.character_mut_no_change(entity)
             {
                 character.update_holding();
