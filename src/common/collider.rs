@@ -1331,7 +1331,7 @@ impl<'a> CollidingInfoMut<'a>
             ..self.transform
         };
 
-        let penetration_maximum = self.transform.scale.z * 0.5;
+        let penetration_maximum = TILE_SIZE * 0.5;
 
         if let Some((tile_pos, distance)) = swept_aabb_world_with_before(
             world,

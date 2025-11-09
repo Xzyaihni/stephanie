@@ -905,7 +905,7 @@ impl WindowKind
                                         color: if is_encumbered { RED_COLOR.into() } else { ACCENT_COLOR.into() },
                                         text: format!("{weight:.2}").into()
                                     },
-                                    TextInfoBlock{color: ACCENT_COLOR.into(), text: format!("/{weight_limit:.2}").into()}
+                                    TextInfoBlock{color: ACCENT_COLOR.into(), text: format!("/{weight_limit:.2} kg").into()}
                                 ].into()),
                                 outline: None
                             }),

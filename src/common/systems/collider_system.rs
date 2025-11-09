@@ -192,6 +192,12 @@ pub fn update(
                         if this.collide_with_world_z(world, *next_position) && !this.collider.ghost
                         {
                             next_position.z = this.transform.position.z;
+
+                            if let Some(mut transform) = entities.transform_mut(entity)
+                            {
+                                transform.position.z = next_position.z;
+                            }
+
                             let hit_velocity = physical.remove_velocity_axis(2);
 
                             if hit_velocity < -FALL_VELOCITY
