@@ -3,7 +3,7 @@ use vulkano::{
     buffer::BufferContents,
 };
 
-use yanyaengine::{game_object::*, SolidObject, ObjectVertex};
+use yanyaengine::{game_object::*, SolidObject, Object};
 
 use crate::{
     debug_config::*,
@@ -35,7 +35,7 @@ pub struct MouseInfo
 pub struct DrawEntities<'a>
 {
     pub solid: &'a SolidObject,
-    pub mouse_solid: &'a SolidObject<ObjectVertex>,
+    pub mouse_solid: &'a Object,
     pub renders: &'a [Vec<Entity>],
     pub above_world: &'a [Entity],
     pub occluders: &'a [Entity],

@@ -29,5 +29,5 @@ void main()
 
     vec4 filled_color = (((fill.flags >> 2) & 1) == 1 ? tex_coords.x : (1.0 - tex_coords.y)) > fill.amount ? fill.empty_color : fill.full_color;
 
-    f_color = with_mix(color.xyz == vec3(0.0) ? filled_color * color.a : color);
+    f_color = with_mix(color.xyz == vec3(0.0) ? vec4(filled_color.xyz, filled_color.a * color.a) : color);
 }

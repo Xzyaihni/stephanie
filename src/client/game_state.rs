@@ -25,7 +25,8 @@ use yanyaengine::{
     Transform,
     TextureId,
     SolidObject,
-    ObjectVertex,
+    Object,
+    ObjectInfo,
     DefaultTexture,
     DefaultModel,
     TransformContainer,
@@ -119,12 +120,10 @@ pub mod ui;
 
 const DEFAULT_ZOOM: f32 = 3.0;
 
-const DEFAULT_MOUSE_SIZE: f32 = 57.0;
-
-fn mouse_object_size(size: [f32; 2]) -> Vector3<f32>
+fn mouse_object_size(screen_size: [f32; 2], texture_size: Vector2<f32>) -> Vector3<f32>
 {
-    let size = Vector2::from(size);
-    let size = Vector2::repeat(DEFAULT_MOUSE_SIZE).component_div(&size);
+    let size = Vector2::from(screen_size);
+    let size = texture_size.component_div(&size);
 
     with_z(size, 1.0)
 }
@@ -802,7 +801,7 @@ pub struct GameState
     pub cooldown_fraction: f32,
     loot: Loot,
     screen_object: SolidObject,
-    mouse_object: SolidObject<ObjectVertex>,
+    mouse_object: Object,
     ui_camera: Camera,
     timestamp_query: TimestampQuery,
     shaders: ProgramShaders,
@@ -916,12 +915,14 @@ impl GameState
         let mouse_object = {
             let assets = assets.lock();
 
-            let scale = mouse_object_size(object_info.partial.size);
+            let texture = assets.texture_by_name("ui/cooldown_cursor.png").clone();
+            let scale = mouse_object_size(object_info.partial.size, texture.lock().size());
 
-            object_info.partial.object_factory.create_solid(
-                assets.model(assets.default_model(DefaultModel::Square)).clone(),
-                Transform{scale, ..Default::default()}
-            )
+            object_info.partial.object_factory.create(ObjectInfo{
+                model: assets.model(assets.default_model(DefaultModel::Square)).clone(),
+                texture,
+                transform: Transform{scale, ..Default::default()}
+            })
         };
 
         let ui = {
@@ -1380,9 +1381,11 @@ impl GameState
         {
             self.screen_object.update_buffers(info);
 
+            let scale = mouse_object_size(info.partial.size, self.mouse_object.texture().lock().size());
+
             self.mouse_object.set_transform(Transform{
                 position: with_z(self.mouse_position * 2.0 - Vector2::repeat(1.0), 0.0),
-                scale: mouse_object_size(info.partial.size),
+                scale,
                 ..Default::default()
             });
 
