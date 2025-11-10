@@ -58,6 +58,7 @@ use crate::{
         Parent,
         Anatomy,
         World,
+        player::StatId,
         anatomy::WINDED_OXYGEN,
         entity::ClientEntities
     }
@@ -567,14 +568,16 @@ impl Character
         (fastrand::f32() < crit_chance).then_some(2.0)
     }
 
-    fn held_attack_cooldown(&self) -> f32
+    fn held_attack_cooldown(&self, entities: &ClientEntities) -> Option<f32>
     {
-        2.0
+        let info = self.info.as_ref()?;
+
+        Some(2.0 / (1.0 + entities.player(info.this).map(|x| x.get_stat(StatId::Melee).level() as f32 * 0.08).unwrap_or(0.0)))
     }
 
-    fn bash_attack_cooldown(&self) -> f32
+    fn bash_attack_cooldown(&self, entities: &ClientEntities) -> Option<f32>
     {
-        self.held_attack_cooldown() * 0.8
+        self.held_attack_cooldown(entities).map(|x| x * 0.8)
     }
 
     pub fn bash_reachable(
@@ -811,7 +814,17 @@ impl Character
             let item_info = combined_info.items_info.get(item.id);
             let damage_scale = item.damage_scale().unwrap_or(1.0);
 
-            let info = self.info.as_ref().unwrap();
+            let info = some_or_value!(self.info.as_ref(), false);
+
+            let level = if let Some(player) = combined_info.entities.player(info.this)
+            {
+                player.get_stat(StatId::Throw).level()
+            } else
+            {
+                0
+            };
+
+            let level_buff = 1.0 + level as f32 * 0.1;
 
             let collider = item_collider();
 
@@ -829,12 +842,12 @@ impl Character
 
                 let mut physical: Physical = item_physical(item_info).into();
 
-                let mass = physical.inverse_mass.recip();
-
-                let throw_limit = 50.0 * mass;
-                let throw_amount = (strength * 2.0).min(throw_limit);
+                let throw_limit = 50.0 * item_info.mass * (1.0 + level as f32 * 0.01);
+                let throw_amount = (strength * 2.0 * (1.0 + level as f32 * 0.5)).min(throw_limit);
 
                 physical.add_force(direction * throw_amount);
+
+                let damage = item_info.poke_damage() * (damage_scale * level_buff);
 
                 EntityInfo{
                     physical: Some(physical),
@@ -850,8 +863,10 @@ impl Character
                     light: Some(item_info.lighting),
                     item: Some(item),
                     damaging: Some(DamagingInfo{
-                        damage: DamagingType::Mass(mass * damage_scale),
+                        damage: DamagingType::Mass(damage),
                         faction: Some(self.faction),
+                        source: Some(info.this),
+                        on_hit_gain: Some((StatId::Throw, 1.5)),
                         ..Default::default()
                     }.into()),
                     ..Default::default()
@@ -986,7 +1001,7 @@ impl Character
         };
 
         let mut lazy = some_or_return!(combined_info.entities.lazy_transform_mut_no_change(holding));
-        let swing_time = self.bash_attack_cooldown();
+        let swing_time = some_or_return!(self.bash_attack_cooldown(combined_info.entities));
 
         let new_rotation = self.current_hand_rotation();
 
@@ -1020,7 +1035,7 @@ impl Character
         } else
         {
             combined_info.entities.add_watcher(holding, Watcher{
-                kind: WatcherType::Lifetime((swing_time * 0.8).into()),
+                kind: WatcherType::Lifetime((swing_time.min(1.0) * 0.8).into()),
                 action: Box::new(move |entities, entity|
                 {
                     if let Some(mut target) = entities.target(entity)
@@ -1049,7 +1064,7 @@ impl Character
 
         self.stop_buffered(BufferedAction::Bash);
 
-        self.attack_cooldown = self.bash_attack_cooldown();
+        self.attack_cooldown = some_or_return!(self.bash_attack_cooldown(combined_info.entities));
 
         self.bash_side = self.bash_side.opposite();
 
@@ -1187,7 +1202,7 @@ impl Character
 
         let item = some_or_false!(self.held_item(combined_info));
 
-        self.attack_cooldown = self.held_attack_cooldown();
+        self.attack_cooldown = some_or_false!(self.held_attack_cooldown(combined_info.entities));
 
         self.consume_attack_oxygen(combined_info);
 
@@ -1287,12 +1302,20 @@ impl Character
 
         let info = some_or_false!(self.info.as_ref());
 
+        let level_buff = if let Some(player) = combined_info.entities.player(info.this)
+        {
+            1.0 + player.get_stat(StatId::Ranged).level() as f32 * 0.1
+        } else
+        {
+            1.0
+        };
+
         let source = Some(info.this);
         let start = combined_info.entities.transform(info.this).unwrap().position;
 
         let damage_buff = item.damage_scale().unwrap_or(1.0);
 
-        let damage = ranged.damage() * damage_buff;
+        let damage = ranged.damage() * damage_buff * level_buff;
 
         let info = RaycastInfo{
             pierce: Some(damage.as_ranged_pierce()),
@@ -1316,10 +1339,13 @@ impl Character
                 faction: Some(self.faction),
                 source,
                 ranged: true,
+                on_hit_gain: Some((StatId::Ranged, 0.5)),
                 ..Default::default()
             }.into()),
             ..Default::default()
         });
+
+        self.damage_held_durability(combined_info.entities);
 
         true
     }
@@ -1402,7 +1428,27 @@ impl Character
 
         let strength_scale = some_or_return!(self.newtons(combined_info)) * 0.05;
 
-        let damage_scale = strength_scale * self.mass_maxed(combined_info, item_info.mass) * damage_buff * crit.unwrap_or(1.0);
+        let mass_damage = self.mass_maxed(combined_info, item_info.mass);
+
+        let hands_attack = self.holding.is_none();
+
+        let level_buff = if let Some(player) = combined_info.entities.player(info.this)
+        {
+            let level = if hands_attack
+            {
+                player.get_stat(StatId::Melee).level()
+            } else
+            {
+                player.get_stat(StatId::Melee).level() + player.get_stat(StatId::Bash).level()
+            };
+
+            1.0 + level as f32 * 0.1
+        } else
+        {
+            1.0
+        };
+
+        let damage_scale = strength_scale * mass_damage * damage_buff * crit.unwrap_or(1.0) * level_buff;
         let damage = DamagePartial{
             data: (*item_info).clone().with_changed(|x| x.mass += hand_mass).bash_damage() * damage_scale,
             height: self.melee_height()
@@ -1439,6 +1485,7 @@ impl Character
                     knockback: 1.0,
                     faction: Some(self.faction),
                     source: Some(info.this),
+                    on_hit_gain: Some(if hands_attack { (StatId::Melee, 0.3) } else { (StatId::Bash, 0.5) }),
                     ..Default::default()
                 }.into()),
                 ..Default::default()
@@ -1473,7 +1520,19 @@ impl Character
 
         let strength_scale = some_or_return!(self.newtons(combined_info)) * 0.03;
 
-        let damage_scale = strength_scale * self.mass_maxed(combined_info, item_info.mass) * damage_buff * crit.unwrap_or(1.0);
+        let mass_damage = self.mass_maxed(combined_info, item_info.mass);
+
+        let level_buff = if let Some(player) = combined_info.entities.player(info.this)
+        {
+            let level = player.get_stat(StatId::Melee).level() + player.get_stat(StatId::Poke).level();
+
+            1.0 + level as f32 * 0.1
+        } else
+        {
+            1.0
+        };
+
+        let damage_scale = strength_scale * mass_damage * damage_buff * crit.unwrap_or(1.0) * level_buff;
         let damage = DamagePartial{
             data: item_info.clone().with_changed(|x| x.mass += hand_mass).poke_damage() * damage_scale,
             height: self.melee_height()
@@ -1509,6 +1568,7 @@ impl Character
                     knockback: 2.0,
                     faction: Some(self.faction),
                     source: Some(info.this),
+                    on_hit_gain: Some((StatId::Poke, 0.7)),
                     ..Default::default()
                 }.into()),
                 ..Default::default()

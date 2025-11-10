@@ -41,6 +41,7 @@ use crate::{
         AnyEntities,
         Entity,
         World,
+        player::StatId,
         enemy_creator::ENEMY_MASS,
         entity::{iterate_components_with, ClientEntities},
         world::{TILE_SIZE, TilePos}
@@ -85,11 +86,13 @@ pub enum DamagingKind
 pub struct DamagingResult
 {
     pub kind: DamagingKind,
+    pub this_entity: Entity,
     pub other_entity: Entity,
     pub damage_entry: Vector3<f32>,
     pub damage_exit: Option<Vector3<f32>>,
     pub angle: f32,
     pub ranged: bool,
+    pub on_hit_gain: Option<(StatId, f64)>,
     pub damage: DamagePartial
 }
 
@@ -246,6 +249,26 @@ pub fn damager<'a, 'b, 'c>(
 
                 flash_white(entities, entity);
 
+                if entities.enemy_exists(entity)
+                {
+                    if let Some((stat_id, amount)) = result.on_hit_gain
+                    {
+                        if let Some(mut player) = entities.player_mut(result.other_entity)
+                        {
+                            player.get_stat_mut(stat_id).add_experience(amount);
+
+                            match stat_id
+                            {
+                                StatId::Bash | StatId::Poke =>
+                                {
+                                    player.get_stat_mut(StatId::Melee).add_experience(amount * 0.3);
+                                },
+                                _ => ()
+                            }
+                        }
+                    }
+                }
+
                 if DebugConfig::is_enabled(DebugTool::DamagingPassedResults)
                 {
                     eprintln!("passed: {result:#?}");
@@ -305,7 +328,10 @@ pub fn damager<'a, 'b, 'c>(
 
         if !result.ranged
         {
-            reduce_durability(entities, textures, result.other_entity);
+            if !reduce_durability(entities, textures, result.this_entity)
+            {
+                reduce_durability(entities, textures, result.other_entity);
+            }
         }
     }
 }
@@ -387,11 +413,13 @@ fn damaging_raycasting(
 
         DamagingResult{
             kind,
+            this_entity: entity,
             other_entity,
             damage_entry,
             damage_exit,
             angle,
             ranged: damaging.ranged,
+            on_hit_gain: damaging.on_hit_gain,
             damage
         }
     }).collect()
@@ -533,11 +561,13 @@ fn damaging_colliding(
 
                 DamagingResult{
                     kind,
+                    this_entity: entity,
                     other_entity: source_entity,
                     damage_entry,
                     damage_exit,
                     angle,
                     ranged: damaging.ranged,
+                    on_hit_gain: damaging.on_hit_gain,
                     damage
                 }
             })
@@ -768,7 +798,7 @@ fn reduce_durability(
     entities: &ClientEntities,
     textures: &CommonTextures,
     entity: Entity
-)
+) -> bool
 {
     if let Some(mut item) = entities.item_mut(entity)
     {
@@ -782,12 +812,17 @@ fn reduce_durability(
                 ..Default::default()
             });
         }
+
+        return true;
     }
 
     if let Some(mut character) = entities.character_mut(entity)
     {
         character.damage_held_durability(entities);
+        return true;
     }
+
+    false
 }
 
 fn turn_towards_other(

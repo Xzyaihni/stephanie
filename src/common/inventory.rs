@@ -3,6 +3,7 @@ use std::ops::{Index, Deref, DerefMut};
 use serde::{Serialize, Deserialize};
 
 use crate::common::{
+    SimpleF32,
     ObjectsStore,
     Item,
     ItemsInfo,
@@ -63,7 +64,7 @@ impl<F: FnMut(&mut Inventory)> DerefMut for ItemMutRef<'_, F>
 pub struct Inventory
 {
     weight_limit: f32,
-    weight_total: f32,
+    weight_total: SimpleF32,
     items: ObjectsStore<Item>
 }
 
@@ -81,12 +82,12 @@ impl Inventory
 {
     pub fn new(weight_limit: f32) -> Self
     {
-        Self{weight_limit, weight_total: 0.0, items: ObjectsStore::new()}
+        Self{weight_limit, weight_total: 0.0.into(), items: ObjectsStore::new()}
     }
 
     fn inventory_updated(&mut self, info: &ItemsInfo)
     {
-        self.weight_total = self.items.iter().map(|(_, x)| info.get(x.id).mass).sum();
+        self.weight_total = self.items.iter().map(|(_, x)| info.get(x.id).mass).sum::<f32>().into();
     }
 
     pub fn set_weight_limit(&mut self, value: f32)
@@ -101,14 +102,14 @@ impl Inventory
 
     pub fn weight_total(&self) -> f32
     {
-        self.weight_total
+        *self.weight_total
     }
 
     pub fn weight_fraction(&self) -> Option<f32>
     {
         if self.weight_limit == 0.0 { return None; }
 
-        Some(self.weight_total / self.weight_limit)
+        Some(*self.weight_total / self.weight_limit)
     }
 
     pub fn encumbrance(&self) -> f32
@@ -121,7 +122,7 @@ impl Inventory
 
     pub fn push(&mut self, info: &ItemsInfo, item: Item) -> InventoryItem
     {
-        self.weight_total += info.get(item.id).mass;
+        *self.weight_total += info.get(item.id).mass;
 
         InventoryItem(self.items.push(item))
     }
@@ -148,10 +149,7 @@ impl Inventory
     {
         let value = self.items.remove(id.0);
 
-        if let Some(item) = value.as_ref()
-        {
-            self.weight_total -= info.get(item.id).mass;
-        }
+        self.inventory_updated(info);
 
         value
     }

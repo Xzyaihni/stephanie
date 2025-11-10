@@ -1,7 +1,6 @@
 use std::{
     fs::File,
-    path::{Path, PathBuf},
-    collections::HashMap
+    path::Path
 };
 
 use nalgebra::{Vector2, Vector3};
@@ -88,7 +87,6 @@ pub struct ItemInfoRaw
     mass: Option<f32>,
     durability: Option<f32>,
     lighting: Option<f32>,
-    groups: Vec<String>,
     texture: Option<String>
 }
 
@@ -129,11 +127,7 @@ impl ItemInfo
     {
         let texture_name = raw.texture.unwrap_or_else(||
         {
-            let folder: String = raw.groups.first().cloned().unwrap_or_default();
-
-            let path = PathBuf::from(folder).join(&raw.name);
-
-            path.to_string_lossy().into_owned()
+            raw.name.clone()
         });
 
         let texture = assets.map(|assets|
@@ -229,8 +223,7 @@ impl ItemInfo
 
 pub struct ItemsInfo
 {
-    generic_info: GenericInfo<ItemId, ItemInfo>,
-    groups: HashMap<String, Vec<ItemId>>
+    generic_info: GenericInfo<ItemId, ItemInfo>
 }
 
 impl ItemsInfo
@@ -238,9 +231,8 @@ impl ItemsInfo
     pub fn empty() -> Self
     {
         let generic_info = GenericInfo::new(Vec::new());
-        let groups = HashMap::new();
 
-        Self{generic_info, groups}
+        Self{generic_info}
     }
 
     pub fn parse(
@@ -253,26 +245,15 @@ impl ItemsInfo
 
         let items: ItemsInfoRaw = serde_json::from_reader(info).unwrap();
 
-        let mut groups: HashMap<String, Vec<ItemId>> = HashMap::new();
-
         let textures_root = textures_root.as_ref();
-        let items: Vec<_> = items.into_iter().enumerate().map(|(index, info_raw)|
+        let items: Vec<_> = items.into_iter().map(|info_raw|
         {
-            let id = ItemId(index);
-
-            info_raw.groups.iter().for_each(|group|
-            {
-                groups.entry(group.clone())
-                    .and_modify(|x| { x.push(id); })
-                    .or_insert(vec![id]);
-            });
-
             ItemInfo::from_raw(assets, textures_root, info_raw)
         }).collect();
 
         let generic_info = GenericInfo::new(items);
 
-        Self{generic_info, groups}
+        Self{generic_info}
     }
 
     pub fn id(&self, name: &str) -> ItemId
@@ -293,21 +274,6 @@ impl ItemsInfo
     pub fn items(&self) -> &[ItemInfo]
     {
         self.generic_info.items()
-    }
-
-    pub fn group(&self, name: &str) -> &[ItemId]
-    {
-        self.groups.get(name).map(|x|
-        {
-            let items: &[_] = x.as_ref();
-
-            items
-        }).unwrap_or_else(||
-        {
-            eprintln!("group named `{name}` doesnt exist");
-
-            &[]
-        })
     }
 
     pub fn random(&self) -> Item

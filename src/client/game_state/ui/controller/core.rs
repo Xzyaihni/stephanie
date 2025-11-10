@@ -163,6 +163,11 @@ impl<'a, Id: Idable> TreeInserter<'a, Id>
         self.tree_element().shared.borrow().screen_size
     }
 
+    pub fn pixels_size(&self, pixels: Vector2<f32>) -> Vector2<f32>
+    {
+        pixels / self.screen_size().max()
+    }
+
     fn persistent_element<T>(&self, f: impl FnOnce(Option<&Element<Id>>) -> T) -> T
     {
         let element = self.tree_element();
@@ -1750,12 +1755,6 @@ impl<Id: Idable> Controller<Id>
     pub fn screen_size(&self) -> Vector2<f32>
     {
         self.shared.borrow().screen_size
-    }
-
-    #[allow(dead_code)]
-    pub fn pixels_size(&self, pixels: Vector2<f32>) -> Vector2<f32>
-    {
-        pixels / self.screen_size().max()
     }
 
     #[allow(dead_code)]

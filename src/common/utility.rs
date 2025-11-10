@@ -384,6 +384,41 @@ pub fn f32_to_range(range: RangeInclusive<f32>, value: f32) -> f32
     value * (range.end() - range.start()) + range.start()
 }
 
+pub fn float_format(precision: u32, value: f32) -> String
+{
+    let whole = value.trunc();
+    let rest = value.fract();
+
+    fn needs_precision(check: u32, value: f32) -> bool
+    {
+        (0.5..10.0).contains(&(value * 10_u32.pow(check) as f32))
+    }
+
+    fn precision_needed(most: u32, value: f32) -> u32
+    {
+        if most == 0
+        {
+            0
+        } else if needs_precision(most, value)
+        {
+            most
+        } else
+        {
+            precision_needed(most - 1, value)
+        }
+    }
+
+    let needed = precision_needed(precision, rest);
+
+    if needed == 0
+    {
+        whole.to_string()
+    } else
+    {
+        format!("{:.*}", needed as usize, rest + whole)
+    }
+}
+
 pub fn random_f32(range: RangeInclusive<f32>) -> f32
 {
     f32_to_range(range, fastrand::f32())
@@ -1104,5 +1139,16 @@ mod tests
                 x
             });
         }
+    }
+
+    #[test]
+    fn float_formatting()
+    {
+        assert_eq!(float_format(1, 3.01), "3");
+        assert_eq!(float_format(2, 3.01), "3.01");
+        assert_eq!(float_format(2, 0.003), "0");
+        assert_eq!(float_format(2, 0.006), "0.01");
+        assert_eq!(float_format(2, 0.20), "0.2");
+        assert_eq!(float_format(2, 0.60), "0.6");
     }
 }

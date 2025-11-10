@@ -9,9 +9,11 @@ use yanyaengine::Transform;
 use crate::common::{
     angle_between,
     damage::*,
+    TILE_SIZE,
     Faction,
     Physical,
     Entity,
+    player::StatId,
     raycast::RaycastInfo,
     world::TilePos
 };
@@ -34,7 +36,7 @@ pub enum DamageTimes
 pub enum DamagingType
 {
     None,
-    Mass(f32),
+    Mass(DamageType),
     Collision{angle: f32, damage: DamagePartial},
     Raycast{info: RaycastInfo, damage: DamagePartial, start: Vector3<f32>, target: Vector3<f32>, scale_pierce: Option<f32>}
 }
@@ -82,15 +84,13 @@ impl DamagingType
         {
             Self::None => None,
             Self::Raycast{..} => None,
-            Self::Mass(mass) =>
+            Self::Mass(damage) =>
             {
                 let info = collision()?;
 
-                let force = info.relative_velocity? * *mass;
-
                 let height = DamageHeight::from_z(info.relative_height);
 
-                let kind = DamageType::Blunt(force.magnitude());
+                let kind = *damage * (info.relative_velocity?.magnitude() / TILE_SIZE);
                 let damage = DamagePartial{
                     data: kind,
                     height
@@ -118,6 +118,7 @@ pub struct DamagingInfo
     pub source: Option<Entity>,
     pub knockback: f32,
     pub faction: Option<Faction>,
+    pub on_hit_gain: Option<(StatId, f64)>,
     pub ranged: bool
 }
 
@@ -133,6 +134,7 @@ impl Default for DamagingInfo
             source: None,
             knockback: 1.0,
             faction: None,
+            on_hit_gain: None,
             ranged: false
         }
     }
@@ -169,6 +171,7 @@ pub struct Damaging
     pub knockback: f32,
     pub source: Option<Entity>,
     pub ranged: bool,
+    pub on_hit_gain: Option<(StatId, f64)>,
     times: DamageTimes,
     already_damaged: Vec<DamagedId>
 }
@@ -186,6 +189,7 @@ impl From<DamagingInfo> for Damaging
             knockback: info.knockback,
             source: info.source,
             ranged: info.ranged,
+            on_hit_gain: info.on_hit_gain,
             already_damaged: Vec::new()
         }
     }

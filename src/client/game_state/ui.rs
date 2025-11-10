@@ -14,6 +14,8 @@ use image::RgbImage;
 
 use nalgebra::{vector, Vector2};
 
+use strum::IntoEnumIterator;
+
 use yanyaengine::{
     FontsContainer,
     Assets,
@@ -46,6 +48,7 @@ use crate::{
         anatomy::*,
         colors::*,
         lazy_transform::*,
+        float_format,
         f32_to_range,
         Side1d,
         Sprite,
@@ -57,6 +60,7 @@ use crate::{
         ItemInfo,
         ItemsInfo,
         OnChangeInfo,
+        player::StatId,
         entity::ClientEntities,
         world::{TILE_SIZE, TilePos}
     }
@@ -201,7 +205,7 @@ pub enum WindowPart
     Title(TitlePart),
     Inventory(InventoryPart),
     ItemInfo(ItemInfoPart),
-    Stats,
+    Stats(StatsPart),
     Anatomy(AnatomyPart)
 }
 
@@ -210,6 +214,22 @@ pub enum SeparatorPart
 {
     Outer,
     Inner
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum StatsPart
+{
+    Body,
+    KillsText,
+    Stat(StatStatPart, StatId)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum StatStatPart
+{
+    Panel,
+    Body,
+    Text
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -897,15 +917,17 @@ impl WindowKind
 
                     if weight_limit != f32::INFINITY
                     {
+                        add_padding_horizontal(bottom_bar, UiSize::Pixels(ITEM_PADDING).into());
+
                         bottom_bar.update(id(InventoryPart::Weight), UiElement{
                             texture: UiTexture::Text(TextInfo{
                                 font_size,
                                 text: TextBlocks(vec![
                                     TextInfoBlock{
                                         color: if is_encumbered { RED_COLOR.into() } else { ACCENT_COLOR.into() },
-                                        text: format!("{weight:.2}").into()
+                                        text: float_format(2, weight).into()
                                     },
-                                    TextInfoBlock{color: ACCENT_COLOR.into(), text: format!("/{weight_limit:.2} kg").into()}
+                                    TextInfoBlock{color: ACCENT_COLOR.into(), text: format!("/{} kg", float_format(2, weight_limit)).into()}
                                 ].into()),
                                 outline: None
                             }),
@@ -955,11 +977,11 @@ impl WindowKind
                 }
 
                 blocks.push(TextInfoBlock{color: ACCENT_COLOR.into(), text: "weight: ".into()});
-                blocks.push(TextInfoBlock{color: YELLOW_COLOR.into(), text: format!("{:.2}", item_info.mass).into()});
+                blocks.push(TextInfoBlock{color: YELLOW_COLOR.into(), text: float_format(2, item_info.mass).into()});
                 blocks.push(TextInfoBlock{color: ACCENT_COLOR.into(), text: " kg\n".into()});
 
                 blocks.push(TextInfoBlock{color: ACCENT_COLOR.into(), text: "size: ".into()});
-                blocks.push(TextInfoBlock{color: YELLOW_COLOR.into(), text: format!("{:.2}", (item_info.scale_scalar() * 100.0)).into()});
+                blocks.push(TextInfoBlock{color: YELLOW_COLOR.into(), text: float_format(2, item_info.scale_scalar() * 100.0).into()});
                 blocks.push(TextInfoBlock{color: ACCENT_COLOR.into(), text: " cm\n".into()});
 
                 if !item.buffs.is_empty()
@@ -998,8 +1020,17 @@ impl WindowKind
             },
             Self::Stats(owner) =>
             {
+                let id = {
+                    let window_id = window_id.clone();
+                    move |part|
+                    {
+                        UiId::Window(window_id.clone(), WindowPart::Stats(part))
+                    }
+                };
+
                 let title = name_of(*owner);
-                let body = with_titlebar(parent, info, title, true, &[]);
+                let vertical_body = with_titlebar(parent, info, title, true, &[]);
+                vertical_body.element().children_layout = UiLayout::Vertical;
 
                 let player = if let Some(x) = info.entities.player(*owner)
                 {
@@ -1010,9 +1041,15 @@ impl WindowKind
                     return;
                 };
 
+                let full_body_width = SCROLLBAR_HEIGHT * 1.5;
+                let body = vertical_body.update(id(StatsPart::Body), UiElement{
+                    width: UiSize::Pixels(full_body_width).into(),
+                    ..Default::default()
+                });
+
                 add_padding_horizontal(body, UiSize::Pixels(BODY_PADDING).into());
 
-                body.update(UiId::Window(window_id.clone(), WindowPart::Stats), UiElement{
+                body.update(id(StatsPart::KillsText), UiElement{
                     texture: UiTexture::Text(TextInfo{
                         font_size: SMALL_TEXT_SIZE,
                         text: TextBlocks(vec![
@@ -1024,7 +1061,70 @@ impl WindowKind
                     ..UiElement::fit_content()
                 });
 
-                add_padding_horizontal(body, UiSize::Pixels(BODY_PADDING).into());
+                let start_padding = BODY_PADDING;
+                let end_padding = SMALL_PADDING;
+                StatId::iter().enumerate().for_each(|(index, stat_id)|
+                {
+                    if index != 0
+                    {
+                        add_padding_vertical(vertical_body, UiSize::Pixels(TINY_PADDING).into());
+                    }
+
+                    let stat = player.get_stat(stat_id);
+                    let amount = stat.progress();
+                    let level = stat.level();
+
+                    let panel = vertical_body.update(id(StatsPart::Stat(StatStatPart::Panel, stat_id)), UiElement{
+                        width: UiSize::Rest(1.0).into(),
+                        ..Default::default()
+                    });
+
+                    add_padding_horizontal(panel, UiSize::Pixels(start_padding).into());
+
+                    let body = panel.update(id(StatsPart::Stat(StatStatPart::Body , stat_id)), UiElement{
+                        texture: UiTexture::Custom("solid.png".into()),
+                        fill: Some(UiElementFill{
+                            full: ACCENT_COLOR,
+                            empty: ACCENT_COLOR_FADED,
+                            amount,
+                            horizontal: true
+                        }),
+                        width: UiSize::Rest(1.0).into(),
+                        ..Default::default()
+                    });
+
+                    let text_info = TextInfo{
+                        font_size: SMALL_TEXT_SIZE,
+                        text: TextBlocks::single([0; 3], format!("{level} {}", stat_id.name()).into()),
+                        ..Default::default()
+                    };
+
+                    let screen_size = body.screen_size().max();
+                    let text_width = info.fonts.calculate_bounds(&text_info, &Vector2::repeat(screen_size)).x;
+
+                    let body_width = (full_body_width - start_padding - end_padding) / screen_size;
+
+                    let text_fraction = text_width / body_width;
+
+                    let padding = TINY_PADDING;
+
+                    let text_amount = ((amount - (padding / screen_size) / body_width) / text_fraction).clamp(0.0, 1.0);
+
+                    add_padding_horizontal(body, UiSize::Pixels(padding).into());
+
+                    body.update(id(StatsPart::Stat(StatStatPart::Text, stat_id)), UiElement{
+                        texture: UiTexture::Text(text_info),
+                        fill: Some(UiElementFill{
+                            full: BACKGROUND_COLOR,
+                            empty: BACKGROUND_COLOR.with_added_lightness(-15.0),
+                            amount: text_amount,
+                            horizontal: true
+                        }),
+                        ..UiElement::fit_content()
+                    });
+
+                    add_padding_horizontal(panel, UiSize::Pixels(end_padding).into());
+                });
             },
             Self::Anatomy(owner) =>
             {

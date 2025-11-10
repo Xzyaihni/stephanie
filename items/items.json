@@ -4,24 +4,21 @@
         "rarity_rolls": false,
         "damage_scale": 0.5,
         "comfort": 2.0,
-        "mass": 0.3,
-        "groups": ["special"]
+        "mass": 0.3
     },
     {
         "name": "zob hand",
         "rarity_rolls": false,
         "damage_scale": 1.0,
         "comfort": 2.0,
-        "mass": 0.3,
-        "groups": ["special"]
+        "mass": 0.3
     },
     {
         "name": "smol hand",
         "rarity_rolls": false,
         "damage_scale": 1.0,
         "comfort": 2.0,
-        "mass": 0.3,
-        "groups": ["special"]
+        "mass": 0.3
     },
     {
         "name": "bigy hand",
@@ -30,8 +27,7 @@
         "comfort": 2.0,
         "sharpness": 0.1,
         "side_sharpness": 0.1,
-        "mass": 0.3,
-        "groups": ["special"]
+        "mass": 0.3
     },
     {
         "name": "branch",
@@ -39,119 +35,103 @@
         "sharpness": 0.1,
         "side_sharpness": 0.05,
         "mass": 0.4,
-        "durability": 1.1,
-        "groups": ["trash"]
+        "durability": 1.1
     },
     {
         "name": "baseball bat",
         "comfort": 1.5,
         "mass": 0.95,
-        "durability": 1.5,
-        "groups": ["weapons"]
+        "durability": 1.5
     },
     {
         "name": "rock",
         "comfort": 0.6,
         "mass": 0.5,
-        "durability": 1.5,
-        "groups": ["trash"]
+        "durability": 1.5
     },
     {
         "name": "boulder",
         "comfort": 0.3,
         "mass": 5.0,
-        "durability": 5.0,
-        "groups": ["trash"]
+        "durability": 5.0
     },
     {
         "name": "pipe",
         "comfort": 1.0,
         "mass": 0.7,
-        "durability": 2.0,
-        "groups": ["trash"]
+        "durability": 2.0
     },
     {
         "name": "bottle",
         "damage_scale": 0.5,
         "comfort": 0.5,
         "mass": 0.02,
-        "durability": 0.2,
-        "groups": ["trash", "utility"]
+        "durability": 0.2
     },
     {
         "name": "axe",
         "comfort": 1.1,
         "side_sharpness": 0.5,
         "mass": 2.2,
-        "durability": 2.0,
-        "groups": ["weapons"]
+        "durability": 2.0
     },
     {
         "name": "sledgehammer",
         "comfort": 1.1,
         "mass": 9.0,
-        "durability": 2.0,
-        "groups": ["weapons"]
+        "durability": 2.0
     },
     {
         "name": "hammer",
         "comfort": 1.4,
         "side_sharpness": 0.3,
         "mass": 0.9,
-        "durability": 1.5,
-        "groups": ["utility", "weapons"]
+        "durability": 1.5
     },
     {
         "name": "scissors",
         "comfort": 0.3,
         "sharpness": 0.4,
         "mass": 0.1,
-        "durability": 0.8,
-        "groups": ["utility"]
+        "durability": 0.8
     },
     {
         "name": "kitchen knife",
         "comfort": 1.4,
         "sharpness": 0.9,
         "side_sharpness": 0.9,
-        "mass": 0.15,
-        "groups": ["utility"]
+        "mass": 0.15
     },
     {
         "name": "meat cleaver",
         "comfort": 1.4,
         "side_sharpness": 0.8,
         "mass": 0.25,
-        "durability": 1.5,
-        "groups": ["utility"]
+        "durability": 1.5
     },
     {
         "name": "duct tape",
         "mass": 0.1,
-        "durability": 0.2,
-        "groups": ["utility"]
+        "durability": 0.2
     },
     {
         "name": "short stick",
         "comfort": 1.5,
         "sharpness": 0.03,
         "mass": 0.2,
-        "durability": 0.8,
-        "groups": ["weapons", "utility"]
+        "durability": 0.8
     },
     {
         "name": "stick",
         "comfort": 1.5,
         "sharpness": 0.03,
-        "mass": 0.3,
-        "groups": ["weapons"]
+        "mass": 0.3
     },
     {
         "name": "plank",
         "comfort": 0.5,
         "mass": 1.0,
-        "durability": 1.5,
-        "groups": ["trash", "utility"]
+        "durability": 1.5
     },
     {
         "name": "cloth",
@@ -159,8 +139,7 @@
         "damage_scale": 0.01,
         "comfort": 0.5,
         "mass": 0.02,
-        "durability": 0.1,
-        "groups": ["trash", "utility"]
+        "durability": 0.1
     },
     {
         "name": "glass shard",
@@ -168,8 +147,7 @@
         "sharpness": 0.9,
         "side_sharpness": 0.9,
         "mass": 0.05,
-        "durability": 0.1,
-        "groups": ["trash"]
+        "durability": 0.1
     },
     {
         "name": "metal shard",
@@ -177,8 +155,7 @@
         "sharpness": 0.3,
         "side_sharpness": 0.3,
         "mass": 0.2,
-        "durability": 1.5,
-        "groups": ["trash"]
+        "durability": 1.5
     },
     {
         "name": "ceramic shard",
@@ -186,8 +163,7 @@
         "sharpness": 0.4,
         "side_sharpness": 0.4,
         "mass": 0.15,
-        "durability": 0.8,
-        "groups": ["trash"]
+        "durability": 0.8
     },
     {
         "name": "glock",
@@ -198,8 +174,7 @@
             }
         },
         "comfort": 0.7,
-        "mass": 0.5,
-        "groups": ["weapons"]
+        "mass": 0.5
     },
     {
         "name": "heal pills",
@@ -211,15 +186,13 @@
         "rarity_rolls": false,
         "comfort": 0.5,
         "mass": 0.05,
-        "durability": 0.2,
-        "groups": ["drugs"]
+        "durability": 0.2
     },
     {
         "name": "lamp",
         "comfort": 0.5,
         "mass": 0.4,
         "durability": 0.5,
-        "lighting": 2.0,
-        "groups": ["utility"]
+        "lighting": 2.0
     }
 ]
