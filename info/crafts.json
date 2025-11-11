@@ -1,0 +1,63 @@
+[
+    {
+        "produces": ["glass spear"],
+        "requires": [
+            {"WithTag": "sticklike"},
+            {"WithTag": "adhesive"},
+            {"Item": "glass shard"}
+        ]
+    },
+    {
+        "produces": ["ceramic spear"],
+        "requires": [
+            {"WithTag": "sticklike"},
+            {"WithTag": "adhesive"},
+            {"Item": "ceramic shard"}
+        ]
+    },
+    {
+        "produces": ["metal spear"],
+        "requires": [
+            {"WithTag": "sticklike"},
+            {"WithTag": "adhesive"},
+            {"Item": "metal shard"}
+        ]
+    },
+    {
+        "produces": ["rock spear"],
+        "requires": [
+            {"WithTag": "sticklike"},
+            {"WithTag": "adhesive"},
+            {"Item": "sharp rock"}
+        ]
+    },
+    {
+        "produces": ["sharp rock"],
+        "requires": [
+            {"WithTag": "hammerlike"},
+            {"Item": "rock"}
+        ]
+    },
+    {
+        "produces": ["stick"],
+        "requires": [
+            {"WithTag": "adhesive"},
+            {"Item": "short stick"},
+            {"Item": "short stick"}
+        ]
+    },
+    {
+        "produces": ["stick"],
+        "requires": [
+            {"WithTag": "slicey"},
+            {"Item": "plank"}
+        ]
+    },
+    {
+        "produces": ["short stick"],
+        "requires": [
+            {"WithTag": "slicey"},
+            {"Item": "stick"}
+        ]
+    }
+]

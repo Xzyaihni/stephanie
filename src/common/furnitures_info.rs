@@ -1,6 +1,6 @@
 use std::{
     fs::File,
-    path::Path
+    path::{Path, PathBuf}
 };
 
 use serde::Deserialize;
@@ -136,18 +136,17 @@ impl FurnituresInfo
 
     pub fn parse(
         assets: &Assets,
-        textures_root: impl AsRef<Path>,
-        info: impl AsRef<Path>
+        textures_root: PathBuf,
+        info: PathBuf
     ) -> Self
     {
-        let info = some_or_value!(with_error(File::open(info.as_ref())), Self::empty());
+        let info = some_or_value!(with_error(File::open(info)), Self::empty());
 
         let furnitures: FurnituresInfoRaw = some_or_value!(with_error(serde_json::from_reader(info)), Self::empty());
 
-        let textures_root = textures_root.as_ref();
         let furnitures: Vec<_> = furnitures.into_iter().map(|info_raw|
         {
-            FurnitureInfo::from_raw(assets, textures_root, info_raw)
+            FurnitureInfo::from_raw(assets, &textures_root, info_raw)
         }).collect();
 
         GenericInfo::new(furnitures)

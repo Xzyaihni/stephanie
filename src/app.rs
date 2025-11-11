@@ -51,6 +51,7 @@ use crate::{
         FurnituresInfo,
         CharactersInfo,
         CharacterInfo,
+        Crafts,
         sender_loop::{waiting_loop, DELTA_TIME}
     }
 };
@@ -345,8 +346,8 @@ impl YanyaApp for App
 
         let items_info = Arc::new(ItemsInfo::parse(
             Some(&partial_info.object_info.assets.lock()),
-            "items",
-            "items/items.json"
+            "items".into(),
+            "items/items.json".into()
         ));
 
         let mut characters_info = CharactersInfo::new();
@@ -360,21 +361,24 @@ impl YanyaApp for App
             &partial_info.object_info.assets.lock(),
             &mut characters_info,
             &items_info,
-            "enemy",
-            "info/enemies.json"
+            "enemy".into(),
+            "info/enemies.json".into()
         );
 
         let furnitures_info = FurnituresInfo::parse(
             &partial_info.object_info.assets.lock(),
-            "furniture",
-            "info/furnitures.json"
+            "furniture".into(),
+            "info/furnitures.json".into()
         );
+
+        let crafts = Crafts::parse(&items_info, "info/crafts.json".into());
 
         let data_infos = DataInfos{
             items_info,
             enemies_info: Arc::new(enemies_info),
             furnitures_info: Arc::new(furnitures_info),
             characters_info: Arc::new(characters_info),
+            crafts: Arc::new(crafts),
             player_character
         };
 

@@ -60,6 +60,8 @@ use crate::{
         ItemInfo,
         ItemsInfo,
         OnChangeInfo,
+        DataInfos,
+        crafting::{CraftId, Crafts},
         player::StatId,
         entity::ClientEntities,
         world::{TILE_SIZE, TilePos}
@@ -79,7 +81,25 @@ const MISSING_PART_COLOR: Lcha = Lcha{l: 50.0, a: 0.3, ..BLACK_COLOR};
 
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum UiId
+pub struct ControlUiId(UiId);
+
+impl From<UiId> for ControlUiId
+{
+    fn from(x: UiId) -> Self
+    {
+        Self(x)
+    }
+}
+
+impl Idable for ControlUiId
+{
+    fn screen() -> Self { Self(UiId::screen()) }
+
+    fn padding(x: u32) -> Self { Self(UiId::padding(x)) }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+enum UiId
 {
     Screen,
     Loading(LoadingPart),
@@ -98,7 +118,7 @@ pub enum UiId
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum DeathScreenPart
+enum DeathScreenPart
 {
     Panel,
     Body,
@@ -109,7 +129,7 @@ pub enum DeathScreenPart
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum HealthPart
+enum HealthPart
 {
     OuterPanel,
     InnerPanel,
@@ -127,7 +147,7 @@ pub enum HealthPart
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum OxygenPartId
+enum OxygenPartId
 {
     Outer,
     Inner,
@@ -135,14 +155,14 @@ pub enum OxygenPartId
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum PausedPart
+enum PausedPart
 {
     Cover,
     Text
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum LoadingPart
+enum LoadingPart
 {
     Cover,
     Body,
@@ -152,14 +172,14 @@ pub enum LoadingPart
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum SeenNotificationPart
+enum SeenNotificationPart
 {
     Body,
     Fill
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum AnatomyNotificationPart
+enum AnatomyNotificationPart
 {
     Body,
     Part(ChangedPart)
@@ -173,7 +193,7 @@ impl Idable for UiId
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum NotificationPart
+enum NotificationPart
 {
     Icon,
     Body,
@@ -181,14 +201,14 @@ pub enum NotificationPart
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum PopupPart
+enum PopupPart
 {
     Body,
     Button(u32, PopupButtonPart)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum PopupButtonPart
+enum PopupButtonPart
 {
     Body,
     Text,
@@ -196,7 +216,7 @@ pub enum PopupButtonPart
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum WindowPart
+enum WindowPart
 {
     Panel,
     Shadow,
@@ -206,18 +226,19 @@ pub enum WindowPart
     Inventory(InventoryPart),
     ItemInfo(ItemInfoPart),
     Stats(StatsPart),
+    Crafts(CraftsPart),
     Anatomy(AnatomyPart)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum SeparatorPart
+enum SeparatorPart
 {
     Outer,
     Inner
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum StatsPart
+enum StatsPart
 {
     Body,
     KillsText,
@@ -225,7 +246,7 @@ pub enum StatsPart
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum StatStatPart
+enum StatStatPart
 {
     Panel,
     Body,
@@ -233,22 +254,37 @@ pub enum StatStatPart
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum AnatomyPart
+enum CraftsPart
+{
+    LeftPanel,
+    RightPanel,
+    Craft(CraftId, CraftsCraftPart)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum CraftsCraftPart
+{
+    Panel,
+    Icon(u32),
+    Text
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum AnatomyPart
 {
     BodyPart(ChangedPart),
     Tooltip(AnatomyTooltipPart)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum ItemInfoPart
+enum ItemInfoPart
 {
     Text,
-    ImageBody,
-    Image
+    Icon(IconPart)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum AnatomyTooltipPart
+enum AnatomyTooltipPart
 {
     Panel,
     Title,
@@ -259,7 +295,7 @@ pub enum AnatomyTooltipPart
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum BarDisplayPart
+enum BarDisplayPart
 {
     Body,
     Text,
@@ -268,7 +304,7 @@ pub enum BarDisplayPart
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum BarId
+enum BarId
 {
     Health,
     Brain(Side1d, BrainId)
@@ -287,7 +323,7 @@ impl Display for BarId
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum InventoryPart
+enum InventoryPart
 {
     VerticalBody,
     Body,
@@ -298,7 +334,7 @@ pub enum InventoryPart
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum ItemPart
+enum ItemPart
 {
     Indicator,
     Body,
@@ -306,15 +342,15 @@ pub enum ItemPart
     Name
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum IconPart
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum IconPart
 {
     Body,
     Picture
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum TitlePart
+enum TitlePart
 {
     Body,
     Text,
@@ -322,24 +358,26 @@ pub enum TitlePart
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum UiIdWindow
+enum UiIdWindow
 {
     Inventory(Entity),
     ItemInfo(Item),
     Stats(Entity),
+    Crafts,
     Anatomy(Entity)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum UiIdTitleButton
+enum UiIdTitleButton
 {
     Anatomy(UiIdButtonPart),
     Stats(UiIdButtonPart),
+    Crafts(UiIdButtonPart),
     Close(UiIdButtonPart)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum UiIdButtonPart
+enum UiIdButtonPart
 {
     Body,
     Icon
@@ -433,24 +471,23 @@ fn handle_button(
 fn draw_item_image(
     parent: UiParentElement,
     sprite: Sprite,
-    id: UiId,
-    inner_id: UiId,
+    id: impl Fn(IconPart) -> UiId,
     size: UiElementSize<UiId>
 )
 {
     let aspect = sprite.aspect();
 
-    let image = parent.update(id.clone(), UiElement{
+    let image = parent.update(id(IconPart::Body), UiElement{
         width: size.clone(),
         height: size,
         children_layout: if aspect.x == 1.0 { UiLayout::Horizontal } else { UiLayout::Vertical },
         ..Default::default()
     });
 
-    image.update(inner_id, UiElement{
+    image.update(id(IconPart::Picture), UiElement{
         texture: UiTexture::CustomId(sprite.id),
-        width: UiSize::CopyElement(UiDirection::Horizontal, aspect.x, id.clone()).into(),
-        height: UiSize::CopyElement(UiDirection::Vertical, aspect.y, id).into(),
+        width: UiSize::CopyElement(UiDirection::Horizontal, aspect.x, id(IconPart::Body)).into(),
+        height: UiSize::CopyElement(UiDirection::Vertical, aspect.y, id(IconPart::Body)).into(),
         ..Default::default()
     });
 }
@@ -492,7 +529,7 @@ struct UiTitleButton
     action: Rc<dyn Fn(&mut GameState)>
 }
 
-pub struct UiInventory
+struct UiInventory
 {
     sorter: InventorySorter,
     entity: Entity,
@@ -556,6 +593,15 @@ impl UiInventory
                         game_state.ui.borrow_mut().create_window(WindowKind::Stats(entity));
                     })
                 });
+
+                self.buttons.push(UiTitleButton{
+                    id: UiIdTitleButton::Crafts,
+                    texture: "ui/crafts_button.png".to_owned(),
+                    action: Rc::new(move |game_state|
+                    {
+                        game_state.ui.borrow_mut().create_window(WindowKind::Crafts);
+                    })
+                });
             }
 
             self.list.items = self.items(info);
@@ -564,11 +610,27 @@ impl UiInventory
     }
 }
 
+struct UiCrafts
+{
+    list: UiList<CraftId>
+}
+
+impl UiCrafts
+{
+    fn new(crafts: &Crafts) -> Self
+    {
+        let list = UiList::from(crafts.ids().collect::<Vec<CraftId>>());
+
+        Self{list}
+    }
+}
+
 enum WindowKind
 {
     Inventory(UiInventory),
     ItemInfo(Item),
     Stats(Entity),
+    Crafts,
     Anatomy(Entity)
 }
 
@@ -605,7 +667,7 @@ impl WindowKind
                 ..Default::default()
             });
 
-            if info.controls.observe_action_held(&titlebar_id)
+            if info.controls.observe_action_held(&ControlUiId(titlebar_id))
             {
                 info.dragging_currently = true;
             }
@@ -884,8 +946,7 @@ impl WindowKind
                     draw_item_image(
                         body,
                         item.texture,
-                        id(ItemPart::Icon(IconPart::Body)),
-                        id(ItemPart::Icon(IconPart::Picture)),
+                        |part| id(ItemPart::Icon(part)),
                         icon_size.into()
                     );
 
@@ -1000,8 +1061,7 @@ impl WindowKind
                 draw_item_image(
                     body,
                     item_info.texture,
-                    id(ItemInfoPart::ImageBody),
-                    id(ItemInfoPart::Image),
+                    |part| id(ItemInfoPart::Icon(part)),
                     size
                 );
 
@@ -1125,6 +1185,28 @@ impl WindowKind
 
                     add_padding_horizontal(panel, UiSize::Pixels(end_padding).into());
                 });
+            },
+            Self::Crafts =>
+            {
+                let body = with_titlebar(parent, info, "crafting".to_owned(), true, &[]);
+
+                let id = {
+                    let window_id = window_id.clone();
+                    move |part|
+                    {
+                        UiId::Window(window_id.clone(), WindowPart::Crafts(part))
+                    }
+                };
+
+                let left_panel = body.update(id(CraftsPart::LeftPanel), UiElement::default());
+
+                if let Some(_) = Some(2)
+                {
+                    let right_panel = body.update(id(CraftsPart::RightPanel), UiElement{
+                        children_layout: UiLayout::Vertical,
+                        ..Default::default()
+                    });
+                }
             },
             Self::Anatomy(owner) =>
             {
@@ -1327,7 +1409,7 @@ impl WindowKind
         let titlebar_id = UiId::Window(this_window_id.clone(), WindowPart::Title(TitlePart::Body));
         if !info.mouse_taken
             && parent.input_of(&titlebar_id).is_mouse_inside()
-            && info.controls.poll_action_held(&titlebar_id)
+            && info.controls.poll_action_held(&ControlUiId(titlebar_id))
         {
             if info.dragging_window.is_none()
             {
@@ -1343,6 +1425,7 @@ impl WindowKind
             Self::Inventory(inventory) => UiIdWindow::Inventory(inventory.entity),
             Self::ItemInfo(item) => UiIdWindow::ItemInfo(item.clone()),
             Self::Stats(owner) => UiIdWindow::Stats(*owner),
+            Self::Crafts => UiIdWindow::Crafts,
             Self::Anatomy(owner) => UiIdWindow::Anatomy(*owner)
         }
     }
@@ -1452,10 +1535,12 @@ impl Window
     }
 }
 
-struct UpdateInfo<'a, 'b, 'c, 'd>
+struct UpdateInfo<'a, 'b, 'c, 'd, 'e>
 {
     entities: &'a ClientEntities,
     items_info: &'a ItemsInfo,
+    crafts: &'a Crafts,
+    ui_crafts: &'e mut UiCrafts,
     sliced_textures: &'a HashMap<String, SlicedTexture>,
     fonts: &'a FontsContainer,
     anatomy_locations: &'a UiAnatomyLocations,
@@ -1464,7 +1549,7 @@ struct UpdateInfo<'a, 'b, 'c, 'd>
     dragging_currently: bool,
     mouse_position: Vector2<f32>,
     mouse_taken: bool,
-    controls: &'b mut UiControls<UiId>,
+    controls: &'b mut UiControls<ControlUiId>,
     user_receiver: &'c mut UiReceiver,
     dt: f32
 }
@@ -1538,6 +1623,8 @@ impl HealthPanelInfo
 pub struct Ui
 {
     items_info: Arc<ItemsInfo>,
+    crafts: Arc<Crafts>,
+    ui_crafts: UiCrafts,
     assets: Arc<Mutex<Assets>>,
     fonts: Rc<FontsContainer>,
     sliced_textures: Rc<HashMap<String, SlicedTexture>>,
@@ -1567,7 +1654,7 @@ pub struct Ui
 impl Ui
 {
     pub fn new(
-        items_info: Arc<ItemsInfo>,
+        data_infos: &DataInfos,
         info: &mut ObjectCreateInfo,
         entities: &mut ClientEntities,
         ui_entities: UiEntities,
@@ -1579,7 +1666,9 @@ impl Ui
         let controller = Controller::new(&info.partial);
 
         let this = Self{
-            items_info,
+            items_info: data_infos.items_info.clone(),
+            crafts: data_infos.crafts.clone(),
+            ui_crafts: UiCrafts::new(&data_infos.crafts),
             assets: info.partial.assets.clone(),
             fonts: info.partial.builder_wrapper.fonts().clone(),
             sliced_textures,
@@ -1833,7 +1922,7 @@ impl Ui
 
     fn update_popup(
         &mut self,
-        controls: &mut UiControls<UiId>,
+        controls: &mut UiControls<ControlUiId>,
         popup_taken: bool
     )
     {
@@ -1948,7 +2037,7 @@ impl Ui
         Some(position_absolute / camera_transform.scale.xy().max())
     }
 
-    pub fn update(&mut self, entities: &ClientEntities, controls: &mut UiControls<UiId>, dt: f32)
+    pub fn update(&mut self, entities: &ClientEntities, controls: &mut UiControls<ControlUiId>, dt: f32)
     {
         if let Some(progress) = self.loading
         {
@@ -2626,6 +2715,8 @@ impl Ui
             let mut info = UpdateInfo{
                 entities,
                 items_info: &self.items_info,
+                crafts: &self.crafts,
+                ui_crafts: &mut self.ui_crafts,
                 sliced_textures: &self.sliced_textures,
                 fonts: &self.fonts,
                 anatomy_locations: &self.anatomy_locations,

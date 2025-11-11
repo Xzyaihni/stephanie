@@ -139,8 +139,8 @@ pub fn text_input_handle<Id: Idable>(
     changed
 }
 
-pub fn scrollbar_handle<Id: Idable>(
-    controls: &mut UiControls<Id>,
+pub fn scrollbar_handle<Id: Idable, ControlId: From<Id> + Idable>(
+    controls: &mut UiControls<ControlId>,
     scrollbar: TreeInserter<Id>,
     scrollbar_id: &Id,
     bar_size: f32,
@@ -154,10 +154,10 @@ pub fn scrollbar_handle<Id: Idable>(
 
         if scrollbar.is_mouse_inside() && !taken
         {
-            controls.poll_action_held(scrollbar_id);
+            controls.poll_action_held(&ControlId::from(scrollbar_id.clone()));
         }
 
-        if controls.observe_action_held(scrollbar_id)
+        if controls.observe_action_held(&ControlId::from(scrollbar_id.clone()))
         {
             let value = if bar_size > 0.99
             {

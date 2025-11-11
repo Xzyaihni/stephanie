@@ -57,7 +57,8 @@ pub use sides::{Side1d, Side2d, Side3d};
 pub use drug::Drug;
 pub use loot::{Loot, LootState};
 pub use item::{Item, ItemRarity, ItemBuff};
-pub use items_info::{ItemInfo, ItemId, ItemsInfo, Ranged};
+pub use items_info::{ItemInfo, ItemId, ItemTag, ItemsInfo, Ranged};
+pub use crafting::Crafts;
 
 pub use inventory::{InventorySorter, InventoryItem, Inventory};
 
@@ -145,6 +146,7 @@ pub mod drug;
 pub mod loot;
 pub mod item;
 pub mod items_info;
+pub mod crafting;
 
 pub mod inventory;
 
@@ -547,6 +549,7 @@ pub struct DataInfos
     pub enemies_info: Arc<EnemiesInfo>,
     pub furnitures_info: Arc<FurnituresInfo>,
     pub characters_info: Arc<CharactersInfo>,
+    pub crafts: Arc<Crafts>,
     pub player_character: CharacterId
 }
 

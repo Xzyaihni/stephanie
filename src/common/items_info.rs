@@ -1,6 +1,7 @@
 use std::{
     fs::File,
-    path::Path
+    path::{Path, PathBuf},
+    collections::HashMap
 };
 
 use nalgebra::{Vector2, Vector3};
@@ -12,6 +13,8 @@ use yanyaengine::Assets;
 use crate::{
     client::game_state::UsageKind,
     common::{
+        with_error,
+        some_or_value,
         with_z,
         ENTITY_SCALE,
         generic_info::*,
@@ -26,6 +29,7 @@ use crate::{
 pub const DEFAULT_ITEM_DURABILITY: f32 = 25.0;
 
 define_info_id!{ItemId}
+define_info_id!{ItemTag}
 
 #[derive(Debug, Clone, Deserialize)]
 pub enum Ranged
@@ -87,6 +91,7 @@ pub struct ItemInfoRaw
     mass: Option<f32>,
     durability: Option<f32>,
     lighting: Option<f32>,
+    tags: Option<Vec<String>>,
     texture: Option<String>
 }
 
@@ -106,6 +111,7 @@ pub struct ItemInfo
     pub mass: f32,
     pub durability: f32,
     pub lighting: Light,
+    pub tags: Vec<ItemTag>,
     pub texture: Sprite
 }
 
@@ -121,6 +127,7 @@ impl ItemInfo
 {
     fn from_raw(
         assets: Option<&Assets>,
+        tags: &mut ItemTags,
         textures_root: &Path,
         raw: ItemInfoRaw
     ) -> Self
@@ -150,6 +157,7 @@ impl ItemInfo
             mass: raw.mass.unwrap_or(1.0),
             durability: raw.durability.unwrap_or(1.0) * DEFAULT_ITEM_DURABILITY,
             lighting: raw.lighting.map(|strength| Light{strength, ..Default::default()}).unwrap_or_default(),
+            tags: raw.tags.map(|x| x.into_iter().map(|x| tags.insert(x)).collect()).unwrap_or_default(),
             texture
         }
     }
@@ -221,9 +229,36 @@ impl ItemInfo
     }
 }
 
+struct ItemTags
+{
+    ids: HashMap<String, ItemTag>
+}
+
+impl ItemTags
+{
+    fn new() -> Self
+    {
+        Self{ids: HashMap::new()}
+    }
+
+    fn insert(&mut self, name: String) -> ItemTag
+    {
+        let tag = ItemTag(self.ids.len());
+        self.ids.insert(name, tag);
+
+        tag
+    }
+
+    fn get(&self, name: &str) -> Option<ItemTag>
+    {
+        self.ids.get(name).copied()
+    }
+}
+
 pub struct ItemsInfo
 {
-    generic_info: GenericInfo<ItemId, ItemInfo>
+    generic_info: GenericInfo<ItemId, ItemInfo>,
+    tags: ItemTags
 }
 
 impl ItemsInfo
@@ -231,34 +266,46 @@ impl ItemsInfo
     pub fn empty() -> Self
     {
         let generic_info = GenericInfo::new(Vec::new());
+        let tags = ItemTags::new();
 
-        Self{generic_info}
+        Self{generic_info, tags}
     }
 
     pub fn parse(
         assets: Option<&Assets>,
-        textures_root: impl AsRef<Path>,
-        info: impl AsRef<Path>
+        textures_root: PathBuf,
+        info: PathBuf
     ) -> Self
     {
-        let info = File::open(info.as_ref()).unwrap();
+        let info = some_or_value!(with_error(File::open(info)), Self::empty());
 
-        let items: ItemsInfoRaw = serde_json::from_reader(info).unwrap();
+        let items: ItemsInfoRaw = serde_json::from_reader(info).unwrap_or_else(|err|
+        {
+            eprintln!("error parsing items: {err}");
 
-        let textures_root = textures_root.as_ref();
+            Vec::new()
+        });
+
+        let mut tags = ItemTags::new();
+
         let items: Vec<_> = items.into_iter().map(|info_raw|
         {
-            ItemInfo::from_raw(assets, textures_root, info_raw)
+            ItemInfo::from_raw(assets, &mut tags, &textures_root, info_raw)
         }).collect();
 
         let generic_info = GenericInfo::new(items);
 
-        Self{generic_info}
+        Self{generic_info, tags}
     }
 
     pub fn id(&self, name: &str) -> ItemId
     {
         self.generic_info.id(name)
+    }
+
+    pub fn get_tag(&self, name: &str) -> Option<ItemTag>
+    {
+        self.tags.get(name)
     }
 
     pub fn get_id(&self, name: &str) -> Option<ItemId>

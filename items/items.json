@@ -35,31 +35,36 @@
         "sharpness": 0.1,
         "side_sharpness": 0.05,
         "mass": 0.4,
-        "durability": 1.1
+        "durability": 1.1,
+        "tags": ["sticklike"]
     },
     {
         "name": "baseball bat",
         "comfort": 1.5,
         "mass": 0.95,
-        "durability": 1.5
+        "durability": 1.5,
+        "tags": ["sticklike"]
     },
     {
         "name": "rock",
         "comfort": 0.6,
         "mass": 0.5,
-        "durability": 1.5
+        "durability": 1.5,
+        "tags": ["hammerlike"]
     },
     {
         "name": "boulder",
         "comfort": 0.3,
         "mass": 5.0,
-        "durability": 5.0
+        "durability": 5.0,
+        "tags": ["hammerlike"]
     },
     {
         "name": "pipe",
         "comfort": 1.0,
         "mass": 0.7,
-        "durability": 2.0
+        "durability": 2.0,
+        "tags": ["sticklike"]
     },
     {
         "name": "bottle",
@@ -73,46 +78,53 @@
         "comfort": 1.1,
         "side_sharpness": 0.5,
         "mass": 2.2,
-        "durability": 2.0
+        "durability": 2.0,
+        "tags": ["hammerlike"]
     },
     {
         "name": "sledgehammer",
         "comfort": 1.1,
         "mass": 9.0,
-        "durability": 2.0
+        "durability": 2.0,
+        "tags": ["hammerlike"]
     },
     {
         "name": "hammer",
         "comfort": 1.4,
         "side_sharpness": 0.3,
         "mass": 0.9,
-        "durability": 1.5
+        "durability": 1.5,
+        "tags": ["hammerlike"]
     },
     {
         "name": "scissors",
         "comfort": 0.3,
         "sharpness": 0.4,
         "mass": 0.1,
-        "durability": 0.8
+        "durability": 0.8,
+        "tags": ["slicey"]
     },
     {
         "name": "kitchen knife",
         "comfort": 1.4,
         "sharpness": 0.9,
         "side_sharpness": 0.9,
-        "mass": 0.15
+        "mass": 0.15,
+        "tags": ["slicey"]
     },
     {
         "name": "meat cleaver",
         "comfort": 1.4,
         "side_sharpness": 0.8,
         "mass": 0.25,
-        "durability": 1.5
+        "durability": 1.5,
+        "tags": ["slicey"]
     },
     {
         "name": "duct tape",
         "mass": 0.1,
-        "durability": 0.2
+        "durability": 0.2,
+        "tags": ["adhesive"]
     },
     {
         "name": "short stick",
@@ -125,7 +137,8 @@
         "name": "stick",
         "comfort": 1.5,
         "sharpness": 0.03,
-        "mass": 0.3
+        "mass": 0.3,
+        "tags": ["sticklike"]
     },
     {
         "name": "plank",

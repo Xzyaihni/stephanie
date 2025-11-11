@@ -106,8 +106,8 @@ pub enum TextboxPartId
     Cursor
 }
 
-pub fn textbox_update<Id: Idable>(
-    controls: &mut UiControls<Id>,
+pub fn textbox_update<Id: Idable, ControlId: Idable>(
+    controls: &mut UiControls<ControlId>,
     fonts: &FontsContainer,
     id: fn(TextboxPartId) -> Id,
     body: TreeInserter<Id>,
@@ -197,9 +197,9 @@ pub enum UiListPart
     Bar
 }
 
-pub struct UiListInfo<'a, Id>
+pub struct UiListInfo<'a, Id, ControlsId=Id>
 {
-    pub controls: &'a mut UiControls<Id>,
+    pub controls: &'a mut UiControls<ControlsId>,
     pub mouse_taken: bool,
     pub item_height: f32,
     pub padding: f32,
@@ -234,12 +234,12 @@ impl<T> UiList<T>
         Self::from(Vec::new())
     }
 
-    pub fn update<Id: Idable>(
+    pub fn update<Id: Idable, ControlId: From<Id> + Idable>(
         &mut self,
         parent: TreeInserter<Id>,
         id: impl Fn(UiListPart) -> Id,
-        mut info: UiListInfo<Id>,
-        mut update_item: impl FnMut(&mut UiListInfo<Id>, TreeInserter<Id>, &T, bool)
+        mut info: UiListInfo<Id, ControlId>,
+        mut update_item: impl FnMut(&mut UiListInfo<Id, ControlId>, TreeInserter<Id>, &T, bool)
     ) -> Option<usize>
     {
         assert!(parent.element().children_layout.is_horizontal());
@@ -325,7 +325,8 @@ impl<T> UiList<T>
                 ..Default::default()
             });
 
-            if (bar.is_mouse_inside() || info.controls.observe_action_held(&scrollbar_id)) && !info.mouse_taken
+            if (bar.is_mouse_inside() || info.controls.observe_action_held(&ControlId::from(scrollbar_id)))
+                && !info.mouse_taken
             {
                 bar.element().mix.as_mut().unwrap().color = ACCENT_COLOR;
             }

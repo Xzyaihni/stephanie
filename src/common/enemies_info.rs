@@ -121,18 +121,17 @@ impl EnemiesInfo
         assets: &Assets,
         characters_info: &mut CharactersInfo,
         items_info: &ItemsInfo,
-        textures_root: impl AsRef<Path>,
-        info: impl AsRef<Path>
+        textures_root: PathBuf,
+        info: PathBuf
     ) -> Self
     {
-        let info = some_or_value!(with_error(File::open(info.as_ref())), Self::empty());
+        let info = some_or_value!(with_error(File::open(info)), Self::empty());
 
         let enemies: EnemiesInfoRaw = some_or_value!(with_error(serde_json::from_reader(info)), Self::empty());
 
-        let textures_root = textures_root.as_ref();
         let enemies: Vec<_> = enemies.into_iter().map(|info_raw|
         {
-            EnemyInfo::from_raw(assets, characters_info, items_info, textures_root, info_raw)
+            EnemyInfo::from_raw(assets, characters_info, items_info, &textures_root, info_raw)
         }).collect();
 
         GenericInfo::new(enemies)

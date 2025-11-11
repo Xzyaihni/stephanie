@@ -593,6 +593,7 @@ mod tests
             EnemiesInfo,
             CharactersInfo,
             CharacterId,
+            Crafts,
             message::MessageBuffer
         }
     };
@@ -637,6 +638,7 @@ mod tests
                     enemies_info: Arc::new(EnemiesInfo::empty()),
                     furnitures_info: Arc::new(FurnituresInfo::empty()),
                     characters_info: Arc::new(CharactersInfo::new()),
+                    crafts: Arc::new(Crafts::empty()),
                     player_character: CharacterId::from(0)
                 },
                 "default".to_owned()

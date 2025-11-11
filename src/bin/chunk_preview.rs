@@ -470,12 +470,12 @@ impl AssetsDependent
             })
         };
 
-        let furniture = FurnituresInfo::parse(&info.assets.lock(), "normal/furniture", "info/furnitures.json");
-        let items = ItemsInfo::parse(Some(&info.assets.lock()), "normal/items", "items/items.json");
+        let furniture = FurnituresInfo::parse(&info.assets.lock(), "normal/furniture".into(), "info/furnitures.json".into());
+        let items = ItemsInfo::parse(Some(&info.assets.lock()), "normal/items".into(), "items/items.json".into());
 
         let enemies = {
             let mut characters = CharactersInfo::new();
-            let enemies = EnemiesInfo::parse(&info.assets.lock(), &mut characters, &items, "normal/enemy", "info/enemies.json");
+            let enemies = EnemiesInfo::parse(&info.assets.lock(), &mut characters, &items, "normal/enemy".into(), "info/enemies.json".into());
 
             (characters, enemies)
         };

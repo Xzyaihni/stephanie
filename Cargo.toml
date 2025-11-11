@@ -24,7 +24,11 @@ serde_with = "3.12.0"
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(stimings)'] }
 
+[profile.release]
+strip = true
+
 [profile.dev]
+debug = false
 opt-level = 1
 
 [profile.release-debug]
