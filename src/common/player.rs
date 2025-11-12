@@ -77,7 +77,8 @@ pub enum StatId
     Bash,
     Poke,
     Throw,
-    Ranged
+    Ranged,
+    Crafting
 }
 
 impl StatId
@@ -90,7 +91,8 @@ impl StatId
             Self::Bash => "bash",
             Self::Poke => "poke",
             Self::Throw => "throw",
-            Self::Ranged => "ranged"
+            Self::Ranged => "ranged",
+            Self::Crafting => "crafting"
         }
     }
 }

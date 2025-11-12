@@ -85,6 +85,13 @@
             (car xs)
             (find f (cdr xs)))))
 
+(define (find-index f xs)
+    (if (null? xs)
+        '()
+        (if (f (car xs))
+            0
+            (+ 1 (find-index f (cdr xs))))))
+
 (define (for-each f xs)
     (if (null? xs)
         '()

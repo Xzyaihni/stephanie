@@ -22,7 +22,6 @@ use crate::{
     },
     common::{
         with_z,
-        some_or_unexpected_return,
         some_or_return,
         some_or_value,
         some_or_false,
@@ -511,9 +510,8 @@ impl Character
 
         let mut inventory = some_or_return!(entities.inventory_mut(info.this));
 
-        if some_or_unexpected_return!(inventory.get_mut(&entities.infos().items_info, held)).damage_durability()
+        if inventory.damage_durability(&entities.infos().items_info, held)
         {
-            inventory.remove(&entities.infos().items_info, held);
             self.set_holding(None);
         }
     }

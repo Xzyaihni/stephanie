@@ -53,6 +53,15 @@
         "tags": ["hammerlike"]
     },
     {
+        "name": "sharp rock",
+        "comfort": 0.6,
+        "mass": 0.4,
+        "durability": 1.3,
+        "sharpness": 0.5,
+        "side_sharpness": 0.3,
+        "tags": ["slicey", "hammerlike"]
+    },
+    {
         "name": "boulder",
         "comfort": 0.3,
         "mass": 5.0,
@@ -79,7 +88,51 @@
         "side_sharpness": 0.5,
         "mass": 2.2,
         "durability": 2.0,
-        "tags": ["hammerlike"]
+        "tags": ["slicey", "hammerlike"]
+    },
+    {
+        "name": "axe head",
+        "comfort": 0.2,
+        "side_sharpness": 0.5,
+        "mass": 1.8,
+        "durability": 3.0,
+        "tags": ["slicey", "hammerlike"]
+    },
+    {
+        "name": "rock spear",
+        "comfort": 1.0,
+        "mass": 2.0,
+        "durability": 1.5,
+        "sharpness": 0.5,
+        "side_sharpness": 0.3,
+        "tags": ["slicey"]
+    },
+    {
+        "name": "metal spear",
+        "comfort": 1.0,
+        "mass": 2.3,
+        "durability": 1.6,
+        "sharpness": 0.5,
+        "side_sharpness": 0.3,
+        "tags": ["slicey"]
+    },
+    {
+        "name": "ceramic spear",
+        "comfort": 1.0,
+        "mass": 1.8,
+        "durability": 1.3,
+        "sharpness": 0.4,
+        "side_sharpness": 0.2,
+        "tags": ["slicey"]
+    },
+    {
+        "name": "glass spear",
+        "comfort": 1.0,
+        "mass": 1.5,
+        "durability": 0.5,
+        "sharpness": 0.8,
+        "side_sharpness": 0.7,
+        "tags": ["slicey"]
     },
     {
         "name": "sledgehammer",
@@ -89,12 +142,27 @@
         "tags": ["hammerlike"]
     },
     {
+        "name": "sledgehammer head",
+        "comfort": 0.2,
+        "mass": 8.0,
+        "durability": 3.0,
+        "tags": ["hammerlike"]
+    },
+    {
         "name": "hammer",
         "comfort": 1.4,
         "side_sharpness": 0.3,
         "mass": 0.9,
         "durability": 1.5,
         "tags": ["hammerlike"]
+    },
+    {
+        "name": "hammer head",
+        "comfort": 0.2,
+        "side_sharpness": 0.3,
+        "mass": 0.7,
+        "durability": 3.0,
+        "tags": ["slicey", "hammerlike"]
     },
     {
         "name": "scissors",
@@ -160,7 +228,8 @@
         "sharpness": 0.9,
         "side_sharpness": 0.9,
         "mass": 0.05,
-        "durability": 0.1
+        "durability": 0.1,
+        "tags": ["slicey"]
     },
     {
         "name": "metal shard",
@@ -168,7 +237,8 @@
         "sharpness": 0.3,
         "side_sharpness": 0.3,
         "mass": 0.2,
-        "durability": 1.5
+        "durability": 1.5,
+        "tags": ["slicey"]
     },
     {
         "name": "ceramic shard",
@@ -176,7 +246,8 @@
         "sharpness": 0.4,
         "side_sharpness": 0.4,
         "mass": 0.15,
-        "durability": 0.8
+        "durability": 0.8,
+        "tags": ["slicey"]
     },
     {
         "name": "glock",

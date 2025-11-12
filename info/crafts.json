@@ -2,62 +2,124 @@
     {
         "produces": ["glass spear"],
         "requires": [
-            {"WithTag": "sticklike"},
-            {"WithTag": "adhesive"},
-            {"Item": "glass shard"}
+            {"item": {"WithTag": "sticklike"}},
+            {"item": {"WithTag": "adhesive"}},
+            {"item": {"Item": "glass shard"}}
         ]
     },
     {
         "produces": ["ceramic spear"],
         "requires": [
-            {"WithTag": "sticklike"},
-            {"WithTag": "adhesive"},
-            {"Item": "ceramic shard"}
+            {"item": {"WithTag": "sticklike"}},
+            {"item": {"WithTag": "adhesive"}},
+            {"item": {"Item": "ceramic shard"}}
         ]
     },
     {
         "produces": ["metal spear"],
         "requires": [
-            {"WithTag": "sticklike"},
-            {"WithTag": "adhesive"},
-            {"Item": "metal shard"}
+            {"item": {"WithTag": "sticklike"}},
+            {"item": {"WithTag": "adhesive"}},
+            {"item": {"Item": "metal shard"}}
         ]
     },
     {
         "produces": ["rock spear"],
         "requires": [
-            {"WithTag": "sticklike"},
-            {"WithTag": "adhesive"},
-            {"Item": "sharp rock"}
+            {"item": {"WithTag": "sticklike"}},
+            {"item": {"WithTag": "adhesive"}},
+            {"item": {"Item": "sharp rock"}}
         ]
     },
     {
         "produces": ["sharp rock"],
         "requires": [
-            {"WithTag": "hammerlike"},
-            {"Item": "rock"}
+            {"item": {"WithTag": "hammerlike"}, "consume": false},
+            {"item": {"Item": "rock"}}
         ]
     },
     {
+        "name": "glue short sticks",
         "produces": ["stick"],
         "requires": [
-            {"WithTag": "adhesive"},
-            {"Item": "short stick"},
-            {"Item": "short stick"}
+            {"item": {"WithTag": "adhesive"}},
+            {"item": {"Item": "short stick"}},
+            {"item": {"Item": "short stick"}}
         ]
     },
     {
+        "name": "carve plank",
         "produces": ["stick"],
         "requires": [
-            {"WithTag": "slicey"},
-            {"Item": "plank"}
+            {"item": {"WithTag": "slicey"}, "consume": false},
+            {"item": {"Item": "plank"}}
         ]
     },
     {
+        "name": "carve stick",
         "produces": ["short stick"],
         "requires": [
-            {"WithTag": "slicey"},
-            {"Item": "stick"}
+            {"item": {"WithTag": "slicey"}, "consume": false},
+            {"item": {"Item": "stick"}}
+        ]
+    },
+    {
+        "name": "carve branch",
+        "produces": ["stick"],
+        "requires": [
+            {"item": {"WithTag": "slicey"}, "consume": false},
+            {"item": {"Item": "branch"}}
+        ]
+    },
+    {
+        "name": "disassemble axe",
+        "produces": ["axe head", "stick"],
+        "requires": [
+            {"item": {"WithTag": "slicey"}, "consume": false},
+            {"item": {"Item": "axe"}}
+        ]
+    },
+    {
+        "name": "disassemble hammer",
+        "produces": ["hammer head", "stick"],
+        "requires": [
+            {"item": {"WithTag": "slicey"}, "consume": false},
+            {"item": {"Item": "hammer"}}
+        ]
+    },
+    {
+        "name": "disassemble sledgehammer",
+        "produces": ["sledgehammer head", "stick"],
+        "requires": [
+            {"item": {"WithTag": "slicey"}, "consume": false},
+            {"item": {"Item": "sledgehammer"}}
+        ]
+    },
+    {
+        "produces": ["axe"],
+        "requires": [
+            {"item": {"WithTag": "hammerlike"}, "consume": false},
+            {"item": {"WithTag": "adhesive"}},
+            {"item": {"Item": "axe head"}},
+            {"item": {"Item": "stick"}}
+        ]
+    },
+    {
+        "produces": ["hammer"],
+        "requires": [
+            {"item": {"WithTag": "hammerlike"}, "consume": false},
+            {"item": {"WithTag": "adhesive"}},
+            {"item": {"Item": "hammer head"}},
+            {"item": {"Item": "stick"}}
+        ]
+    },
+    {
+        "produces": ["sledgehammer"],
+        "requires": [
+            {"item": {"WithTag": "hammerlike"}, "consume": false},
+            {"item": {"WithTag": "adhesive"}},
+            {"item": {"Item": "sledgehammer head"}},
+            {"item": {"Item": "stick"}}
         ]
     }
 ]

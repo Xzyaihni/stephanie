@@ -231,27 +231,37 @@ impl ItemInfo
 
 struct ItemTags
 {
-    ids: HashMap<String, ItemTag>
+    ids: HashMap<String, ItemTag>,
+    names: Vec<String>
 }
 
 impl ItemTags
 {
     fn new() -> Self
     {
-        Self{ids: HashMap::new()}
+        Self{ids: HashMap::new(), names: Vec::new()}
     }
 
     fn insert(&mut self, name: String) -> ItemTag
     {
-        let tag = ItemTag(self.ids.len());
-        self.ids.insert(name, tag);
+        self.ids.get(&name).copied().unwrap_or_else(||
+        {
+            let tag = ItemTag(self.names.len());
+            self.ids.insert(name.clone(), tag);
+            self.names.push(name);
 
-        tag
+            tag
+        })
     }
 
     fn get(&self, name: &str) -> Option<ItemTag>
     {
         self.ids.get(name).copied()
+    }
+
+    fn tag_name(&self, tag: ItemTag) -> &str
+    {
+        &self.names[tag.0]
     }
 }
 
@@ -301,6 +311,11 @@ impl ItemsInfo
     pub fn id(&self, name: &str) -> ItemId
     {
         self.generic_info.id(name)
+    }
+
+    pub fn tag_name(&self, tag: ItemTag) -> &str
+    {
+        self.tags.tag_name(tag)
     }
 
     pub fn get_tag(&self, name: &str) -> Option<ItemTag>

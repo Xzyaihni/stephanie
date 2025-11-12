@@ -145,6 +145,24 @@ impl Inventory
         Some(ItemMutRef{inventory: self, on_drop, id})
     }
 
+    pub fn damage_durability(&mut self, info: &ItemsInfo, id: InventoryItem) -> bool
+    {
+        if let Some(item) = self.items.get_mut(id.0)
+        {
+            let destroyed = item.damage_durability();
+
+            if destroyed
+            {
+                self.remove(info, id);
+            }
+
+            destroyed
+        } else
+        {
+            false
+        }
+    }
+
     pub fn remove(&mut self, info: &ItemsInfo, id: InventoryItem) -> Option<Item>
     {
         let value = self.items.remove(id.0);
@@ -152,6 +170,13 @@ impl Inventory
         self.inventory_updated(info);
 
         value
+    }
+
+    pub fn remove_many(&mut self, info: &ItemsInfo, ids: impl Iterator<Item=InventoryItem>)
+    {
+        ids.for_each(|id| { self.items.remove(id.0); });
+
+        self.inventory_updated(info);
     }
 
     pub fn is_empty(&self) -> bool
