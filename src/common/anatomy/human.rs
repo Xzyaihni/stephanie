@@ -36,6 +36,7 @@ use super::{
     MuscleHealthGetter,
     BoneHealthGetter,
     AccessedGetter,
+    OrgansDamagerGetter,
     SimpleHealth,
     ChangedKind,
     ChangedPart
@@ -848,6 +849,32 @@ impl HumanAnatomy
         }
     }
 
+
+    pub fn bone_heal(&mut self, amount: u32) -> bool
+    {
+        (0..amount).any(|_|
+        {
+            HumanPartId::iter().any(|id|
+            {
+                if let Some(bone) = self.this.body.get_part_mut::<BoneHealthGetter>(id)
+                {
+                    if bone.is_zero()
+                    {
+                        bone.heal_remainder(bone.health.max * 0.1);
+
+                        true
+                    } else
+                    {
+                        false
+                    }
+                } else
+                {
+                    false
+                }
+            })
+        })
+    }
+
     fn speed_scale(&self) -> Speeds
     {
         let brain = some_or_return!(self.brain());
@@ -1050,51 +1077,55 @@ impl Damageable for HumanAnatomy
 
     fn fall_damage(&mut self, damage: f32)
     {
-        let start_damage = Damage{
-            data: DamageType::Blunt(damage),
-            direction: DamageDirection{
-                side: Side2d::random(),
-                height: DamageHeight::Bottom
-            }
-        };
-
         if DebugConfig::is_enabled(DebugTool::PrintDamage)
         {
-            eprintln!("fall damage {start_damage:?}");
+            eprintln!("fall damage {damage}");
         }
 
         let side = if fastrand::bool() { Side1d::Left } else { Side1d::Right };
         let opposite_side = side.opposite();
 
-        let _ = [
-            (HumanPartId::Foot(side), 0.9),
-            (HumanPartId::Foot(opposite_side), 0.9),
-            (HumanPartId::Calf(side), 0.5),
-            (HumanPartId::Calf(opposite_side), 0.5),
-            (HumanPartId::Thigh(side), 0.5),
-            (HumanPartId::Thigh(opposite_side), 0.5),
-            (HumanPartId::Pelvis, 0.9),
-            (HumanPartId::Spine, 0.2),
-            (HumanPartId::Hand(side), 0.9),
-            (HumanPartId::Hand(opposite_side), 0.9),
-            (HumanPartId::Forearm(side), 0.5),
-            (HumanPartId::Forearm(opposite_side), 0.5),
-            (HumanPartId::Arm(side), 0.5),
-            (HumanPartId::Arm(opposite_side), 0.5),
-            (HumanPartId::Torso, 0.9),
-            (HumanPartId::Head, 0.0)
-        ].into_iter().fold(start_damage, |damage, (id, damping)|
+        [
+            (HumanPartId::Foot(side), 0.2, 0.95),
+            (HumanPartId::Foot(opposite_side), 0.2, 0.95),
+            (HumanPartId::Calf(side), 1.0, 0.8),
+            (HumanPartId::Calf(opposite_side), 1.0, 0.8),
+            (HumanPartId::Thigh(side), 1.0, 0.5),
+            (HumanPartId::Thigh(opposite_side), 1.0, 0.5),
+            (HumanPartId::Pelvis, 1.0, 0.9),
+            (HumanPartId::Spine, 1.0, 0.2),
+            (HumanPartId::Hand(side), 1.0, 0.9),
+            (HumanPartId::Hand(opposite_side), 1.0, 0.9),
+            (HumanPartId::Forearm(side), 1.0, 0.5),
+            (HumanPartId::Forearm(opposite_side), 1.0, 0.5),
+            (HumanPartId::Arm(side), 1.0, 0.5),
+            (HumanPartId::Arm(opposite_side), 1.0, 0.5),
+            (HumanPartId::Torso, 1.0, 0.9),
+            (HumanPartId::Head, 1.0, 0.2)
+        ].into_iter().fold(damage, |damage, (id, scale, damping)|
         {
-            let id = AnatomyId::Part(id);
-
-            if self.this.body.get::<()>(id).is_none()
+            if let Some(muscle) = self.this.body.get_part_mut::<MuscleHealthGetter>(id)
             {
-                return damage;
+                let min_health = muscle.health.max * 0.1;
+                let max_change = (muscle.health.current - min_health).max(0.0);
+                let change = (damage * scale * 0.5).min(max_change);
+
+                muscle.health.subtract_hp(change);
             }
 
-            self.this.body.get_mut::<DamagerGetter>(id).map(|x| x(damage.clone()));
+            if let Some(bone) = self.this.body.get_part_mut::<BoneHealthGetter>(id)
+            {
+                let organ_damage = bone.simple_pierce(damage * scale);
+                if let Some(organ_damager) = self.this.body.get_part_mut::<OrgansDamagerGetter>(id)
+                {
+                    organ_damager(Side2d::random(), DamageType::Blunt(organ_damage.unwrap_or(0.0)));
+                }
 
-            damage * damping
+                damage * damping
+            } else
+            {
+                damage
+            }
         });
 
         self.on_damage();

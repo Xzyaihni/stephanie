@@ -150,6 +150,7 @@ enum OxygenPartId
 {
     Outer,
     Inner,
+    BarPanel,
     Bar
 }
 
@@ -2624,6 +2625,20 @@ impl Ui
                 BLUE_COLOR
             };
 
+            inner.update(UiId::Oxygen(OxygenPartId::BarPanel), UiElement{
+                texture: UiTexture::Custom("ui/oxygen_bar_panel.png".into()),
+                mix: Some(MixColorLch{only_alpha: true, ..MixColorLch::color(Lcha{a: 1.0, ..BLACK_COLOR})}),
+                animation: Animation{
+                    mix: Some(MixAnimation{
+                        close_mix: Some(Lcha{a: 0.0, ..BLACK_COLOR}),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+                position: UiPosition::Inherit,
+                ..UiElement::fit_content()
+            });
+
             inner.update(UiId::Oxygen(OxygenPartId::Bar), UiElement{
                 texture: UiTexture::Custom("ui/oxygen_bar.png".into()),
                 fill: Some(UiElementFill{
@@ -2640,6 +2655,7 @@ impl Ui
                     }),
                     ..Default::default()
                 },
+                position: UiPosition::Inherit,
                 ..UiElement::fit_content()
             });
 

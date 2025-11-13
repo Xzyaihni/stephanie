@@ -1419,6 +1419,10 @@ impl<'a> PlayerContainer<'a>
                                 }
 
                                 !is_full
+                            },
+                            Drug::BoneHeal{amount} =>
+                            {
+                                anatomy.bone_heal(*amount)
                             }
                         };
 

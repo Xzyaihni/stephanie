@@ -273,6 +273,17 @@
         "durability": 0.2
     },
     {
+        "name": "splint",
+        "drug": {
+            "BoneHeal": {
+                "amount": 1
+            }
+        },
+        "comfort": 0.5,
+        "mass": 0.3,
+        "durability": 0.5
+    },
+    {
         "name": "lamp",
         "comfort": 0.5,
         "mass": 0.4,

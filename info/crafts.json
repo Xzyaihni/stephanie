@@ -121,5 +121,12 @@
             {"item": {"Item": "sledgehammer head"}},
             {"item": {"Item": "stick"}}
         ]
+    },
+    {
+        "produces": ["splint"],
+        "requires": [
+            {"item": {"Item": "duct tape"}},
+            {"item": {"Item": "stick"}}
+        ]
     }
 ]

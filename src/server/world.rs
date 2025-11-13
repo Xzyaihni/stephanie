@@ -627,7 +627,7 @@ mod tests
                 host: true
             });
 
-            let tilemap = TileMap::parse("tiles/tiles.json", "textures/tiles/")
+            let tilemap = TileMap::parse("info/tiles.json", "textures/tiles/")
                 .unwrap();
 
             let mut world = World::new(

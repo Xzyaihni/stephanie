@@ -13,6 +13,7 @@ use crate::common::{
 
 use super::super::{
     health_iter_mut_helper as iter_helper,
+    HealthOf,
     Health,
     Halves,
     BodyPart,
@@ -51,12 +52,12 @@ impl MotorCortex
 
 impl HealthIterate for MotorCortex
 {
-    fn health_iter(&self) -> impl Iterator<Item=&HealthField>
+    fn health_iter(&self) -> impl Iterator<Item=(HealthOf, &HealthField)>
     {
-        [&self.arms, &self.body, &self.legs].into_iter()
+        [&self.arms, &self.body, &self.legs].map(|x| (HealthOf::Organ, x)).into_iter()
     }
 
-    fn health_sided_iter_mut(&mut self, side: Side2d) -> impl Iterator<Item=&mut HealthField>
+    fn health_sided_iter_mut(&mut self, side: Side2d) -> impl Iterator<Item=(HealthOf, &mut HealthField)>
     {
         let order = vec![&mut self.arms, &mut self.body, &mut self.legs];
 
@@ -78,7 +79,7 @@ impl HealthIterate for MotorCortex
             }
         };
 
-        order.into_iter()
+        order.into_iter().map(|x| (HealthOf::Organ, x))
     }
 }
 
@@ -109,12 +110,12 @@ impl FrontalLobe
 
 impl HealthIterate for FrontalLobe
 {
-    fn health_iter(&self) -> impl Iterator<Item=&HealthField>
+    fn health_iter(&self) -> impl Iterator<Item=(HealthOf, &HealthField)>
     {
         self.motor.health_iter()
     }
 
-    fn health_sided_iter_mut(&mut self, side: Side2d) -> impl Iterator<Item=&mut HealthField>
+    fn health_sided_iter_mut(&mut self, side: Side2d) -> impl Iterator<Item=(HealthOf, &mut HealthField)>
     {
         self.motor.health_sided_iter_mut(side)
     }
@@ -153,14 +154,14 @@ impl ParietalLobe
 
 impl HealthIterate for ParietalLobe
 {
-    fn health_iter(&self) -> impl Iterator<Item=&HealthField>
+    fn health_iter(&self) -> impl Iterator<Item=(HealthOf, &HealthField)>
     {
-        [&self.0].into_iter()
+        [(HealthOf::Organ, &self.0)].into_iter()
     }
 
-    fn health_sided_iter_mut(&mut self, _side: Side2d) -> impl Iterator<Item=&mut HealthField>
+    fn health_sided_iter_mut(&mut self, _side: Side2d) -> impl Iterator<Item=(HealthOf, &mut HealthField)>
     {
-        [&mut self.0].into_iter()
+        [(HealthOf::Organ, &mut self.0)].into_iter()
     }
 }
 
@@ -193,14 +194,14 @@ impl TemporalLobe
 
 impl HealthIterate for TemporalLobe
 {
-    fn health_iter(&self) -> impl Iterator<Item=&HealthField>
+    fn health_iter(&self) -> impl Iterator<Item=(HealthOf, &HealthField)>
     {
-        [&self.0].into_iter()
+        [(HealthOf::Organ, &self.0)].into_iter()
     }
 
-    fn health_sided_iter_mut(&mut self, _side: Side2d) -> impl Iterator<Item=&mut HealthField>
+    fn health_sided_iter_mut(&mut self, _side: Side2d) -> impl Iterator<Item=(HealthOf, &mut HealthField)>
     {
-        [&mut self.0].into_iter()
+        [(HealthOf::Organ, &mut self.0)].into_iter()
     }
 }
 
@@ -233,14 +234,14 @@ impl OccipitalLobe
 
 impl HealthIterate for OccipitalLobe
 {
-    fn health_iter(&self) -> impl Iterator<Item=&HealthField>
+    fn health_iter(&self) -> impl Iterator<Item=(HealthOf, &HealthField)>
     {
-        [&self.0].into_iter()
+        [(HealthOf::Organ, &self.0)].into_iter()
     }
 
-    fn health_sided_iter_mut(&mut self, _side: Side2d) -> impl Iterator<Item=&mut HealthField>
+    fn health_sided_iter_mut(&mut self, _side: Side2d) -> impl Iterator<Item=(HealthOf, &mut HealthField)>
     {
-        [&mut self.0].into_iter()
+        [(HealthOf::Organ, &mut self.0)].into_iter()
     }
 }
 
@@ -284,7 +285,7 @@ impl Hemisphere
 
 impl HealthIterate for Hemisphere
 {
-    fn health_iter(&self) -> impl Iterator<Item=&HealthField>
+    fn health_iter(&self) -> impl Iterator<Item=(HealthOf, &HealthField)>
     {
         self.frontal.health_iter()
             .chain(self.parietal.health_iter())
@@ -292,7 +293,7 @@ impl HealthIterate for Hemisphere
             .chain(self.occipital.health_iter())
     }
 
-    fn health_sided_iter_mut(&mut self, side: Side2d) -> impl Iterator<Item=&mut HealthField>
+    fn health_sided_iter_mut(&mut self, side: Side2d) -> impl Iterator<Item=(HealthOf, &mut HealthField)>
     {
         let order = match side
         {
@@ -356,12 +357,12 @@ impl Brain
 
 impl HealthIterate for Brain
 {
-    fn health_iter(&self) -> impl Iterator<Item=&HealthField>
+    fn health_iter(&self) -> impl Iterator<Item=(HealthOf, &HealthField)>
     {
         [&self.left, &self.right].into_iter().flat_map(|x| x.health_iter())
     }
 
-    fn health_sided_iter_mut(&mut self, side: Side2d) -> impl Iterator<Item=&mut HealthField>
+    fn health_sided_iter_mut(&mut self, side: Side2d) -> impl Iterator<Item=(HealthOf, &mut HealthField)>
     {
         let order = match side
         {
@@ -413,14 +414,14 @@ impl Eye
 
 impl HealthIterate for Eye
 {
-    fn health_iter(&self) -> impl Iterator<Item=&HealthField>
+    fn health_iter(&self) -> impl Iterator<Item=(HealthOf, &HealthField)>
     {
-        [&self.0].into_iter()
+        [(HealthOf::Organ, &self.0)].into_iter()
     }
 
-    fn health_sided_iter_mut(&mut self, _side: Side2d) -> impl Iterator<Item=&mut HealthField>
+    fn health_sided_iter_mut(&mut self, _side: Side2d) -> impl Iterator<Item=(HealthOf, &mut HealthField)>
     {
-        [&mut self.0].into_iter()
+        [(HealthOf::Organ, &mut self.0)].into_iter()
     }
 }
 
@@ -453,14 +454,14 @@ impl Lung
 
 impl HealthIterate for Lung
 {
-    fn health_iter(&self) -> impl Iterator<Item=&HealthField>
+    fn health_iter(&self) -> impl Iterator<Item=(HealthOf, &HealthField)>
     {
-        [&self.0].into_iter()
+        [(HealthOf::Organ, &self.0)].into_iter()
     }
 
-    fn health_sided_iter_mut(&mut self, _side: Side2d) -> impl Iterator<Item=&mut HealthField>
+    fn health_sided_iter_mut(&mut self, _side: Side2d) -> impl Iterator<Item=(HealthOf, &mut HealthField)>
     {
-        [&mut self.0].into_iter()
+        [(HealthOf::Organ, &mut self.0)].into_iter()
     }
 }
 
@@ -500,14 +501,14 @@ impl SpinalCord
 
 impl HealthIterate for SpinalCord
 {
-    fn health_iter(&self) -> impl Iterator<Item=&HealthField>
+    fn health_iter(&self) -> impl Iterator<Item=(HealthOf, &HealthField)>
     {
-        [&self.cervical, &self.lumbar].into_iter()
+        [(HealthOf::Organ, &self.cervical), (HealthOf::Organ, &self.lumbar)].into_iter()
     }
 
-    fn health_sided_iter_mut(&mut self, _side: Side2d) -> impl Iterator<Item=&mut HealthField>
+    fn health_sided_iter_mut(&mut self, _side: Side2d) -> impl Iterator<Item=(HealthOf, &mut HealthField)>
     {
-        [&mut self.cervical, &mut self.lumbar].into_iter()
+        [(HealthOf::Organ, &mut self.cervical), (HealthOf::Organ, &mut self.lumbar)].into_iter()
     }
 }
 
@@ -849,13 +850,13 @@ pub struct HeadOrgans
 
 impl HealthIterate for HeadOrgans
 {
-    fn health_iter(&self) -> impl Iterator<Item=&HealthField>
+    fn health_iter(&self) -> impl Iterator<Item=(HealthOf, &HealthField)>
     {
         self.brain.as_ref().map(|x| x.health_iter()).into_iter().flatten()
             .chain(self.eyes.health_iter())
     }
 
-    fn health_sided_iter_mut(&mut self, side: Side2d) -> impl Iterator<Item=&mut HealthField>
+    fn health_sided_iter_mut(&mut self, side: Side2d) -> impl Iterator<Item=(HealthOf, &mut HealthField)>
     {
         self.brain.as_mut().map(move |x| x.health_sided_iter_mut(side)).into_iter().flatten()
             .chain(self.eyes.health_sided_iter_mut(side))
@@ -873,7 +874,7 @@ impl DamageReceiver for HeadOrgans
     ) -> Option<DamageType>
     {
         self.brain.as_mut().map(move |x| x.health_sided_iter_mut(side)).into_iter().flatten()
-            .try_fold(damage, |acc, x|
+            .try_fold(damage, |acc, (_, x)|
             {
                 x.damage_pierce(acc, 1.0)
             })
@@ -896,12 +897,12 @@ pub struct TorsoOrgans
 
 impl HealthIterate for TorsoOrgans
 {
-    fn health_iter(&self) -> impl Iterator<Item=&HealthField>
+    fn health_iter(&self) -> impl Iterator<Item=(HealthOf, &HealthField)>
     {
         self.lungs.health_iter()
     }
 
-    fn health_sided_iter_mut(&mut self, side: Side2d) -> impl Iterator<Item=&mut HealthField>
+    fn health_sided_iter_mut(&mut self, side: Side2d) -> impl Iterator<Item=(HealthOf, &mut HealthField)>
     {
         self.lungs.health_sided_iter_mut(side)
     }
@@ -944,13 +945,13 @@ pub struct LowerLimb
 
 impl HealthIterate for LowerLimb
 {
-    fn health_iter(&self) -> impl Iterator<Item=&HealthField>
+    fn health_iter(&self) -> impl Iterator<Item=(HealthOf, &HealthField)>
     {
         self.lower.health_iter()
             .chain(self.leaf.as_ref().map(|x| x.health_iter()).into_iter().flatten())
     }
 
-    fn health_sided_iter_mut(&mut self, side: Side2d) -> impl Iterator<Item=&mut HealthField>
+    fn health_sided_iter_mut(&mut self, side: Side2d) -> impl Iterator<Item=(HealthOf, &mut HealthField)>
     {
         self.lower.health_sided_iter_mut(side)
             .chain(self.leaf.as_mut().map(|x| x.health_sided_iter_mut(side)).into_iter().flatten())
@@ -990,13 +991,13 @@ pub struct Limb
 
 impl HealthIterate for Limb
 {
-    fn health_iter(&self) -> impl Iterator<Item=&HealthField>
+    fn health_iter(&self) -> impl Iterator<Item=(HealthOf, &HealthField)>
     {
         self.upper.health_iter()
             .chain(self.lower.as_ref().map(|x| x.health_iter()).into_iter().flatten())
     }
 
-    fn health_sided_iter_mut(&mut self, side: Side2d) -> impl Iterator<Item=&mut HealthField>
+    fn health_sided_iter_mut(&mut self, side: Side2d) -> impl Iterator<Item=(HealthOf, &mut HealthField)>
     {
         self.upper.health_sided_iter_mut(side)
             .chain(self.lower.as_mut().map(|x| x.health_sided_iter_mut(side)).into_iter().flatten())
@@ -1048,13 +1049,13 @@ pub struct Pelvis
 
 impl HealthIterate for Pelvis
 {
-    fn health_iter(&self) -> impl Iterator<Item=&HealthField>
+    fn health_iter(&self) -> impl Iterator<Item=(HealthOf, &HealthField)>
     {
         self.pelvis.health_iter()
             .chain(self.legs.health_iter())
     }
 
-    fn health_sided_iter_mut(&mut self, side: Side2d) -> impl Iterator<Item=&mut HealthField>
+    fn health_sided_iter_mut(&mut self, side: Side2d) -> impl Iterator<Item=(HealthOf, &mut HealthField)>
     {
         self.pelvis.health_sided_iter_mut(side)
             .chain(self.legs.health_sided_iter_mut(side))
@@ -1094,7 +1095,7 @@ pub struct Spine
 
 impl HealthIterate for Spine
 {
-    fn health_iter(&self) -> impl Iterator<Item=&HealthField>
+    fn health_iter(&self) -> impl Iterator<Item=(HealthOf, &HealthField)>
     {
         self.spine.health_iter()
             .chain(self.arms.health_iter())
@@ -1102,7 +1103,7 @@ impl HealthIterate for Spine
             .chain(self.pelvis.as_ref().map(|x| x.health_iter()).into_iter().flatten())
     }
 
-    fn health_sided_iter_mut(&mut self, side: Side2d) -> impl Iterator<Item=&mut HealthField>
+    fn health_sided_iter_mut(&mut self, side: Side2d) -> impl Iterator<Item=(HealthOf, &mut HealthField)>
     {
         self.spine.health_sided_iter_mut(side)
             .chain(self.arms.health_sided_iter_mut(side))
@@ -1158,13 +1159,13 @@ pub struct HumanBody
 
 impl HealthIterate for HumanBody
 {
-    fn health_iter(&self) -> impl Iterator<Item=&HealthField>
+    fn health_iter(&self) -> impl Iterator<Item=(HealthOf, &HealthField)>
     {
         self.head.as_ref().map(|x| x.health_iter()).into_iter().flatten()
             .chain(self.spine.as_ref().map(|x| x.health_iter()).into_iter().flatten())
     }
 
-    fn health_sided_iter_mut(&mut self, side: Side2d) -> impl Iterator<Item=&mut HealthField>
+    fn health_sided_iter_mut(&mut self, side: Side2d) -> impl Iterator<Item=(HealthOf, &mut HealthField)>
     {
         self.head.as_mut().map(|x| x.health_sided_iter_mut(side)).into_iter().flatten()
             .chain(self.spine.as_mut().map(|x| x.health_sided_iter_mut(side)).into_iter().flatten())

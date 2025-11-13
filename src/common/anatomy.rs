@@ -19,9 +19,13 @@ use crate::{
     }
 };
 
-pub use human::*;
+pub use human::{HumanAnatomy, HumanAnatomyInfo, AnatomyId, OrganId, BrainId};
+use human::*;
+
+use getter::{FieldGet, PartFieldGetter};
 
 mod human;
+mod getter;
 
 
 pub const WINDED_OXYGEN: f32 = 0.2;
@@ -45,14 +49,6 @@ macro_rules! simple_getter
             }
         }
     }
-}
-
-pub trait FieldGet
-{
-    type T<'a, O>
-    where
-        Self: 'a,
-        O: 'a;
 }
 
 pub struct RefHumanPartFieldGet;
@@ -89,15 +85,6 @@ impl FieldGet for RefMutOrganFieldGet
     where
         Self: 'a,
         O: 'a;
-}
-
-pub trait PartFieldGetter<F: FieldGet>
-{
-    type V<'a>
-    where
-        F: 'a;
-
-    fn get<'a, O: Organ + 'a>(value: F::T<'a, O>) -> Self::V<'a>;
 }
 
 impl PartFieldGetter<RefHumanPartFieldGet> for ()
@@ -161,6 +148,20 @@ impl PartFieldGetter<RefOrganFieldGet> for AverageHealthGetter
     type V<'a> = Option<f32>;
 
     fn get<'a, O: Organ + 'a>(value: &'a O) -> Self::V<'a> { value.average_health() }
+}
+
+struct OrgansDamagerGetter;
+impl PartFieldGetter<RefMutHumanPartFieldGet> for OrgansDamagerGetter
+{
+    type V<'a> = Box<dyn FnOnce(Side2d, DamageType) -> Option<DamageType> + 'a>;
+
+    fn get<'a, O: Organ + 'a>(value: &'a mut HumanPart<O>) -> Self::V<'a>
+    {
+        Box::new(|direction, damage|
+        {
+            value.contents.damage(direction, damage)
+        })
+    }
 }
 
 struct DamagerGetter;
@@ -321,6 +322,14 @@ impl Anatomy
             Self::Human(x) => x.for_accessed_parts(f)
         }
     }
+
+    pub fn bone_heal(&mut self, amount: u32) -> bool
+    {
+        match self
+        {
+            Self::Human(x) => x.bone_heal(amount)
+        }
+    }
 }
 
 impl Damageable for Anatomy
@@ -358,24 +367,44 @@ impl Damageable for Anatomy
     }
 }
 
-pub fn health_iter_mut_helper(side: Side2d, x: &mut impl HealthIterate) -> Vec<&mut HealthField>
+pub fn health_iter_mut_helper(side: Side2d, x: &mut impl HealthIterate) -> Vec<(HealthOf, &mut HealthField)>
 {
     x.health_sided_iter_mut(side).collect()
 }
 
 pub type HealthField = ChangeTracking<Health>;
 
+pub enum HealthOf
+{
+    Bone,
+    Muscle,
+    Skin,
+    Organ,
+    Any
+}
+
 pub trait HealthIterate
 {
-    fn health_iter(&self) -> impl Iterator<Item=&HealthField>;
-    fn health_sided_iter_mut(&mut self, side: Side2d) -> impl Iterator<Item=&mut HealthField>;
+    fn health_iter(&self) -> impl Iterator<Item=(HealthOf, &HealthField)>;
+    fn health_sided_iter_mut(&mut self, side: Side2d) -> impl Iterator<Item=(HealthOf, &mut HealthField)>;
 }
 
 pub trait HealReceiver: HealthIterate
 {
     fn is_full(&self) -> bool
     {
-        self.health_iter().all(|x| (**x).is_full())
+        self.health_iter().all(|(kind, x)|
+        {
+            if let HealthOf::Bone = kind
+            {
+                if (**x).is_zero()
+                {
+                    return true;
+                }
+            }
+
+            (**x).is_full()
+        })
     }
 
     fn heal(&mut self, amount: f32) -> Option<f32>
@@ -385,11 +414,22 @@ pub trait HealReceiver: HealthIterate
         let mut pool = amount;
 
         let mut damaged: Vec<_> = self.health_sided_iter_mut(Side2d::default())
-            .filter(|x| !(***x).is_full())
+            .filter(|(kind, x)|
+            {
+                if let HealthOf::Bone = kind
+                {
+                    if (***x).is_zero()
+                    {
+                        return false;
+                    }
+                }
+
+                !(***x).is_full()
+            })
             .collect();
 
         while let Some((_, smallest)) = damaged.iter_mut()
-            .filter_map(|x| x.fraction().map(|fraction| (fraction, x)))
+            .filter_map(|(_, x)| x.fraction().map(|fraction| (fraction, x)))
             .min_by(|a, b| a.0.total_cmp(&b.0))
         {
             if smallest.is_full()
@@ -427,7 +467,7 @@ pub trait DamageReceiver: HealReceiver
     {
         if let DamageType::AreaEach(_) = &damage
         {
-            self.health_sided_iter_mut(side).for_each(|x|
+            self.health_sided_iter_mut(side).for_each(|(_, x)|
             {
                 x.damage_pierce(damage, 1.0);
             });
@@ -445,7 +485,7 @@ pub trait DamageReceiver: HealReceiver
         damage: DamageType
     ) -> Option<DamageType>
     {
-        self.health_sided_iter_mut(side).try_fold(damage, |acc, x|
+        self.health_sided_iter_mut(side).try_fold(damage, |acc, (_, x)|
         {
             x.damage_pierce(acc, 1.0)
         })
@@ -797,7 +837,7 @@ pub trait Organ: DamageReceiver + Debug
 
     fn average_health(&self) -> Option<f32>
     {
-        let (total, sum) = self.health_iter().filter_map(|x| x.fraction()).fold((0, 0.0), |(total, sum), x|
+        let (total, sum) = self.health_iter().filter_map(|(_, x)| x.fraction()).fold((0, 0.0), |(total, sum), x|
         {
             (total + 1, sum + x)
         });
@@ -808,12 +848,12 @@ pub trait Organ: DamageReceiver + Debug
 
 impl HealthIterate for ()
 {
-    fn health_iter(&self) -> impl Iterator<Item=&HealthField>
+    fn health_iter(&self) -> impl Iterator<Item=(HealthOf, &HealthField)>
     {
         [].into_iter()
     }
 
-    fn health_sided_iter_mut(&mut self, _side: Side2d) -> impl Iterator<Item=&mut HealthField>
+    fn health_sided_iter_mut(&mut self, _side: Side2d) -> impl Iterator<Item=(HealthOf, &mut HealthField)>
     {
         [].into_iter()
     }
@@ -849,19 +889,19 @@ pub struct BodyPart<Contents=()>
 
 impl<Contents: HealthIterate> HealthIterate for BodyPart<Contents>
 {
-    fn health_iter(&self) -> impl Iterator<Item=&HealthField>
+    fn health_iter(&self) -> impl Iterator<Item=(HealthOf, &HealthField)>
     {
-        iter::once(&self.skin)
-            .chain(iter::once(&self.muscle))
-            .chain(iter::once(&self.bone))
+        iter::once((HealthOf::Skin, &self.skin))
+            .chain(iter::once((HealthOf::Muscle, &self.muscle)))
+            .chain(iter::once((HealthOf::Bone, &self.bone)))
             .chain(self.contents.health_iter())
     }
 
-    fn health_sided_iter_mut(&mut self, side: Side2d) -> impl Iterator<Item=&mut HealthField>
+    fn health_sided_iter_mut(&mut self, side: Side2d) -> impl Iterator<Item=(HealthOf, &mut HealthField)>
     {
-        iter::once(&mut self.skin)
-            .chain(iter::once(&mut self.muscle))
-            .chain(iter::once(&mut self.bone))
+        iter::once((HealthOf::Skin, &mut self.skin))
+            .chain(iter::once((HealthOf::Muscle, &mut self.muscle)))
+            .chain(iter::once((HealthOf::Bone, &mut self.bone)))
             .chain(self.contents.health_sided_iter_mut(side))
     }
 }
@@ -1090,13 +1130,13 @@ impl<T> IndexMut<Side1d> for Halves<T>
 
 impl<T: HealthIterate> HealthIterate for Halves<Option<T>>
 {
-    fn health_iter(&self) -> impl Iterator<Item=&HealthField>
+    fn health_iter(&self) -> impl Iterator<Item=(HealthOf, &HealthField)>
     {
         self.left.as_ref().map(|x| x.health_iter()).into_iter().flatten()
             .chain(self.right.as_ref().map(|x| x.health_iter()).into_iter().flatten())
     }
 
-    fn health_sided_iter_mut(&mut self, side: Side2d) -> impl Iterator<Item=&mut HealthField>
+    fn health_sided_iter_mut(&mut self, side: Side2d) -> impl Iterator<Item=(HealthOf, &mut HealthField)>
     {
         let left_value = self.left.as_mut().map(|x| x.health_sided_iter_mut(side)).into_iter().flatten();
         let right_value = self.right.as_mut().map(|x| x.health_sided_iter_mut(side)).into_iter().flatten();
@@ -1127,14 +1167,14 @@ impl<T: HealthIterate> HealthIterate for Halves<Option<T>>
 
 impl HealthIterate for ChangeTracking<Health>
 {
-    fn health_iter(&self) -> impl Iterator<Item=&HealthField>
+    fn health_iter(&self) -> impl Iterator<Item=(HealthOf, &HealthField)>
     {
-        iter::once(self)
+        [(HealthOf::Any, self)].into_iter()
     }
 
-    fn health_sided_iter_mut(&mut self, _side: Side2d) -> impl Iterator<Item=&mut HealthField>
+    fn health_sided_iter_mut(&mut self, _side: Side2d) -> impl Iterator<Item=(HealthOf, &mut HealthField)>
     {
-        iter::once(self)
+        [(HealthOf::Any, self)].into_iter()
     }
 }
 

@@ -19,6 +19,8 @@ use stephanie::common::{
 };
 
 
+const MAX_HITS: f32 = 1000.0;
+
 #[derive(Debug, Clone, Copy, PartialEq, EnumIter, IntoStaticStr)]
 enum RunMode
 {
@@ -78,7 +80,7 @@ fn anatomy_stats_single(
     while !anatomy.take_killed()
     {
         let damage = Damage{
-            data: if fastrand::bool() { item.bash_damage() } else { item.poke_damage() },
+            data: (if fastrand::bool() { item.bash_damage() } else { item.poke_damage() }) * 30.0,
             direction: DamageDirection{
                 side: Side2d::random(),
                 height: DamageHeight::random()
@@ -87,6 +89,11 @@ fn anatomy_stats_single(
 
         stats.kill_hits += 1.0;
         stats.kill_oxygen += item.oxygen_cost(30.0);
+
+        if stats.kill_hits > MAX_HITS
+        {
+            break;
+        }
 
         anatomy.damage(damage);
     }
