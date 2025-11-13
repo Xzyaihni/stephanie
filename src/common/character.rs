@@ -22,6 +22,7 @@ use crate::{
     },
     common::{
         with_z,
+        some_or_unexpected_return,
         some_or_return,
         some_or_value,
         some_or_false,
@@ -225,7 +226,7 @@ pub struct AfterInfo
     this: Entity,
     hand_left: Entity,
     hand_right: Entity,
-    holding: Entity,
+    holding: Option<Entity>,
     hair: Vec<Entity>,
     rotation: f32,
     moving: bool,
@@ -345,6 +346,8 @@ impl Character
         let data_infos = entities.infos();
 
         let character_info = data_infos.characters_info.get(self.id);
+
+        let needs_holding = is_player;
 
         let hand_item = data_infos.items_info.get(character_info.hand);
 
@@ -473,7 +476,7 @@ impl Character
             this: entity,
             hand_left,
             hand_right: inserter(held_item(None, false)),
-            holding: inserter(held_item(Some(hand_left), false)),
+            holding: needs_holding.then(|| inserter(held_item(Some(hand_left), false))),
             hair,
             rotation,
             moving: false,
@@ -482,9 +485,12 @@ impl Character
             buffered: [0.0; BufferedAction::COUNT]
         };
 
-        if !entities.light_exists(entity)
+        if let Some(holding) = info.holding
         {
-            entities.set_light_no_change(entity, Some(Light{source: Some(info.holding), ..Default::default()}));
+            if !entities.light_exists(entity)
+            {
+                entities.set_light_no_change(entity, Some(Light{source: Some(holding), ..Default::default()}));
+            }
         }
 
         self.info = Some(info);
@@ -678,7 +684,10 @@ impl Character
         let holding_item = self.held_item_info(combined_info);
         let holding_state = holding_item.is_some();
 
-        some_or_return!(entities.render_mut_no_change(holding_entity)).visible = self.held_visible(combined_info);
+        if let Some(holding_entity) = holding_entity
+        {
+            some_or_return!(entities.render_mut_no_change(holding_entity)).visible = self.held_visible(combined_info);
+        }
 
         entities.lazy_setter.borrow_mut().set_follow_position_no_change(hand_right, holding_item.map(|_|
         {
@@ -689,12 +698,14 @@ impl Character
             }
         }));
 
-        let mut light = some_or_return!(entities.light_mut_no_change(this_entity));
         if let Some(item) = holding_item
         {
+            let holding_entity = some_or_unexpected_return!(holding_entity);
+
+            let mut light = some_or_return!(entities.light_mut_no_change(this_entity));
             light.modify_light(|light| *light = item.lighting);
 
-            let mut lazy_transform = entities.lazy_transform_mut_no_change(holding_entity).unwrap();
+            let mut lazy_transform = some_or_return!(entities.lazy_transform_mut_no_change(holding_entity));
 
             let texture = get_texture(item.texture.id);
 
@@ -717,7 +728,10 @@ impl Character
             self.update_hands_rotation(combined_info);
         } else
         {
-            light.modify_light(|light| *light = Light::default());
+            if let Some(mut light) = entities.light_mut_no_change(this_entity)
+            {
+                light.modify_light(|light| *light = Light::default());
+            }
         }
 
         some_or_return!(entities.lazy_transform_mut_no_change(hand_right)).connection = if holding_state
@@ -759,7 +773,11 @@ impl Character
             }
         };
 
-        lazy_for(holding_entity);
+        if let Some(holding_entity) = holding_entity
+        {
+            lazy_for(holding_entity);
+        }
+
         lazy_for(hand_left);
         lazy_for(hand_right);
 
@@ -830,6 +848,8 @@ impl Character
 
             let info = some_or_value!(self.info.as_ref(), false);
 
+            let holding_entity = some_or_unexpected_return!(info.holding);
+
             let level = if let Some(player) = combined_info.entities.player(info.this)
             {
                 player.get_stat(StatId::Throw).level()
@@ -843,7 +863,7 @@ impl Character
             let collider = item_collider();
 
             let entity_info = {
-                let holding_transform = entities.transform(info.holding).unwrap();
+                let holding_transform = entities.transform(holding_entity).unwrap();
 
                 let direction = {
                     let rotation = angle_between(
@@ -1040,7 +1060,8 @@ impl Character
 
         if self.holding.is_some()
         {
-            let mut target = some_or_return!(combined_info.entities.target(info.holding));
+            let holding_entity = some_or_unexpected_return!(info.holding);
+            let mut target = some_or_return!(combined_info.entities.target(holding_entity));
             target.scale.x = match self.bash_side
             {
                 Side1d::Left => target.scale.x.abs(),
@@ -1092,7 +1113,7 @@ impl Character
     fn default_held_rotation(&self, combined_info: CombinedInfo) -> Option<f32>
     {
         let origin_rotation = combined_info.entities
-            .lazy_transform(self.info.as_ref().unwrap().holding)?
+            .lazy_transform(self.info.as_ref()?.holding?)?
             .origin_rotation();
 
         Some(-origin_rotation)
@@ -1517,6 +1538,8 @@ impl Character
     {
         let info = some_or_return!(self.info.as_ref());
 
+        let holding_entity = some_or_unexpected_return!(info.holding);
+
         let hand_mass = self.hand_item_info(combined_info).mass;
         let item_info = combined_info.items_info.get(item.id);
         let mut scale = Vector3::repeat(1.0);
@@ -1556,7 +1579,7 @@ impl Character
             true,
             EntityInfo{
                 follow_rotation: Some(FollowRotation::new(
-                    info.holding,
+                    holding_entity,
                     Rotation::Instant
                 )),
                 lazy_transform: Some(LazyTransformInfo{
@@ -1567,7 +1590,7 @@ impl Character
                     },
                     ..Default::default()
                 }.into()),
-                parent: Some(Parent::new(info.holding)),
+                parent: Some(Parent::new(holding_entity)),
                 collider: Some(ColliderInfo{
                     kind: ColliderType::Rectangle,
                     layer: ColliderLayer::Damage,
@@ -1924,9 +1947,10 @@ impl Character
         {
             let info = self.info.as_ref().unwrap();
 
+            if let Some(holding) = info.holding
             {
                 let visible = self.held_visible(combined_info);
-                set_visible(&mut self.sprite_state, info.holding, visible);
+                set_visible(&mut self.sprite_state, holding, visible);
             }
 
             {
