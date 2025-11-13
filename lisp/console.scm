@@ -161,8 +161,10 @@
 (define (entities-near entity near-distance)
     (filtered-entities (lambda (x) (< (distance entity x) near-distance))))
 
-(define (zob) (set-faction (player-entity) 'zob))
-
 (define (noclip state)
     (set-floating (player-entity) state)
     (set-ghost (player-entity) state))
+
+(define (zob) (set-faction (player-entity) 'zob))
+
+(define (givehp) (repeat (lambda () (for-each (lambda (x) (add-item (player-entity) x)) '(splint heal_pills))) 5))

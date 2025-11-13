@@ -43,6 +43,7 @@ use crate::{
 
 
 const PATHFIND_MAX_STEPS: usize = 1000;
+const PATHFIND_POINTS_LIMIT: u32 = 100;
 
 fn debug_display_current(entities: &ClientEntities, node: Node)
 {
@@ -186,6 +187,23 @@ impl DebugTimer
     fn print(&self) {}
 }
 
+struct PathfindLimits(u32);
+
+impl PathfindLimits
+{
+    fn add(&mut self, inside: bool)
+    {
+        let value = if inside { 1 } else { 10 };
+
+        self.0 += value;
+    }
+
+    fn over(&self) -> bool
+    {
+        self.0 > PATHFIND_POINTS_LIMIT
+    }
+}
+
 #[derive(Clone, Copy)]
 pub struct Pathfinder<'a>
 {
@@ -253,6 +271,7 @@ impl Pathfinder<'_>
         end: Vector3<f32>
     ) -> Option<WorldPath>
     {
+        let mut limits = PathfindLimits(0);
         let mut debug_timer = DebugTimer::new();
 
         let tile_colliding = |pos|
@@ -274,7 +293,7 @@ impl Pathfinder<'_>
         while !unexplored.is_empty()
         {
             steps += 1;
-            if steps > PATHFIND_MAX_STEPS
+            if steps > PATHFIND_MAX_STEPS || limits.over()
             {
                 return None;
             }
@@ -334,15 +353,15 @@ impl Pathfinder<'_>
                 {
                     let position = current.value.offset(Pos3::from(direction));
 
-                    let is_colliding_entity = |debug_timer|
+                    let is_colliding_entity = |limits, debug_timer|
                     {
                         let layer = some_or_value!(layer, false);
 
-                        self.is_colliding_entity(entity, layer, scale, position, debug_timer)
+                        self.is_colliding_entity(limits, entity, layer, scale, position, debug_timer)
                     };
 
                     if (position == target)
-                        || (!tile_colliding(position) && !is_colliding_entity(&mut debug_timer))
+                        || (!tile_colliding(position) && !is_colliding_entity(&mut limits, &mut debug_timer))
                     {
                         try_push(position);
                     }
@@ -359,6 +378,7 @@ impl Pathfinder<'_>
 
     fn is_colliding_entity(
         &self,
+        limits: &mut PathfindLimits,
         check_entity: Entity,
         layer: ColliderLayer,
         scale: Vector3<f32>,
@@ -439,6 +459,7 @@ impl Pathfinder<'_>
         };
 
         debug_timer.end_with(inside_simulated);
+        limits.add(inside_simulated);
 
         control.is_break()
     }
