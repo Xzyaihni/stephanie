@@ -175,6 +175,7 @@ enum LoadingPart
 enum SeenNotificationPart
 {
     Body,
+    Panel,
     Fill
 }
 
@@ -3022,6 +3023,15 @@ impl Ui
                 ..Default::default()
             });
 
+            let panel = (!(fraction.is_none() && is_attacking)).then(||
+            {
+                body.update(id(SeenNotificationPart::Panel), UiElement{
+                    texture: UiTexture::Custom("ui/seen_panel.png".into()),
+                    position: UiPosition::Inherit,
+                    ..UiElement::fit_content()
+                })
+            });
+
             fn this_fill(amount: f32) -> UiElementFill
             {
                 UiElementFill{
@@ -3047,6 +3057,7 @@ impl Ui
                         }),
                         ..Default::default()
                     },
+                    position: UiPosition::Inherit,
                     ..UiElement::fit_content()
                 });
 
@@ -3086,8 +3097,14 @@ impl Ui
                         texture: UiTexture::Custom("ui/seen.png".into()),
                         mix: Some(MixColorLch{only_alpha: true, ..MixColorLch::color(Lcha{a: alpha, ..BLACK_COLOR})}),
                         fill: Some(this_fill(0.0)),
+                        position: UiPosition::Inherit,
                         ..UiElement::fit_content()
                     });
+
+                    if let Some(panel) = panel
+                    {
+                        panel.element().mix = Some(MixColorLch{only_alpha: true, ..MixColorLch::color(Lcha{a: alpha, ..BLACK_COLOR})});
+                    }
                 }
 
                 *lifetime -= dt;
