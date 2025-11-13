@@ -527,11 +527,25 @@ impl Character
         self.held_update = true;
     }
 
-    pub fn dropped_item(&mut self, item: InventoryItem)
+    pub fn on_removed_item(&mut self, item: InventoryItem)
     {
         if Some(item) == self.holding
         {
             self.set_holding(None);
+        }
+    }
+
+    pub fn verify_valid(&self, entities: &ClientEntities)
+    {
+        #[cfg(debug_assertions)]
+        {
+            let info = some_or_return!(self.info.as_ref());
+            let inventory = some_or_return!(entities.inventory(info.this));
+
+            if let Some(item) = self.holding
+            {
+                debug_assert!(inventory.get(item).is_some());
+            }
         }
     }
 
@@ -720,7 +734,9 @@ impl Character
             let target = lazy.target();
 
             target.position = self.held_position(combined_info.characters_info, target.scale);
-            target.position.y = y * self.this_scale(combined_info.characters_info).max();
+
+            let info = combined_info.characters_info.get(self.id);
+            target.position.y = y * info.normal.scale.max();
         };
 
         set_for(hand_left, -0.3);

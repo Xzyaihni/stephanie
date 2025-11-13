@@ -1052,6 +1052,7 @@ impl GameState
             if let Some(mut character) = entities.character_mut_no_change(entity)
             {
                 character.update_holding();
+                character.verify_valid(entities);
             }
         }));
 

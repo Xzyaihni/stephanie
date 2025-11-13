@@ -1431,6 +1431,10 @@ impl<'a> PlayerContainer<'a>
                             if let Some(mut inventory) = self.get_inventory(which)
                             {
                                 inventory.remove(&self.game_state.data_infos.items_info, item);
+                                if let Some(mut character) = self.game_state.entities().character_mut(self.info.entity)
+                                {
+                                    character.on_removed_item(item);
+                                }
                             }
                         }
                     }
@@ -1451,7 +1455,7 @@ impl<'a> PlayerContainer<'a>
                 {
                     if let Some(mut character) = self.game_state.entities().character_mut(self.info.entity)
                     {
-                        character.dropped_item(item);
+                        character.on_removed_item(item);
                     }
 
                     if let Some(player_transform) = self.game_state.entities().transform(self.info.entity).as_ref()
