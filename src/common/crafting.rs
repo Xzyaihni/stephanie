@@ -52,6 +52,17 @@ struct CraftRaw
     requires: Vec<CraftRequireRaw>
 }
 
+pub fn craft_item_rarity(level: u32) -> ItemRarity
+{
+    let limit = 4.0;
+
+    let value = 1.0 - (level as f32 * 0.1 + 1.0).recip();
+
+    let value = value * limit + (fastrand::f32() * 2.0 - 1.0).powi(3) * 1.3;
+
+    ItemRarity::from_repr((value.round() as i32).max(0) as usize).unwrap_or(ItemRarity::Mythical)
+}
+
 pub fn craft_item(entities: &ClientEntities, player: Entity, items: Vec<CraftComponent>, craft: &Craft)
 {
     let mut inventory = some_or_return!(entities.inventory_mut(player));
@@ -73,9 +84,7 @@ pub fn craft_item(entities: &ClientEntities, player: Entity, items: Vec<CraftCom
         let item_info = infos.items_info.get(id);
         let rarity = if item_info.rarity_rolls
         {
-            let value = crafting_stat.level() as f32 * 0.5 + fastrand::f32().powi(3) * 2.5;
-
-            ItemRarity::from_repr((value.round() as i32).max(0) as usize).unwrap_or(ItemRarity::Mythical)
+            craft_item_rarity(crafting_stat.level())
         } else
         {
             ItemRarity::Normal

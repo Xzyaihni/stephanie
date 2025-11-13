@@ -5,7 +5,7 @@ use std::{
     process
 };
 
-use strum::{IntoEnumIterator, EnumIter, IntoStaticStr};
+use strum::{IntoEnumIterator, EnumIter, IntoStaticStr, EnumCount};
 
 use stephanie::common::{
     anatomy::*,
@@ -14,8 +14,10 @@ use stephanie::common::{
     Damageable,
     DamageDirection,
     Damage,
+    ItemRarity,
     ItemInfo,
-    ItemsInfo
+    ItemsInfo,
+    crafting::craft_item_rarity
 };
 
 
@@ -25,7 +27,8 @@ const MAX_HITS: f32 = 1000.0;
 enum RunMode
 {
     Hits,
-    Oxygen
+    Oxygen,
+    Levels
 }
 
 fn parse_mode(s: &str) -> Option<RunMode>
@@ -139,6 +142,32 @@ fn main()
         RunMode::Oxygen
     };
 
+    if let RunMode::Levels = mode
+    {
+        (0..20).for_each(|level|
+        {
+            let total = 500;
+            let mut rarities = [0; ItemRarity::COUNT];
+
+            (0..total).for_each(|_|
+            {
+                rarities[craft_item_rarity(level) as usize] += 1;
+            });
+
+            println!("level {level}:");
+            ItemRarity::iter().zip(rarities.into_iter()).for_each(|(rarity, amount)|
+            {
+                let fraction = amount as f64 / total as f64;
+
+                let name = rarity.name().unwrap_or("normal");
+                println!("{name} {:.1}%", fraction * 100.0);
+            });
+            println!();
+        });
+
+        return;
+    }
+
     let mut infos = ItemsInfo::parse(None, "".into(), "items/items.json".into()).items().iter().map(|info: &ItemInfo| -> ItemStats
     {
         let name = info.name.clone();
@@ -166,7 +195,8 @@ fn main()
         RunMode::Oxygen =>
         {
             infos.sort_unstable_by(|a, b| a.kill_oxygen.partial_cmp(&b.kill_oxygen).unwrap());
-        }
+        },
+        RunMode::Levels => ()
     }
 
     print_infos(&infos);

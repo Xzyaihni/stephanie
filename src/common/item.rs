@@ -4,7 +4,7 @@ use nalgebra::Vector3;
 
 use serde::{Serialize, Deserialize};
 
-use strum::{IntoEnumIterator, EnumIter, FromRepr};
+use strum::{IntoEnumIterator, EnumIter, FromRepr, EnumCount};
 
 use crate::{
     client::{
@@ -90,7 +90,7 @@ pub fn item_lazy_transform(
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, EnumIter, FromRepr, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, EnumCount, EnumIter, FromRepr, Serialize, Deserialize)]
 pub enum ItemRarity
 {
     Broken = 0,
