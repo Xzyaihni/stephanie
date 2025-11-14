@@ -20,9 +20,12 @@ use crate::{
         with_z,
         some_or_value,
         some_or_return,
+        inventory_remove_item,
+        ENTITY_SCALE,
         collider::*,
         character::*,
         watcher::*,
+        particle_creator::*,
         Damageable,
         SpecialTile,
         AnyEntities,
@@ -32,6 +35,7 @@ use crate::{
         Entity,
         EntityInfo,
         OnChangeInfo,
+        ItemUsage,
         entity::ClientEntities,
         lazy_transform::{Scaling, EaseInInfo},
         lisp::{self, *},
@@ -1337,7 +1341,7 @@ impl<'a> PlayerContainer<'a>
                                 GameUiEvent::Info{which: InventoryWhich::Other, item: item_id}
                             ];
 
-                            if let Some(usage) = info.usage()
+                            if let Some(usage) = info.usage().cloned()
                             {
                                 actions.insert(1, GameUiEvent::Use{usage, which: InventoryWhich::Other, item: item_id});
                             }
@@ -1404,37 +1408,63 @@ impl<'a> PlayerContainer<'a>
                 {
                     let info = self.game_state.data_infos.items_info.get(id);
 
-                    if let Some(drug) = info.drug.as_ref()
+                    if let Some(usage) = info.usage.as_ref()
                     {
                         let mut anatomy = some_or_return!(self.game_state.entities().anatomy_mut(self.info.entity));
 
-                        let consumed = match drug
+                        let heal_particles = ||
                         {
-                            Drug::Heal{amount} =>
-                            {
-                                let is_full = anatomy.is_full();
-                                if !is_full
-                                {
-                                    anatomy.heal(*amount);
-                                }
+                            let info = ParticlesKind::Heal.create(&self.game_state.common_textures);
+                            create_particles(
+                                self.game_state.entities(),
+                                info.info,
+                                EntityInfo{
+                                    transform: Some(Transform{
+                                        position: some_or_return!(self.game_state.entities().transform(self.info.entity)).position,
+                                        ..Default::default()
+                                    }),
+                                    ..info.prototype
+                                },
+                                Vector3::repeat(ENTITY_SCALE)
+                            );
+                        };
 
-                                !is_full
-                            },
-                            Drug::BoneHeal{amount} =>
+                        let consumed = match usage
+                        {
+                            ItemUsage::Drug(drug) =>
                             {
+                                match drug
+                                {
+                                    Drug::Heal{amount} =>
+                                    {
+                                        let is_full = anatomy.is_full();
+                                        if !is_full
+                                        {
+                                            heal_particles();
+                                            anatomy.heal(*amount);
+                                        }
+
+                                        !is_full
+                                    },
+                                    Drug::BoneHeal{amount} =>
+                                    {
+                                        heal_particles();
+                                        anatomy.bone_heal(*amount)
+                                    }
+                                }
+                            },
+                            ItemUsage::BoneHeal(amount) =>
+                            {
+                                heal_particles();
                                 anatomy.bone_heal(*amount)
                             }
                         };
 
                         if consumed
                         {
-                            if let Some(mut inventory) = self.get_inventory(which)
+                            if let Some(entity) = self.get_inventory_entity(which)
                             {
-                                inventory.remove(&self.game_state.data_infos.items_info, item);
-                                if let Some(mut character) = self.game_state.entities().character_mut(self.info.entity)
-                                {
-                                    character.on_removed_item(item);
-                                }
+                                inventory_remove_item(self.game_state.entities(), entity, item);
                             }
                         }
                     }
@@ -1450,14 +1480,9 @@ impl<'a> PlayerContainer<'a>
                     return;
                 }
 
-                if let Some(dropped_item) = self.get_inventory(which)
-                    .and_then(|mut inventory| inventory.remove(&self.game_state.data_infos.items_info, item))
+                if let Some(dropped_item) = self.get_inventory_entity(which)
+                    .and_then(|entity| inventory_remove_item(self.game_state.entities(), entity, item))
                 {
-                    if let Some(mut character) = self.game_state.entities().character_mut(self.info.entity)
-                    {
-                        character.on_removed_item(item);
-                    }
-
                     if let Some(player_transform) = self.game_state.entities().transform(self.info.entity).as_ref()
                     {
                         spawn_item(
@@ -1481,8 +1506,8 @@ impl<'a> PlayerContainer<'a>
             },
             GameUiEvent::Take(item) =>
             {
-                if let Some(taken) = self.get_inventory(InventoryWhich::Other)
-                    .and_then(|mut inventory| inventory.remove(&self.game_state.data_infos.items_info, item))
+                if let Some(taken) = self.get_inventory_entity(InventoryWhich::Other)
+                    .and_then(|entity| inventory_remove_item(self.game_state.entities(), entity, item))
                 {
                     if let Some(mut inventory) = self.game_state.entities().inventory_mut(self.info.entity)
                     {
@@ -1543,7 +1568,7 @@ impl<'a> PlayerContainer<'a>
                     GameUiEvent::Drop{which: InventoryWhich::Player, item: item_id}
                 ];
 
-                if let Some(usage) = info.usage()
+                if let Some(usage) = info.usage().cloned()
                 {
                     actions.insert(1, GameUiEvent::Use{usage, which: InventoryWhich::Player, item: item_id});
                 }

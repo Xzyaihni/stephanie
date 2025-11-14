@@ -57,10 +57,19 @@ pub use sides::{Side1d, Side2d, Side3d};
 pub use drug::Drug;
 pub use loot::{Loot, LootState};
 pub use item::{Item, ItemRarity, ItemBuff};
-pub use items_info::{ItemInfo, ItemId, ItemTag, ItemsInfo, Ranged};
+pub use items_info::{ItemUsage, ItemInfo, ItemId, ItemTag, ItemsInfo, Ranged};
 pub use crafting::Crafts;
 
-pub use inventory::{InventorySorter, InventoryItem, Inventory};
+pub use inventory::{
+    inventory_remove_item,
+    inventory_remove_item_with,
+    inventory_remove_items,
+    damage_durability,
+    damage_durability_with,
+    InventorySorter,
+    InventoryItem,
+    Inventory
+};
 
 pub use furnitures_info::{FurnitureId, FurnitureInfo, FurnituresInfo};
 

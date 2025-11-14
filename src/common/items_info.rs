@@ -10,19 +10,16 @@ use serde::Deserialize;
 
 use yanyaengine::Assets;
 
-use crate::{
-    client::game_state::UsageKind,
-    common::{
-        with_error,
-        some_or_value,
-        with_z,
-        ENTITY_SCALE,
-        generic_info::*,
-        Drug,
-        DamageType,
-        Item,
-        Light
-    }
+use crate::common::{
+    with_error,
+    some_or_value,
+    with_z,
+    ENTITY_SCALE,
+    generic_info::*,
+    Drug,
+    DamageType,
+    Item,
+    Light
 };
 
 
@@ -30,6 +27,25 @@ pub const DEFAULT_ITEM_DURABILITY: f32 = 25.0;
 
 define_info_id!{ItemId}
 define_info_id!{ItemTag}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub enum ItemUsage
+{
+    Drug(Drug),
+    BoneHeal(u32)
+}
+
+impl ItemUsage
+{
+    pub fn name(&self) -> &str
+    {
+        match self
+        {
+            Self::Drug(_) => "ingest",
+            Self::BoneHeal(_) => "use"
+        }
+    }
+}
 
 #[derive(Debug, Clone, Deserialize)]
 pub enum Ranged
@@ -82,7 +98,7 @@ pub struct ItemInfoRaw
 {
     name: String,
     ranged: Option<Ranged>,
-    drug: Option<Drug>,
+    usage: Option<ItemUsage>,
     rarity_rolls: Option<bool>,
     damage_scale: Option<f32>,
     comfort: Option<f32>,
@@ -102,7 +118,7 @@ pub struct ItemInfo
 {
     pub name: String,
     pub ranged: Option<Ranged>,
-    pub drug: Option<Drug>,
+    pub usage: Option<ItemUsage>,
     pub rarity_rolls: bool,
     pub damage_scale: f32,
     pub comfort: f32,
@@ -148,7 +164,7 @@ impl ItemInfo
         Self{
             name: raw.name,
             ranged: raw.ranged,
-            drug: raw.drug,
+            usage: raw.usage,
             rarity_rolls: raw.rarity_rolls.unwrap_or(true),
             damage_scale: raw.damage_scale.unwrap_or(1.0),
             comfort: raw.comfort.unwrap_or(1.0),
@@ -218,14 +234,9 @@ impl ItemInfo
         with_z(self.texture.scale, ENTITY_SCALE * 0.1)
     }
 
-    pub fn usage(&self) -> Option<UsageKind>
+    pub fn usage(&self) -> Option<&ItemUsage>
     {
-        if self.drug.is_some()
-        {
-            return Some(UsageKind::Ingest);
-        }
-
-        None
+        self.usage.as_ref()
     }
 }
 

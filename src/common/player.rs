@@ -1,3 +1,5 @@
+use std::mem;
+
 use serde::{Serialize, Deserialize};
 
 use strum::{EnumIter, EnumCount};
@@ -52,7 +54,7 @@ impl StatLevel
         self.level
     }
 
-    pub fn add_experience(&mut self, amount: f64) -> bool
+    fn add_experience(&mut self, amount: f64) -> bool
     {
         self.experience += amount;
 
@@ -101,14 +103,15 @@ impl StatId
 pub struct Player
 {
     pub kills: u32,
-    pub stats: [StatLevel; StatId::COUNT]
+    pub stats: [StatLevel; StatId::COUNT],
+    leveled_up: Vec<StatId>
 }
 
 impl Default for Player
 {
     fn default() -> Self
     {
-        Self{kills: 0, stats: [StatLevel::default(); StatId::COUNT]}
+        Self{kills: 0, stats: [StatLevel::default(); StatId::COUNT], leveled_up: Vec::new()}
     }
 }
 
@@ -119,8 +122,21 @@ impl Player
         &self.stats[id as usize]
     }
 
-    pub fn get_stat_mut(&mut self, id: StatId) -> &mut StatLevel
+    pub fn add_experience(&mut self, id: StatId, amount: f64)
     {
-        &mut self.stats[id as usize]
+        if self.stats[id as usize].add_experience(amount)
+        {
+            self.leveled_up.push(id);
+        }
+    }
+
+    pub fn take_leveled_up(&mut self) -> Option<Vec<StatId>>
+    {
+        if self.leveled_up.is_empty()
+        {
+            return None;
+        }
+
+        Some(mem::take(&mut self.leveled_up))
     }
 }

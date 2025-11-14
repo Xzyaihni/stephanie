@@ -773,6 +773,11 @@ impl HumanAnatomy
         self.this.override_crawling || (self.cached().speed.legs < crawl_threshold)
     }
 
+    pub fn is_standing(&self) -> bool
+    {
+        !self.is_crawling() && self.can_move()
+    }
+
     pub fn set_encumbrance_speed(&mut self, speed: f32)
     {
         if maybe_update(&mut self.this.encumbrance_speed, speed)
@@ -1063,14 +1068,21 @@ impl Damageable for HumanAnatomy
 {
     fn damage(&mut self, mut damage: Damage) -> Option<Damage>
     {
-        if self.is_crawling()
+        if !self.is_standing()
         {
             damage = damage * 2.0;
         }
 
+        let was_standing = self.is_standing();
+
         let damage = self.this.damage_random_part(damage);
 
         self.on_damage();
+
+        if was_standing && !self.is_standing()
+        {
+            self.fall_damage(1.0);
+        }
 
         damage
     }
@@ -1085,7 +1097,7 @@ impl Damageable for HumanAnatomy
         let side = if fastrand::bool() { Side1d::Left } else { Side1d::Right };
         let opposite_side = side.opposite();
 
-        [
+        let parts_fall_info = [
             (HumanPartId::Foot(side), 0.2, 0.95),
             (HumanPartId::Foot(opposite_side), 0.2, 0.95),
             (HumanPartId::Calf(side), 1.0, 0.8),
@@ -1102,7 +1114,20 @@ impl Damageable for HumanAnatomy
             (HumanPartId::Arm(opposite_side), 1.0, 0.5),
             (HumanPartId::Torso, 1.0, 0.9),
             (HumanPartId::Head, 1.0, 0.2)
-        ].into_iter().fold(damage, |damage, (id, scale, damping)|
+        ];
+
+        let parts = if self.is_standing()
+        {
+            parts_fall_info
+        } else
+        {
+            let mut parts = parts_fall_info;
+            fastrand::shuffle(&mut parts);
+
+            parts
+        };
+
+        parts.into_iter().fold(damage, |damage, (id, scale, damping)|
         {
             if let Some(muscle) = self.this.body.get_part_mut::<MuscleHealthGetter>(id)
             {

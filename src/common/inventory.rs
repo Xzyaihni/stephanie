@@ -3,11 +3,16 @@ use std::ops::{Index, Deref, DerefMut};
 use serde::{Serialize, Deserialize};
 
 use crate::common::{
+    some_or_value,
+    some_or_return,
     SimpleF32,
     ObjectsStore,
     Item,
     ItemsInfo,
-    Anatomy
+    Anatomy,
+    Entity,
+    AnyEntities,
+    entity::ClientEntities
 };
 
 pub use sorter::InventorySorter;
@@ -22,6 +27,87 @@ pub fn anatomy_weight_limit(anatomy: &Anatomy) -> f32
     if strength <= 0.0 { return 0.0; }
 
     strength
+}
+
+pub fn inventory_remove_item(entities: &ClientEntities, entity: Entity, item: InventoryItem) -> Option<Item>
+{
+    inventory_remove_item_with(entities, entity, item, || on_removed_item(entities, entity, item))
+}
+
+pub fn inventory_remove_item_with(
+    entities: &ClientEntities,
+    entity: Entity,
+    item: InventoryItem,
+    on_removed: impl FnOnce()
+) -> Option<Item>
+{
+    let mut inventory = entities.inventory_mut(entity)?;
+
+    let value = inventory.items.remove(item.0);
+
+    on_removed();
+
+    inventory.inventory_updated(&entities.infos().items_info);
+
+    value
+}
+
+pub fn inventory_remove_items(
+    entities: &ClientEntities,
+    entity: Entity,
+    items: impl Iterator<Item=InventoryItem>
+)
+{
+    let mut inventory = some_or_return!(entities.inventory_mut(entity));
+
+    items.for_each(|item|
+    {
+        inventory.items.remove(item.0);
+
+        on_removed_item(entities, entity, item);
+    });
+
+    inventory.inventory_updated(&entities.infos().items_info);
+}
+
+pub fn damage_durability(entities: &ClientEntities, entity: Entity, id: InventoryItem) -> bool
+{
+    damage_durability_with(entities, entity, id, || on_removed_item(entities, entity, id))
+}
+
+pub fn damage_durability_with(
+    entities: &ClientEntities,
+    entity: Entity,
+    id: InventoryItem,
+    on_removed: impl FnOnce()
+) -> bool
+{
+    let mut inventory = some_or_value!(entities.inventory_mut(entity), false);
+
+    if let Some(item) = inventory.items.get_mut(id.0)
+    {
+        let destroyed = item.damage_durability();
+
+        drop(inventory);
+
+        if destroyed
+        {
+            inventory_remove_item_with(entities, entity, id, on_removed);
+        }
+
+        destroyed
+    } else
+    {
+        false
+    }
+}
+
+fn on_removed_item(entities: &ClientEntities, entity: Entity, item: InventoryItem)
+{
+    if let Some(mut character) = entities.character_mut(entity)
+    {
+        character.on_removed_item(item);
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -143,40 +229,6 @@ impl Inventory
         let on_drop = move |this: &mut Self| this.inventory_updated(info);
 
         Some(ItemMutRef{inventory: self, on_drop, id})
-    }
-
-    pub fn damage_durability(&mut self, info: &ItemsInfo, id: InventoryItem) -> bool
-    {
-        if let Some(item) = self.items.get_mut(id.0)
-        {
-            let destroyed = item.damage_durability();
-
-            if destroyed
-            {
-                self.remove(info, id);
-            }
-
-            destroyed
-        } else
-        {
-            false
-        }
-    }
-
-    pub fn remove(&mut self, info: &ItemsInfo, id: InventoryItem) -> Option<Item>
-    {
-        let value = self.items.remove(id.0);
-
-        self.inventory_updated(info);
-
-        value
-    }
-
-    pub fn remove_many(&mut self, info: &ItemsInfo, ids: impl Iterator<Item=InventoryItem>)
-    {
-        ids.for_each(|id| { self.items.remove(id.0); });
-
-        self.inventory_updated(info);
     }
 
     pub fn is_empty(&self) -> bool

@@ -33,13 +33,12 @@ pub use crate::common::items_info::ItemId;
 
 pub fn item_disappear_watcher(textures: &CommonTextures) -> Watcher
 {
-    let explode_info = ParticlesKind::Dust.create(textures, true, 0.0);
+    let explode_info = ParticlesKind::Dust{direction: None}.create(textures);
 
     Watcher{
         kind: WatcherType::Lifetime(60.0.into()),
         action: Watcher::explode_action(ExplodeInfo{
             info: ParticlesInfo{
-                speed: ParticleSpeed::Random(0.1),
                 position: ParticlePosition::Spread(1.0),
                 ..explode_info.info
             },

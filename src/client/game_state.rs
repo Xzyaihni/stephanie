@@ -43,14 +43,18 @@ use crate::{
         some_or_value,
         some_or_return,
         receiver_loop,
+        ENTITY_SCALE,
         render_info::*,
         lazy_transform::*,
+        particle_creator::*,
+        Sprite,
         Loot,
         MessagePasser,
         ClientLight,
         TileMap,
         DataInfos,
         InventoryItem,
+        ItemUsage,
         AnyEntities,
         Entity,
         EntityInfo,
@@ -587,28 +591,11 @@ pub enum InventoryWhich
     Other
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum UsageKind
-{
-    Ingest
-}
-
-impl UsageKind
-{
-    fn name(&self) -> &str
-    {
-        match self
-        {
-            Self::Ingest => "ingest"
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum GameUiEvent
 {
     Info{which: InventoryWhich, item: InventoryItem},
-    Use{usage: UsageKind, which: InventoryWhich, item: InventoryItem},
+    Use{usage: ItemUsage, which: InventoryWhich, item: InventoryItem},
     Drop{which: InventoryWhich, item: InventoryItem},
     Wield(InventoryItem),
     Take(InventoryItem)
@@ -659,8 +646,10 @@ impl UiReceiver
 #[derive(Clone)]
 pub struct CommonTextures
 {
-    pub dust: TextureId,
-    pub blood: TextureId,
+    pub dust: Sprite,
+    pub blood: Sprite,
+    pub health: Sprite,
+    pub level_up: Sprite,
     pub solid: TextureId
 }
 
@@ -669,8 +658,10 @@ impl CommonTextures
     pub fn new(assets: &mut Assets) -> Self
     {
         Self{
-            dust: assets.texture_id("decals/dust.png"),
-            blood: assets.texture_id("decals/blood.png"),
+            dust: Sprite::new(assets, assets.texture_id("decals/dust.png")),
+            blood: Sprite::new(assets, assets.texture_id("decals/blood.png")),
+            health: Sprite::new(assets, assets.texture_id("decals/health.png")),
+            level_up: Sprite::new(assets, assets.texture_id("decals/level_up.png")),
             solid: assets.default_texture(DefaultTexture::Solid)
         }
     }
@@ -1055,6 +1046,35 @@ impl GameState
                 character.verify_valid(entities);
             }
         }));
+
+        {
+            let textures = self.common_textures.clone();
+            self.entities.entities.on_player(Box::new(move |OnChangeInfo{entities, entity, ..}|
+            {
+                let mut player = some_or_return!(entities.player_mut_no_change(entity));
+
+                if let Some(_) = player.take_leveled_up()
+                {
+                    drop(player);
+
+                    let position = some_or_return!(entities.transform(entity)).position;
+
+                    let info = ParticlesKind::LevelUp.create(&textures);
+                    create_particles(
+                        entities,
+                        info.info,
+                        EntityInfo{
+                            transform: Some(Transform{
+                                position,
+                                ..Default::default()
+                            }),
+                            ..info.prototype
+                        },
+                        Vector3::repeat(ENTITY_SCALE)
+                    );
+                }
+            }));
+        }
 
         {
             let aspect = self.camera.read().aspect();

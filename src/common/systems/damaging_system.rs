@@ -115,7 +115,7 @@ pub fn damager<'a, 'b, 'c>(
         let angle = result.angle;
         let damage = result.damage.clone();
 
-        let create_particles = |textures: &CommonTextures, kind: ParticlesKind, weak: bool, position: Vector3<f32>|
+        let create_particles = |position: Vector3<f32>, weak: bool, f: fn(bool, f32) -> ParticlesKind|
         {
             let angle = if weak
             {
@@ -125,7 +125,7 @@ pub fn damager<'a, 'b, 'c>(
                 angle
             };
 
-            let info = kind.create(textures, weak, angle);
+            let info = f(weak, angle).create(textures);
             create_particles(
                 entities,
                 info.info,
@@ -220,20 +220,20 @@ pub fn damager<'a, 'b, 'c>(
                 };
 
                 let is_organic = has_anatomy;
-                let particle = if is_organic && damage.data.is_piercing()
+                let particle: fn(bool, f32) -> ParticlesKind = if is_organic && damage.data.is_piercing()
                 {
-                    ParticlesKind::Blood
+                    |weak, angle| ParticlesKind::Blood{direction: Some(ParticleDirection{weak, angle})}
                 } else
                 {
-                    ParticlesKind::Dust
+                    |weak, angle| ParticlesKind::Dust{direction: Some(ParticleDirection{weak, angle})}
                 };
 
                 damage_entity(entities, textures, loot, entity, result.other_entity, damage);
 
-                create_particles(textures, particle, true, result.damage_entry);
+                create_particles(result.damage_entry, true, particle);
                 if let Some(position) = result.damage_exit
                 {
-                    create_particles(textures, particle, false, position);
+                    create_particles(position, false, particle);
                 }
 
                 let knockback_direction = angle_to_direction_3d(opposite_angle(result.angle));
@@ -255,13 +255,13 @@ pub fn damager<'a, 'b, 'c>(
                     {
                         if let Some(mut player) = entities.player_mut(result.other_entity)
                         {
-                            player.get_stat_mut(stat_id).add_experience(amount);
+                            player.add_experience(stat_id, amount);
 
                             match stat_id
                             {
                                 StatId::Bash | StatId::Poke =>
                                 {
-                                    player.get_stat_mut(StatId::Melee).add_experience(amount * 0.3);
+                                    player.add_experience(StatId::Melee, amount * 0.3);
                                 },
                                 _ => ()
                             }
@@ -298,10 +298,19 @@ pub fn damager<'a, 'b, 'c>(
                     spawn_items(entities, textures, loot, &transform, &name);
                 }
 
-                create_particles(textures, ParticlesKind::Dust, true, result.damage_entry);
+                create_particles(
+                    result.damage_entry,
+                    true,
+                    |weak, angle| ParticlesKind::Dust{direction: Some(ParticleDirection{weak, angle})}
+                );
+
                 if let Some(position) = result.damage_exit
                 {
-                    create_particles(textures, ParticlesKind::Dust, false, position);
+                    create_particles(
+                        position,
+                        false,
+                        |weak, angle| ParticlesKind::Dust{direction: Some(ParticleDirection{weak, angle})}
+                    );
                 }
 
                 let entity = entities.push(true, EntityInfo{

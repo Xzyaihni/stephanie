@@ -262,9 +262,11 @@
     },
     {
         "name": "heal pills",
-        "drug": {
-            "Heal": {
-                "amount": 10.0
+        "usage": {
+            "Drug": {
+                "Heal": {
+                    "amount": 10.0
+                }
             }
         },
         "rarity_rolls": false,
@@ -274,10 +276,8 @@
     },
     {
         "name": "splint",
-        "drug": {
-            "BoneHeal": {
-                "amount": 1
-            }
+        "usage": {
+            "BoneHeal": 1
         },
         "comfort": 0.5,
         "mass": 0.3,

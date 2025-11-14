@@ -10,6 +10,8 @@ use crate::common::{
     some_or_unexpected_return,
     some_or_value,
     some_or_return,
+    damage_durability,
+    inventory_remove_items,
     generic_info::*,
     Entity,
     ItemId,
@@ -63,10 +65,10 @@ pub fn craft_item_rarity(level: u32) -> ItemRarity
     ItemRarity::from_repr((value.round() as i32).max(0) as usize).unwrap_or(ItemRarity::Mythical)
 }
 
-pub fn craft_item(entities: &ClientEntities, player: Entity, items: Vec<CraftComponent>, craft: &Craft)
+pub fn craft_item(entities: &ClientEntities, entity: Entity, items: Vec<CraftComponent>, craft: &Craft)
 {
-    let mut inventory = some_or_return!(entities.inventory_mut(player));
-    let mut player = some_or_return!(entities.player_mut(player));
+    let mut inventory = some_or_return!(entities.inventory_mut(entity));
+    let mut player = some_or_return!(entities.player_mut(entity));
 
     let infos = entities.infos();
 
@@ -79,7 +81,7 @@ pub fn craft_item(entities: &ClientEntities, player: Entity, items: Vec<CraftCom
 
     craft.produces.iter().copied().for_each(|id|
     {
-        let crafting_stat = player.get_stat_mut(StatId::Crafting);
+        let crafting_stat = player.get_stat(StatId::Crafting);
 
         let item_info = infos.items_info.get(id);
         let rarity = if item_info.rarity_rolls
@@ -90,7 +92,7 @@ pub fn craft_item(entities: &ClientEntities, player: Entity, items: Vec<CraftCom
             ItemRarity::Normal
         };
 
-        crafting_stat.add_experience(5.0);
+        player.add_experience(StatId::Crafting, 5.0);
 
         let buffs = rarity.random_buffs();
 
@@ -106,10 +108,10 @@ pub fn craft_item(entities: &ClientEntities, player: Entity, items: Vec<CraftCom
 
     items.iter().filter(|x| !x.consume).for_each(|x|
     {
-        inventory.damage_durability(&infos.items_info, x.id);
+        damage_durability(entities, entity, x.id);
     });
 
-    inventory.remove_many(&infos.items_info, items.into_iter().filter_map(|x| x.consume.then_some(x.id)));
+    inventory_remove_items(entities, entity, items.into_iter().filter_map(|x| x.consume.then_some(x.id)));
 }
 
 #[derive(Debug, Clone, Copy)]

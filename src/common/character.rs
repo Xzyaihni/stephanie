@@ -32,6 +32,8 @@ use crate::{
         short_rotation,
         angle_to_direction_3d,
         ease_out,
+        inventory_remove_item_with,
+        damage_durability_with,
         ENTITY_SCALE,
         render_info::*,
         lazy_transform::*,
@@ -514,12 +516,10 @@ impl Character
         let info = some_or_return!(self.info.as_ref());
         let held = some_or_return!(self.holding);
 
-        let mut inventory = some_or_return!(entities.inventory_mut(info.this));
-
-        if inventory.damage_durability(&entities.infos().items_info, held)
+        damage_durability_with(entities, info.this, held, ||
         {
-            self.set_holding(None);
-        }
+            self.on_removed_item(held)
+        });
     }
 
     pub fn set_holding(&mut self, holding: Option<InventoryItem>)
@@ -931,7 +931,10 @@ impl Character
                 ..Default::default()
             });
 
-            entities.inventory_mut(info.this).unwrap().remove(combined_info.items_info, held);
+            inventory_remove_item_with(entities, info.this, held, ||
+            {
+                self.on_removed_item(held);
+            });
 
             self.consume_attack_oxygen(combined_info);
         }
@@ -1973,15 +1976,12 @@ impl Character
 
     pub fn anatomy_changed(&mut self, anatomy: &Anatomy)
     {
-        let state = if anatomy.can_move()
+        let state = if anatomy.is_standing()
         {
-            if anatomy.is_crawling()
-            {
-                SpriteState::Crawling
-            } else
-            {
-                SpriteState::Normal
-            }
+            SpriteState::Normal
+        } else if anatomy.is_crawling()
+        {
+            SpriteState::Crawling
         } else
         {
             SpriteState::Lying

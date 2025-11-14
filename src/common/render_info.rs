@@ -613,6 +613,7 @@ pub enum ZLevel
     PlayerHead,
     PlayerHair,
     Hat,
+    AboveParticle,
     Door
 }
 
