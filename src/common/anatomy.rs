@@ -19,7 +19,7 @@ use crate::{
     }
 };
 
-pub use human::{HumanAnatomy, HumanAnatomyInfo, AnatomyId, OrganId, BrainId};
+pub use human::{HumanAnatomy, HumanAnatomyInfo, HumanPartId, AnatomyId, OrganId, BrainId};
 use human::*;
 
 use getter::{FieldGet, PartFieldGetter};

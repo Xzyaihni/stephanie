@@ -1501,7 +1501,7 @@ impl<'a> PlayerContainer<'a>
             {
                 if let Some(mut character) = self.game_state.entities().character_mut(player)
                 {
-                    character.set_holding(Some(item));
+                    character.set_holding(self.game_state.entities(), Some(item));
                 }
             },
             GameUiEvent::Take(item) =>

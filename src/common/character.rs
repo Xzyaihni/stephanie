@@ -44,6 +44,7 @@ use crate::{
         raycast::*,
         physics::*,
         item::*,
+        anatomy::*,
         Sprite,
         Hairstyle,
         Side1d,
@@ -58,10 +59,8 @@ use crate::{
         ItemInfo,
         ItemsInfo,
         Parent,
-        Anatomy,
         World,
         player::StatId,
-        anatomy::WINDED_OXYGEN,
         entity::ClientEntities
     }
 };
@@ -332,7 +331,7 @@ impl Character
 
     pub fn initialize(
         &mut self,
-        entities: &impl AnyEntities,
+        entities: &ClientEntities,
         entity: Entity
     )
     {
@@ -496,6 +495,11 @@ impl Character
         }
 
         self.info = Some(info);
+
+        if let Some(anatomy) = entities.anatomy(entity)
+        {
+            self.update_anatomy_dependent(entities, &anatomy);
+        }
     }
 
     pub fn with_previous(&mut self, previous: Self)
@@ -522,9 +526,32 @@ impl Character
         });
     }
 
-    pub fn set_holding(&mut self, holding: Option<InventoryItem>)
+    pub fn set_holding(&mut self, entities: &ClientEntities, holding: Option<InventoryItem>)
     {
-        self.holding = holding;
+        if let Some(holding) = holding
+        {
+            let info = some_or_return!(self.info.as_ref());
+
+            let can_hold = {
+                let inventory = some_or_return!(entities.inventory(info.this));
+                let item = some_or_unexpected_return!(inventory.get(holding));
+                some_or_return!(self.can_hold(entities, item))
+            };
+
+            if can_hold
+            {
+                self.holding = Some(holding);
+                self.update_holding();
+            }
+        } else
+        {
+            self.unhold();
+        }
+    }
+
+    fn unhold(&mut self)
+    {
+        self.holding = None;
         self.update_holding();
     }
 
@@ -537,7 +564,7 @@ impl Character
     {
         if Some(item) == self.holding
         {
-            self.set_holding(None);
+            self.unhold();
         }
     }
 
@@ -555,9 +582,14 @@ impl Character
         }
     }
 
-    pub fn newtons(&self, combined_info: CombinedInfo) -> Option<f32>
+    pub fn newtons(&self, entities: &ClientEntities) -> Option<f32>
     {
-        self.anatomy(combined_info.entities).map(|x| x.strength() * 30.0)
+        Some(Self::newtons_with_anatomy(&*(self.anatomy(entities)?)))
+    }
+
+    fn newtons_with_anatomy(anatomy: &Anatomy) -> f32
+    {
+        anatomy.strength() * 30.0
     }
 
     pub fn attack_cooldown(&self) -> f32
@@ -574,7 +606,7 @@ impl Character
 
     fn held_crit_chance(&self, combined_info: CombinedInfo) -> Option<f32>
     {
-        let item = self.held_item(combined_info)?;
+        let item = self.held_item(combined_info.entities)?;
 
         Some(0.01 + item.crit_chance().unwrap_or(0.0))
     }
@@ -649,7 +681,7 @@ impl Character
             return;
         }
 
-        let held_item_id = self.held_item(combined_info).map(|x| x.id);
+        let held_item_id = self.held_item(combined_info.entities).map(|x| x.id);
 
         {
             let info = some_or_return!(self.info.as_mut());
@@ -837,9 +869,9 @@ impl Character
         }
 
         let entities = &combined_info.entities;
-        let strength = some_or_value!(self.newtons(combined_info), false) * 0.2;
+        let strength = some_or_value!(self.newtons(entities), false) * 0.2;
 
-        if let Some(item) = self.held_item(combined_info)
+        if let Some(item) = self.held_item(entities)
         {
             let held = some_or_value!(self.holding.take(), false);
 
@@ -954,7 +986,7 @@ impl Character
 
     fn attack_oxygen_cost(&self, combined_info: CombinedInfo) -> Option<f32>
     {
-        Some(self.held_info(combined_info).oxygen_cost(self.newtons(combined_info)?))
+        Some(self.held_info(combined_info).oxygen_cost(self.newtons(combined_info.entities)?))
     }
 
     fn consume_attack_oxygen(&mut self, combined_info: CombinedInfo)
@@ -1238,7 +1270,7 @@ impl Character
             return false;
         }
 
-        let item = some_or_false!(self.held_item(combined_info));
+        let item = some_or_false!(self.held_item(combined_info.entities));
 
         self.attack_cooldown = some_or_false!(self.held_attack_cooldown(combined_info.entities));
 
@@ -1331,7 +1363,7 @@ impl Character
             return false;
         }
 
-        let item = some_or_false!(self.held_item(combined_info));
+        let item = some_or_false!(self.held_item(combined_info.entities));
 
         let items_info = combined_info.items_info;
         let ranged = some_or_false!(&items_info.get(item.id).ranged);
@@ -1390,7 +1422,7 @@ impl Character
 
     fn target_mass(&self, combined_info: CombinedInfo) -> f32
     {
-        self.newtons(combined_info).unwrap_or(0.0) * 0.005
+        self.newtons(combined_info.entities).unwrap_or(0.0) * 0.005
     }
 
     fn mass_maxed(&self, combined_info: CombinedInfo, mass: f32) -> f32
@@ -1458,13 +1490,13 @@ impl Character
         let hand_mass = self.hand_item_info(combined_info).mass;
         let item_info = self.held_info(combined_info);
 
-        let damage_buff = self.held_item(combined_info)
+        let damage_buff = self.held_item(combined_info.entities)
             .and_then(|x| x.damage_scale())
             .unwrap_or(1.0);
 
         let crit = self.random_held_crit(combined_info);
 
-        let strength_scale = some_or_return!(self.newtons(combined_info)) * 0.05;
+        let strength_scale = some_or_return!(self.newtons(combined_info.entities)) * 0.05;
 
         let mass_damage = self.mass_maxed(combined_info, item_info.mass);
 
@@ -1552,13 +1584,13 @@ impl Character
 
         let offset = projectile_scale / 2.0;
 
-        let damage_buff = self.held_item(combined_info)
+        let damage_buff = self.held_item(combined_info.entities)
             .and_then(|x| x.damage_scale())
             .unwrap_or(1.0);
 
         let crit = self.random_held_crit(combined_info);
 
-        let strength_scale = some_or_return!(self.newtons(combined_info)) * 0.03;
+        let strength_scale = some_or_return!(self.newtons(combined_info.entities)) * 0.03;
 
         let mass_damage = self.mass_maxed(combined_info, item_info.mass);
 
@@ -1664,7 +1696,7 @@ impl Character
         combined_info: CombinedInfo<'a>
     ) -> Option<&'a ItemInfo>
     {
-        self.held_item(combined_info).map(|x| combined_info.items_info.get(x.id))
+        self.held_item(combined_info.entities).map(|x| combined_info.items_info.get(x.id))
     }
 
     fn hand_item_info<'a>(&self, combined_info: CombinedInfo<'a>) -> &'a ItemInfo
@@ -1687,17 +1719,17 @@ impl Character
         self.holding
     }
 
-    fn held_item(&self, combined_info: CombinedInfo) -> Option<Item>
+    fn held_item(&self, entities: &ClientEntities) -> Option<Item>
     {
         let info = self.info.as_ref()?;
         let held = self.holding?;
 
-        combined_info.entities.inventory(info.this).and_then(|x| x.get(held).cloned())
+        entities.inventory(info.this).and_then(|x| x.get(held).cloned())
     }
 
     fn held_visible(&self, combined_info: CombinedInfo) -> bool
     {
-        *self.sprite_state.value() != SpriteState::Lying && self.held_item(combined_info).is_some()
+        *self.sprite_state.value() != SpriteState::Lying && self.held_item(combined_info.entities).is_some()
     }
 
     fn held_distance(&self) -> f32
@@ -1718,6 +1750,38 @@ impl Character
         let offset = (self.this_scale(characters_info).y + scale.y) * 0.5 + self.held_distance();
 
         Vector3::new(offset, 0.0, 0.0)
+    }
+
+    pub fn mass_hold_limit(&self, entities: &ClientEntities) -> Option<f32>
+    {
+        Some(Self::mass_hold_limit_with_anatomy(&*(self.anatomy(entities)?)))
+    }
+
+    fn mass_hold_limit_with_anatomy(anatomy: &Anatomy) -> f32
+    {
+        let has_hand = |side|
+        {
+            anatomy.get_human::<()>(AnatomyId::Part(HumanPartId::Hand(side))).unwrap().is_some() as u32
+        };
+
+        let hand_count = has_hand(Side1d::Left) + has_hand(Side1d::Right);
+
+        if hand_count == 0
+        {
+            return 0.0;
+        }
+
+        Self::newtons_with_anatomy(anatomy) * (hand_count as f32 / 2.0)
+    }
+
+    fn can_hold_with_anatomy(entities: &ClientEntities, anatomy: &Anatomy, item: &Item) -> bool
+    {
+        Self::mass_hold_limit_with_anatomy(anatomy) >= entities.infos().items_info.get(item.id).mass
+    }
+
+    pub fn can_hold(&self, entities: &ClientEntities, item: &Item) -> Option<bool>
+    {
+        Some(Self::can_hold_with_anatomy(entities, &*(self.anatomy(entities)?), item))
     }
 
     fn decrease_timer(time_variable: &mut f32, dt: f32) -> bool
@@ -1897,6 +1961,7 @@ impl Character
                 render.visible = is_visible;
             } else
             {
+                // didnt update successfully, makes it rerun again
                 sprite_state.dirty();
             }
         };
@@ -1915,13 +1980,6 @@ impl Character
             SpriteState::Normal => true,
             SpriteState::Crawling
             | SpriteState::Lying => false
-        };
-
-        let held_visibility = match self.sprite_state.value()
-        {
-            SpriteState::Normal
-            | SpriteState::Crawling => true,
-            SpriteState::Lying => false
         };
 
         let texture = match self.sprite_state.value()
@@ -1956,13 +2014,6 @@ impl Character
                 set_visible(&mut self.sprite_state, holding, visible);
             }
 
-            {
-                let mut set_visible = |entity| set_visible(&mut self.sprite_state, entity, held_visibility);
-
-                set_visible(info.hand_left);
-                set_visible(info.hand_right);
-            }
-
             let set_visible = |entity| set_visible(&mut self.sprite_state, entity, hair_visibility);
 
             info.hair.iter().copied().for_each(set_visible);
@@ -1971,10 +2022,18 @@ impl Character
         self.update_held(combined_info);
         self.update_cached(combined_info);
 
+        if let Some(anatomy) = entities.anatomy(entity)
+        {
+            self.update_anatomy_dependent(entities, &anatomy)
+        } else
+        {
+            self.sprite_state.dirty();
+        }
+
         set_sprite(texture);
     }
 
-    pub fn anatomy_changed(&mut self, anatomy: &Anatomy)
+    pub fn anatomy_changed(&mut self, entities: &ClientEntities, anatomy: &Anatomy)
     {
         let state = if anatomy.is_standing()
         {
@@ -1988,6 +2047,46 @@ impl Character
         };
 
         self.set_sprite(state);
+
+        self.update_anatomy_dependent(entities, anatomy);
+    }
+
+    fn update_anatomy_dependent(&mut self, entities: &ClientEntities, anatomy: &Anatomy)
+    {
+        let info = self.info.as_ref().unwrap();
+
+        let hands_visibility = match self.sprite_state.value()
+        {
+            SpriteState::Normal
+            | SpriteState::Crawling => true,
+            SpriteState::Lying => false
+        };
+
+        let mut set_hand_visibility = |id, entity|
+        {
+            if let Some(mut render) = entities.render_mut_no_change(entity)
+            {
+                let id = AnatomyId::Part(HumanPartId::Hand(id));
+                let is_visible = hands_visibility && anatomy.get_human::<()>(id).unwrap().is_some();
+
+                render.set_visible(is_visible);
+            } else
+            {
+                // render has to exist
+                self.sprite_state.dirty();
+            }
+        };
+
+        set_hand_visibility(Side1d::Left, info.hand_left);
+        set_hand_visibility(Side1d::Right, info.hand_right);
+
+        if let Some(item) = self.held_item(entities)
+        {
+            if !Self::can_hold_with_anatomy(entities, anatomy, &item)
+            {
+                self.unhold();
+            }
+        }
     }
 
     pub fn rotation_mut(&mut self) -> Option<&mut f32>

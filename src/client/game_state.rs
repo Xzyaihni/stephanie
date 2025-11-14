@@ -1024,7 +1024,7 @@ impl GameState
 
                     if let Some(mut character) = entities.character_mut_no_change(entity)
                     {
-                        character.anatomy_changed(&anatomy);
+                        character.anatomy_changed(entities, &anatomy);
                     }
                 }
             }));

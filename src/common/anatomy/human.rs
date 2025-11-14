@@ -1062,32 +1062,8 @@ impl HumanAnatomy
         self.this.body.detach_broken(|id| { self.this.broken.push(id); });
         self.update_cache();
     }
-}
 
-impl Damageable for HumanAnatomy
-{
-    fn damage(&mut self, mut damage: Damage) -> Option<Damage>
-    {
-        if !self.is_standing()
-        {
-            damage = damage * 2.0;
-        }
-
-        let was_standing = self.is_standing();
-
-        let damage = self.this.damage_random_part(damage);
-
-        self.on_damage();
-
-        if was_standing && !self.is_standing()
-        {
-            self.fall_damage(1.0);
-        }
-
-        damage
-    }
-
-    fn fall_damage(&mut self, damage: f32)
+    fn fall_damage(&mut self, body_height: bool, damage: f32)
     {
         if DebugConfig::is_enabled(DebugTool::PrintDamage)
         {
@@ -1116,15 +1092,21 @@ impl Damageable for HumanAnatomy
             (HumanPartId::Head, 1.0, 0.2)
         ];
 
-        let parts = if self.is_standing()
+        let parts = if !body_height
         {
-            parts_fall_info
+            if self.is_standing()
+            {
+                parts_fall_info
+            } else
+            {
+                let mut parts = parts_fall_info;
+                fastrand::shuffle(&mut parts);
+
+                parts
+            }
         } else
         {
-            let mut parts = parts_fall_info;
-            fastrand::shuffle(&mut parts);
-
-            parts
+            parts_fall_info.into_iter().rev().collect::<Vec<_>>().try_into().unwrap()
         };
 
         parts.into_iter().fold(damage, |damage, (id, scale, damping)|
@@ -1154,6 +1136,35 @@ impl Damageable for HumanAnatomy
         });
 
         self.on_damage();
+    }
+}
+
+impl Damageable for HumanAnatomy
+{
+    fn damage(&mut self, mut damage: Damage) -> Option<Damage>
+    {
+        if !self.is_standing()
+        {
+            damage = damage * 2.0;
+        }
+
+        let was_standing = self.is_standing();
+
+        let damage = self.this.damage_random_part(damage);
+
+        self.on_damage();
+
+        if was_standing && !self.is_standing()
+        {
+            Self::fall_damage(self, true, 1.0);
+        }
+
+        damage
+    }
+
+    fn fall_damage(&mut self, damage: f32)
+    {
+        Self::fall_damage(self, false, damage)
     }
 
     fn is_full(&self) -> bool

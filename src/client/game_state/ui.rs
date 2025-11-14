@@ -3202,6 +3202,8 @@ impl Ui
             text.update(dt);
 
             let body = self.controller.update(UiId::Console(TextboxPartId::Body), UiElement{
+                texture: UiTexture::Solid,
+                mix: Some(MixColorLch::color(BACKGROUND_COLOR)),
                 animation: Animation::normal(),
                 position: UiPosition::Absolute{position: Vector2::zeros(), align: Default::default()},
                 ..Default::default()

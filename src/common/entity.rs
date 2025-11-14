@@ -1405,7 +1405,7 @@ macro_rules! define_entities_both
                     {
                         let anatomy = entities.anatomy(entity).unwrap();
 
-                        character.anatomy_changed(&anatomy);
+                        character.anatomy_changed(entities, &anatomy);
                     }
                 }));
 
