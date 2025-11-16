@@ -3,6 +3,8 @@ use vulkano::{
     buffer::BufferContents,
 };
 
+use nalgebra::{vector, Vector2};
+
 use yanyaengine::{game_object::*, UniformLocation, SolidObject, Object};
 
 use crate::{
@@ -166,20 +168,39 @@ pub struct SkyColors
 
                 let aspect = character_info.normal.scale.component_div(&character.sprite_texture(character_info).scale);
 
+                let offset_value = |value: Vector2<f32>| -> Vector2<f32>
+                {
+                    ((value / ENTITY_PIXEL_SCALE as f32) * ENTITY_SCALE)
+                        .component_div(&character_info.normal.scale)
+                };
+
                 let face_offset: [f32; 2] = if let SpriteState::Lying = character.sprite_state()
                 {
                     let pixel_offset = character_info.lying_face_offset;
 
-                    let offset = ((pixel_offset.cast() / ENTITY_PIXEL_SCALE as f32) * ENTITY_SCALE)
-                        .component_div(&character_info.normal.scale);
-
-                    offset.into()
+                    offset_value(pixel_offset.cast()).into()
                 } else
                 {
                     [0.0; 2]
                 };
 
-                let eyes_offset = [0.0, 0.0];
+                let eyes_offset = if let Some(enemy) = entities.enemy(entity)
+                {
+                    if enemy.seen_fraction().is_some()
+                    {
+                        let x = (animation * 2.0 - 1.0).abs() * -2.0 + 1.0;
+
+                        let offset = (if x < 0.0 { x * -x } else { x * x }) * 3.0;
+
+                        offset_value(vector![0.0, offset]).into()
+                    } else
+                    {
+                        [0.0, 0.0]
+                    }
+                } else
+                {
+                    [0.0, 0.0]
+                };
 
                 let aspect: [f32; 2] = aspect.into();
 
