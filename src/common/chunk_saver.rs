@@ -1,7 +1,7 @@
 use std::{
     any,
     thread,
-    fmt::Debug,
+    fmt::{Display, Debug},
     cmp::Ordering,
     io,
     time::{Instant, Duration},
@@ -45,9 +45,10 @@ impl AutoSaveable for Chunk {}
 impl AutoSaveable for SaveEntities {}
 impl AutoSaveable for WorldChunksBlock {}
 
-pub fn load_world_file<T: DeserializeOwned>(
+pub fn load_world_file<E: Display, T: DeserializeOwned>(
     name: String,
-    path: &Path
+    path: &Path,
+    loader: impl FnOnce(File) -> Result<T, E>
 ) -> Option<T>
 {
     let file = match File::open(path)
@@ -61,7 +62,7 @@ pub fn load_world_file<T: DeserializeOwned>(
         }
     };
 
-    match load_compressed(file)
+    match loader(file)
     {
         Ok(x) => Some(x),
         Err(err) =>
@@ -405,7 +406,7 @@ where
     {
         Self::new_with_saver(parent_path, |path, pair|
         {
-            if let Err(err) = with_temp_save(Self::chunk_path(path, pair.key), &pair.value)
+            if let Err(err) = with_temp_save(Self::chunk_path(path, pair.key), compressed_saver(&pair.value))
             {
                 eprintln!("error saving {} to file: {err}", any::type_name::<T>());
             }

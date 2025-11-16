@@ -3,17 +3,24 @@ use vulkano::{
     buffer::BufferContents,
 };
 
-use yanyaengine::{game_object::*, SolidObject, Object};
+use yanyaengine::{game_object::*, UniformLocation, SolidObject, Object};
 
 use crate::{
     debug_config::*,
     app::{ProgramShaders, TimestampQuery},
     client::{Ui, game_state::ui::controller::UiShaders},
     common::{
+        ENTITY_SCALE,
+        ENTITY_PIXEL_SCALE,
         render_info::*,
+        Side1d,
         Entity,
+        AnyEntities,
+        character::SpriteState,
+        characters_info::FacialExpression,
         world::World,
-        entity::ClientEntities
+        entity::ClientEntities,
+        anatomy::{AnatomyId, OrganId}
     }
 };
 
@@ -58,19 +65,19 @@ pub struct SkyColors
     pub light_color: [f32; 3]
 }
 
-pub fn draw(
-    entities: &ClientEntities,
-    ui: &Ui,
-    DrawEntities{
-        solid,
-        mouse_solid,
-        renders,
-        above_world,
-        occluders,
-        shaded_renders,
-        light_renders,
-        world
-    }: DrawEntities,
+    pub fn draw(
+        entities: &ClientEntities,
+        ui: &Ui,
+        DrawEntities{
+            solid,
+            mouse_solid,
+            renders,
+            above_world,
+            occluders,
+            shaded_renders,
+            light_renders,
+            world
+        }: DrawEntities,
     DrawingInfo{
         shaders,
         info,
@@ -108,34 +115,167 @@ pub fn draw(
 
     timing_start!(0);
 
-    info.bind_pipeline(shaders.world);
+    if !is_loading
+    {
+        info.bind_pipeline(shaders.world);
 
-    world.draw_tiles(info, false);
+        world.draw_tiles(info, false);
+    }
 
     timing_end!(1);
 
-    info.bind_pipeline(shaders.default);
-
-    renders.iter().flatten().for_each(|&entity|
     {
-        let render = entities.render(entity).unwrap();
+        let mut current = shaders.world;
+        let mut try_bind = |info: &mut DrawInfo, shader|
+        {
+            if current != shader
+            {
+                info.bind_pipeline(shader);
+                current = shader;
+            }
+        };
 
-        let outline = OutlinedInfo::new(
-            render.mix,
-            render.outlined,
-            animation
-        );
+        let characters_info = &entities.infos().characters_info;
 
-        render.draw(info, outline);
-    });
+        renders.iter().flatten().for_each(|&entity|
+        {
+            let render = entities.render(entity).unwrap();
+
+            let outline = OutlinedInfo::new(
+                render.mix,
+                render.outlined,
+                animation
+            );
+
+            if let Some(character) = entities.character(entity)
+            {
+                if let SpriteState::Crawling = character.sprite_state()
+                {
+                    try_bind(info, shaders.default);
+
+                    render.draw(info, outline);
+                    return;
+                }
+
+                try_bind(info, shaders.character);
+
+                let character_info = characters_info.get(character.id);
+
+                let eyes_closed = character_info.face.eyes_closed;
+                let eyes_normal = character_info.face.eyes_normal;
+
+                let aspect = character_info.normal.scale.component_div(&character.sprite_texture(character_info).scale);
+
+                let face_offset: [f32; 2] = if let SpriteState::Lying = character.sprite_state()
+                {
+                    let pixel_offset = character_info.lying_face_offset;
+
+                    let offset = ((pixel_offset.cast() / ENTITY_PIXEL_SCALE as f32) * ENTITY_SCALE)
+                        .component_div(&character_info.normal.scale);
+
+                    offset.into()
+                } else
+                {
+                    [0.0; 2]
+                };
+
+                let eyes_offset = [0.0, 0.0];
+
+                let aspect: [f32; 2] = aspect.into();
+
+                let shader_info = entities.anatomy(entity).map(|anatomy|
+                {
+                    let face = character.facial_expression(&anatomy);
+
+                    let draw_eyes = match face
+                    {
+                        FacialExpression::Normal | FacialExpression::Sick => true,
+                        _ => false
+                    };
+
+                    let is_eye_closed = |side|
+                    {
+                        (draw_eyes
+                            && anatomy.get_human::<()>(AnatomyId::Organ(OrganId::Eye(side))).unwrap().is_none())
+                            || !anatomy.is_conscious()
+                    };
+
+                    let left_closed = is_eye_closed(Side1d::Left);
+                    let right_closed = is_eye_closed(Side1d::Right);
+
+                    let face_textures = &character_info.face;
+                    let face = match face
+                    {
+                        FacialExpression::Normal => face_textures.normal,
+                        FacialExpression::Hurt => face_textures.hurt,
+                        FacialExpression::Sick => face_textures.sick,
+                        FacialExpression::Dead => face_textures.dead
+                    };
+
+                    CharacterShaderInfo{
+                        draw_eyes,
+                        left_closed,
+                        right_closed,
+                        face,
+                        eyes_closed,
+                        eyes_normal,
+                        aspect,
+                        face_offset,
+                        eyes_offset
+                    }
+                }).unwrap_or_else(||
+                {
+                    CharacterShaderInfo{
+                        draw_eyes: true,
+                        left_closed: false,
+                        right_closed: false,
+                        face: character_info.face.normal,
+                        eyes_closed,
+                        eyes_normal,
+                        aspect,
+                        face_offset,
+                        eyes_offset
+                    }
+                });
+
+                {
+                    let assets = info.object_info.assets.lock();
+
+                    let set_of = |id, set|
+                    {
+                        assets.texture(id).lock().descriptor_set(info, UniformLocation{set, binding: 0})
+                    };
+
+                    info.current_sets = vec![
+                        set_of(shader_info.face, 0),
+                        set_of(shader_info.eyes_closed, 1),
+                        set_of(shader_info.eyes_normal, 2)
+                    ];
+                }
+
+                let shader_info = CharacterShaderInfoRaw::new(outline, shader_info);
+
+                render.draw(info, shader_info);
+                info.current_sets.clear();
+            } else
+            {
+                try_bind(info, shaders.default);
+
+                render.draw(info, outline);
+            }
+        });
+    }
 
     info.next_subpass();
 
     timing_end!(2);
 
-    info.bind_pipeline(shaders.world_shaded);
+    if !is_loading
+    {
+        info.bind_pipeline(shaders.world_shaded);
 
-    world.draw_tiles(info, true);
+        world.draw_tiles(info, true);
+    }
 
     info.bind_pipeline(shaders.default_shaded);
 
@@ -154,17 +294,23 @@ pub fn draw(
 
     timing_end!(3);
 
-    info.bind_pipeline(shaders.sky_shadow);
+    if !is_loading
+    {
+        info.bind_pipeline(shaders.sky_shadow);
 
-    world.draw_sky_occluders(info);
+        world.draw_sky_occluders(info);
+    }
 
     timing_end!(4);
 
-    info.bind_pipeline(shaders.sky_lighting);
+    if !is_loading
+    {
+        info.bind_pipeline(shaders.sky_lighting);
 
-    info.push_constants(BackgroundColor{color: light_color});
+        info.push_constants(BackgroundColor{color: light_color});
 
-    world.draw_sky_lights(info);
+        world.draw_sky_lights(info);
+    }
 
     timing_end!(5);
 
@@ -193,9 +339,12 @@ pub fn draw(
 
     timing_end!(6);
 
-    info.bind_pipeline(shaders.shadow);
+    if !is_loading
+    {
+        info.bind_pipeline(shaders.shadow);
 
-    world.draw_shadows(info);
+        world.draw_shadows(info);
+    }
 
     timing_end!(7);
 
@@ -218,8 +367,8 @@ pub fn draw(
     solid.draw(info);
 
     info.next_subpass();
-
     info.current_sets.clear();
+
     info.bind_pipeline(shaders.above_world);
 
     above_world.iter().for_each(|&entity|

@@ -1,3 +1,4 @@
+
 use std::{
     fs::File,
     path::PathBuf
@@ -67,49 +68,51 @@ pub fn craft_item_rarity(level: u32) -> ItemRarity
 
 pub fn craft_item(entities: &ClientEntities, entity: Entity, items: Vec<CraftComponent>, craft: &Craft)
 {
-    let mut inventory = some_or_return!(entities.inventory_mut(entity));
-    let mut player = some_or_return!(entities.player_mut(entity));
-
-    let infos = entities.infos();
-
-    debug_assert!(items.iter().all(|x| inventory.get(x.id).is_some()));
-
-    let average_durability = items.iter().map(|x|
     {
-        inventory.get(x.id).map(|x| *x.durability / infos.items_info.get(x.id).durability).unwrap_or(0.0)
-    }).sum::<f32>() / items.len() as f32;
+        let mut inventory = some_or_return!(entities.inventory_mut(entity));
+        let mut player = some_or_return!(entities.player_mut(entity));
 
-    craft.produces.iter().copied().for_each(|id|
-    {
-        let crafting_stat = player.get_stat(StatId::Crafting);
+        let infos = entities.infos();
 
-        let item_info = infos.items_info.get(id);
-        let rarity = if item_info.rarity_rolls
+        debug_assert!(items.iter().all(|x| inventory.get(x.id).is_some()));
+
+        let average_durability = items.iter().map(|x|
         {
-            craft_item_rarity(crafting_stat.level())
-        } else
+            inventory.get(x.id).map(|x| *x.durability / infos.items_info.get(x.id).durability).unwrap_or(0.0)
+        }).sum::<f32>() / items.len() as f32;
+
+        craft.produces.iter().copied().for_each(|id|
         {
-            ItemRarity::Normal
-        };
+            let crafting_stat = player.get_stat(StatId::Crafting);
 
-        player.add_experience(StatId::Crafting, 5.0);
+            let item_info = infos.items_info.get(id);
+            let rarity = if item_info.rarity_rolls
+            {
+                craft_item_rarity(crafting_stat.level())
+            } else
+            {
+                ItemRarity::Normal
+            };
 
-        let buffs = rarity.random_buffs();
+            player.add_experience(StatId::Crafting, 5.0);
 
-        let item = Item{
-            rarity,
-            buffs,
-            durability: (item_info.durability * average_durability).into(),
-            id
-        };
+            let buffs = rarity.random_buffs();
 
-        inventory.push(&infos.items_info, item);
-    });
+            let item = Item{
+                rarity,
+                buffs,
+                durability: (item_info.durability * average_durability).into(),
+                id
+            };
 
-    items.iter().filter(|x| !x.consume).for_each(|x|
-    {
-        damage_durability(entities, entity, x.id);
-    });
+            inventory.push(&infos.items_info, item);
+        });
+
+        items.iter().filter(|x| !x.consume).for_each(|x|
+        {
+            damage_durability(entities, entity, x.id);
+        });
+    }
 
     inventory_remove_items(entities, entity, items.into_iter().filter_map(|x| x.consume.then_some(x.id)));
 }

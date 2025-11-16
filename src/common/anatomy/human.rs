@@ -648,7 +648,7 @@ impl HumanAnatomy
             self.this.fainted = 15.0;
         }
 
-        let is_conscious = self.this.fainted == 0.0;
+        let is_conscious = !self.is_dead() && self.this.fainted == 0.0;
 
         let mut changed = false;
 
@@ -700,6 +700,11 @@ impl HumanAnatomy
         cached.speed.arms == 0.0
             && cached.speed.legs == 0.0
             && self.strength() == 0.0
+    }
+
+    pub fn is_conscious(&self) -> bool
+    {
+        self.this.conscious
     }
 
     pub fn take_killed(&mut self) -> bool

@@ -60,6 +60,7 @@ use crate::{
         ItemsInfo,
         Parent,
         World,
+        characters_info::{CharacterInfo, FacialExpression},
         player::StatId,
         entity::ClientEntities
     }
@@ -1982,21 +1983,7 @@ impl Character
             | SpriteState::Lying => false
         };
 
-        let texture = match self.sprite_state.value()
-        {
-            SpriteState::Normal =>
-            {
-                character_info.normal
-            },
-            SpriteState::Crawling =>
-            {
-                character_info.crawling
-            },
-            SpriteState::Lying =>
-            {
-                character_info.lying
-            }
-        };
+        let texture = self.sprite_texture(character_info);
 
         entities.lazy_setter.borrow_mut().set_collider_no_change(
             entity,
@@ -2033,14 +2020,34 @@ impl Character
         set_sprite(texture);
     }
 
+    pub fn facial_expression(&self, anatomy: &Anatomy) -> FacialExpression
+    {
+        if anatomy.is_dead()
+        {
+            FacialExpression::Dead
+        } else if self.knockback_recovery < 1.0
+        {
+            FacialExpression::Hurt
+        } else if anatomy.is_winded()
+        {
+            FacialExpression::Sick
+        } else
+        {
+            FacialExpression::Normal
+        }
+    }
+
     pub fn anatomy_changed(&mut self, entities: &ClientEntities, anatomy: &Anatomy)
     {
-        let state = if anatomy.is_standing()
+        let state = if anatomy.is_conscious()
         {
-            SpriteState::Normal
-        } else if anatomy.is_crawling()
-        {
-            SpriteState::Crawling
+            if anatomy.is_crawling()
+            {
+                SpriteState::Crawling
+            } else
+            {
+                SpriteState::Normal
+            }
         } else
         {
             SpriteState::Lying
@@ -2257,6 +2264,30 @@ impl Character
             SpriteState::Crawling => 0.8,
             SpriteState::Lying => 0.5
         }
+    }
+
+    pub fn sprite_texture(&self, character_info: &CharacterInfo) -> Sprite
+    {
+        match self.sprite_state.value()
+        {
+            SpriteState::Normal =>
+            {
+                character_info.normal
+            },
+            SpriteState::Crawling =>
+            {
+                character_info.crawling
+            },
+            SpriteState::Lying =>
+            {
+                character_info.lying
+            }
+        }
+    }
+
+    pub fn sprite_state(&self) -> SpriteState
+    {
+        *self.sprite_state.value()
     }
 
     fn set_sprite(&mut self, state: SpriteState)

@@ -13,7 +13,7 @@ serde = "1.0"
 serde_derive = "1.0"
 vulkano = "0.35"
 vulkano-shaders = "0.35"
-serde_json = "1.0"
+serde_json = { version = "1.0", features = ["float_roundtrip"] }
 fastrand = "2.3"
 strum = { version = "0.27", features = ["derive"] }
 rust-lzma = "0.6"

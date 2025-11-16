@@ -51,6 +51,64 @@ pub trait RenderInfoTrait
     fn set_visible(&mut self, value: bool);
 }
 
+fn to_flags(values: impl IntoIterator<Item=bool>) -> u32
+{
+    values.into_iter().enumerate().fold(0, |flags, (index, x)|
+    {
+        flags | ((x as u32) << index)
+    })
+}
+
+fn is_flags_amount(flags: u32, amount: usize) -> bool
+{
+    flags & ((1 << amount) - 1) == flags
+}
+
+#[derive(Debug)]
+pub struct CharacterShaderInfo
+{
+    pub draw_eyes: bool,
+    pub left_closed: bool,
+    pub right_closed: bool,
+    pub face: TextureId,
+    pub eyes_normal: TextureId,
+    pub eyes_closed: TextureId,
+    pub aspect: [f32; 2],
+    pub face_offset: [f32; 2],
+    pub eyes_offset: [f32; 2]
+}
+
+#[repr(C)]
+#[derive(Debug, BufferContents)]
+pub struct CharacterShaderInfoRaw
+{
+    other_color: [f32; 4],
+    aspect: [f32; 2],
+    face_offset: [f32; 2],
+    eyes_offset: [f32; 2],
+    other_mix: f32,
+    flags: u32,
+    animation: f32,
+    outlined: f32
+}
+
+impl CharacterShaderInfoRaw
+{
+    pub fn new(outline: OutlinedInfo, info: CharacterShaderInfo) -> Self
+    {
+        Self{
+            other_color: outline.other_color,
+            aspect: info.aspect,
+            face_offset: info.face_offset,
+            eyes_offset: info.eyes_offset,
+            other_mix: outline.other_mix,
+            flags: (to_flags([info.draw_eyes, info.left_closed, info.right_closed]) << 2) | outline.flags,
+            outlined: outline.outlined,
+            animation: outline.animation
+        }
+    }
+}
+
 #[repr(C)]
 #[derive(BufferContents)]
 pub struct OutlinedInfo
@@ -121,7 +179,7 @@ impl From<Option<MixColor>> for RawMixColor
     {
         fn flags(only_alpha: bool, keep_transparency: bool) -> u32
         {
-            ((only_alpha as u32) << 1) | keep_transparency as u32
+            to_flags([keep_transparency, only_alpha])
         }
 
         if let Some(color) = color
@@ -224,7 +282,7 @@ impl UiElementFill
 
         let color = RawMixColor::from(color);
 
-        debug_assert!(color.flags & ((1 << 2) - 1) == color.flags, "uh oh colors shouldnt have more than 2 flags");
+        debug_assert!(is_flags_amount(color.flags, 2), "uh oh colors shouldnt have more than 2 flags");
 
         FillInfo{
             other_color: color.other_color,

@@ -17,6 +17,7 @@ pub enum SaveError
 {
     Io(io::Error),
     Lzma(lzma::LzmaError),
+    Json(serde_json::Error),
     Bincode(bincode::error::EncodeError)
 }
 
@@ -36,6 +37,14 @@ impl From<lzma::LzmaError> for SaveError
     }
 }
 
+impl From<serde_json::Error> for SaveError
+{
+    fn from(value: serde_json::Error) -> Self
+    {
+        Self::Json(value)
+    }
+}
+
 impl From<bincode::error::EncodeError> for SaveError
 {
     fn from(value: bincode::error::EncodeError) -> Self
@@ -52,22 +61,59 @@ impl Display for SaveError
         {
             Self::Io(x) => Display::fmt(x, f),
             Self::Lzma(x) => Display::fmt(x, f),
+            Self::Json(x) => Display::fmt(x, f),
             Self::Bincode(x) => Display::fmt(x, f)
         }
     }
 }
 
-pub fn with_temp_save<T: Serialize>(path: PathBuf, value: T) -> Result<(), SaveError>
+pub fn json_loader<T: DeserializeOwned>() -> fn(File) -> serde_json::Result<T>
+{
+    |file|
+    {
+        serde_json::from_reader(file)
+    }
+}
+
+pub fn compressed_loader<T: DeserializeOwned>() -> fn(File) -> Result<T, LoadError>
+{
+    |file|
+    {
+        load_compressed(file)
+    }
+}
+
+pub fn json_saver<T: Serialize>(value: &T) -> impl FnOnce(File) -> Result<(), SaveError> + use<'_, T>
+{
+    move |file|
+    {
+        serde_json::to_writer(file, value)?;
+
+        Ok(())
+    }
+}
+
+pub fn compressed_saver<T: Serialize>(value: T) -> impl FnOnce(File) -> Result<(), SaveError>
+{
+    move |file|
+    {
+        let mut lzma_writer = LzmaWriter::new_compressor(file, LZMA_PRESET)?;
+
+        bincode::serde::encode_into_std_write(value, &mut lzma_writer, crate::common::BINCODE_CONFIG)?;
+
+        lzma_writer.finish()?;
+
+        Ok(())
+    }
+}
+
+pub fn with_temp_save(path: PathBuf, saver: impl FnOnce(File) -> Result<(), SaveError>) -> Result<(), SaveError>
 {
     let temp_path = path.with_extension("tmp");
 
     let file = File::create(&temp_path)?;
 
-    let mut lzma_writer = LzmaWriter::new_compressor(file, LZMA_PRESET)?;
-
-    bincode::serde::encode_into_std_write(value, &mut lzma_writer, crate::common::BINCODE_CONFIG)?;
-
-    lzma_writer.finish()?;
+    saver(file)?;
 
     fs::rename(temp_path, path)?;
 

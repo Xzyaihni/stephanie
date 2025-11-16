@@ -995,10 +995,15 @@ impl GameState
             {
                 if let Some(mut anatomy) = entities.anatomy_mut_no_change(entity)
                 {
-                    if let Some(mut inventory) = entities.inventory_mut_no_change(entity)
                     {
-                        inventory.set_weight_limit(anatomy_weight_limit(&anatomy));
-                        anatomy.set_encumbrance_speed(inventory.encumbrance());
+                        let weight_limit = anatomy_weight_limit(&anatomy);
+                        if entities.inventory(entity).map(|x| x.weight_limit() != weight_limit).unwrap_or(false)
+                        {
+                            if let Some(mut inventory) = entities.inventory_mut(entity)
+                            {
+                                inventory.set_weight_limit(weight_limit);
+                            }
+                        }
                     }
 
                     if anatomy.take_killed()
@@ -1032,9 +1037,9 @@ impl GameState
 
         self.entities.entities.on_inventory(Box::new(move |OnChangeInfo{entities, entity, ..}|
         {
-            if let Some(mut anatomy) = entities.anatomy_mut(entity)
+            if let Some(inventory) = entities.inventory(entity)
             {
-                if let Some(inventory) = entities.inventory(entity)
+                if let Some(mut anatomy) = entities.anatomy_mut(entity)
                 {
                     anatomy.set_encumbrance_speed(inventory.encumbrance());
                 }
@@ -1422,25 +1427,28 @@ impl GameState
 
         let visibility = self.visibility_checker();
 
-        crate::frame_time_this!{
-            [update_buffers] -> world_update_buffers_normal,
-            self.world.update_buffers(info)
-        };
-
-        crate::frame_time_this!{
-            [update_buffers] -> world_update_buffers_shadows,
-            self.world.update_buffers_shadows(info, &visibility, &caster)
-        };
-
-        if DebugConfig::is_enabled(DebugTool::DebugTileField)
+        if !self.is_loading
         {
-            self.world.debug_tile_field(&self.entities.entities);
-        }
+            crate::frame_time_this!{
+                [update_buffers] -> world_update_buffers_normal,
+                self.world.update_buffers(info)
+            };
 
-        crate::frame_time_this!{
-            [update_buffers] -> entities_update_buffers,
-            self.entities.update_buffers(&visibility, info, &caster, &mut self.world)
-        };
+            crate::frame_time_this!{
+                [update_buffers] -> world_update_buffers_shadows,
+                self.world.update_buffers_shadows(info, &visibility, &caster)
+            };
+
+            if DebugConfig::is_enabled(DebugTool::DebugTileField)
+            {
+                self.world.debug_tile_field(&self.entities.entities);
+            }
+
+            crate::frame_time_this!{
+                [update_buffers] -> entities_update_buffers,
+                self.entities.update_buffers(&visibility, info, &caster, &mut self.world)
+            };
+        }
 
         {
             info.update_camera(&self.ui_camera);

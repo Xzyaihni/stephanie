@@ -249,7 +249,7 @@ pub fn damager<'a, 'b, 'c>(
 
                 flash_white(entities, entity);
 
-                if entities.enemy_exists(entity)
+                if entities.enemy_exists(entity) && entities.anatomy(entity).map(|anatomy| !anatomy.is_dead()).unwrap_or(true)
                 {
                     if let Some((stat_id, amount)) = result.on_hit_gain
                     {

@@ -63,7 +63,7 @@ use crate::{
         inventory::anatomy_weight_limit,
         character::SpriteState,
         world::{TILE_SIZE, CHUNK_VISUAL_SIZE, Pos3},
-        chunk_saver::{with_temp_save, load_world_file},
+        chunk_saver::{with_temp_save, load_world_file, json_loader, json_saver},
         message::{
             Message,
             MessageBuffer
@@ -386,7 +386,7 @@ impl GameServer
     {
         let path = self.player_info_path(player_name);
 
-        load_world_file(format!("player `{player_name}`"), &path)
+        load_world_file(format!("player `{player_name}`"), &path, json_loader())
     }
 
     fn create_new_player(&self, name: String) -> EntityInfo
@@ -590,7 +590,7 @@ impl GameServer
                         eprintln!("error trying to create world directory: {err}");
                     }
 
-                    if let Err(err) = with_temp_save(path, player_info)
+                    if let Err(err) = with_temp_save(path, json_saver(&player_info))
                     {
                         eprintln!("error trying to save player: {err}");
                     }

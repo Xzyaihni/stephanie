@@ -48,6 +48,15 @@ mod default_fragment
     }
 }
 
+mod character_fragment
+{
+    vulkano_shaders::shader!
+    {
+        ty: "fragment",
+        path: "shaders/character.frag"
+    }
+}
+
 mod world_fragment
 {
     vulkano_shaders::shader!
@@ -263,6 +272,18 @@ pub fn create() -> ShadersCreated
         shader: ShadersGroup::new(
             default_vertex,
             default_fragment::load
+        ),
+        depth: Some(object_depth),
+        per_vertex: Some(vec![Object::per_vertex()]),
+        subpass: 0,
+        cull: CullMode::None,
+        ..Default::default()
+    });
+
+    let character_shader = shaders.push(Shader{
+        shader: ShadersGroup::new(
+            default_vertex,
+            character_fragment::load
         ),
         depth: Some(object_depth),
         per_vertex: Some(vec![Object::per_vertex()]),
@@ -524,6 +545,7 @@ pub fn create() -> ShadersCreated
         shaders,
         group: ProgramShaders{
             default: default_shader,
+            character: character_shader,
             above_world: above_world_shader,
             default_shaded: default_shaded_shader,
             world: world_shader,

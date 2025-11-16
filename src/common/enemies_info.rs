@@ -3,6 +3,8 @@ use std::{
     path::{Path, PathBuf}
 };
 
+use nalgebra::{vector, Vector2};
+
 use serde::Deserialize;
 
 use yanyaengine::Assets;
@@ -11,11 +13,8 @@ use crate::common::{
     with_error,
     some_or_value,
     generic_info::*,
-    Hairstyle,
+    characters_info::*,
     ItemsInfo,
-    CharactersInfo,
-    CharacterInfo,
-    CharacterId,
     anatomy::HumanAnatomyInfo,
     enemy::EnemyBehavior
 };
@@ -30,6 +29,8 @@ struct EnemyInfoRaw
     hairstyle: Hairstyle<String>,
     #[serde(default)]
     anatomy: HumanAnatomyInfo,
+    face: Option<String>,
+    lying_face_offset: Option<Vector2<i8>>,
     behavior: Option<EnemyBehavior>,
     normal: Option<String>,
     crawling: Option<String>,
@@ -91,9 +92,16 @@ impl EnemyInfo
             info
         }).unwrap_or_else(|| items_info.id("hand"));
 
+        let face = CharacterFace::load_at(raw.face.unwrap_or_else(|| raw.name.clone()).into(), |name|
+        {
+            load_texture(assets, textures_root, &name.to_string_lossy()).id
+        });
+
         let character = characters_info.push(CharacterInfo{
             hand,
             hairstyle: raw.hairstyle.map(|x| load_texture(assets, textures_root, &x)),
+            face,
+            lying_face_offset: raw.lying_face_offset.unwrap_or(vector![-6, 0]),
             normal: get_texture("body", raw.normal),
             crawling: get_texture("crawling", raw.crawling),
             lying: get_texture("lying", raw.lying)

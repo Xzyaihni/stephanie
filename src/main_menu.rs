@@ -47,7 +47,7 @@ use crate::{
         render_info::*,
         EntityInfo,
         world::WorldSave,
-        chunk_saver::load_world_file,
+        chunk_saver::{load_world_file, json_loader},
         colors::Lcha,
         lazy_transform::SpringScalingInfo
     }
@@ -386,7 +386,7 @@ impl MainMenu
                 let name = format!("world `{world_name}`");
                 notify_none(
                     &name,
-                    load_world_file::<WorldSave>(name.clone(), &world_save_path(world_name))
+                    load_world_file(name.clone(), &world_save_path(world_name), json_loader::<WorldSave>())
                 )?
             };
 
@@ -394,9 +394,10 @@ impl MainMenu
                 let name = format!("player `{world_name}`");
                 notify_none(
                     &name,
-                    load_world_file::<EntityInfo>(
+                    load_world_file(
                         name.clone(),
-                        &player_save_path(world_path(world_name), world_name)
+                        &player_save_path(world_path(world_name), world_name),
+                        json_loader::<EntityInfo>()
                     )
                 )?
             };

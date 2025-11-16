@@ -235,6 +235,7 @@ impl Anatomy
     simple_getter!(is_crawling, bool);
     simple_getter!(is_standing, bool);
     simple_getter!(is_dead, bool);
+    simple_getter!(is_conscious, bool);
 
     pub fn get_human<F>(
         &self,
@@ -330,6 +331,11 @@ impl Anatomy
         {
             Self::Human(x) => x.bone_heal(amount)
         }
+    }
+
+    pub fn is_winded(&self) -> bool
+    {
+        self.oxygen().current <= WINDED_OXYGEN
     }
 }
 

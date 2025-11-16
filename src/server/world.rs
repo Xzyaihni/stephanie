@@ -29,7 +29,7 @@ use crate::{
         FullEntityInfo,
         ConnectionId,
         ChunksContainer,
-        chunk_saver::{with_temp_save, load_world_file},
+        chunk_saver::{with_temp_save, load_world_file, json_saver, json_loader},
         entity::ServerEntities,
         message::Message,
         world::{
@@ -180,7 +180,7 @@ impl World
         let overmaps = Rc::new(RefCell::new(HashMap::new()));
         let client_indexers = HashMap::new();
 
-        let save = load_world_file::<WorldSave>("world".to_owned(), &world_save_path(&world_name)).unwrap_or_default();
+        let save = load_world_file("world".to_owned(), &world_save_path(&world_name), json_loader::<WorldSave>()).unwrap_or_default();
 
         let time = save.time;
 
@@ -315,7 +315,7 @@ impl World
             time: self.time
         };
 
-        if let Err(err) = with_temp_save(self.world_save_path(), save)
+        if let Err(err) = with_temp_save(self.world_save_path(), json_saver(&save))
         {
             eprintln!("error trying to save world info: {err}");
         }

@@ -12,7 +12,8 @@
             "base_speed": 0.6,
             "base_strength": 0.5
         },
-        "hand": "smol hand"
+        "hand": "smol hand",
+        "lying_face_offset": [-3, 0]
     },
     {
         "name": "old",
@@ -23,7 +24,8 @@
             "base_speed": 0.4,
             "base_strength": 0.6
         },
-        "hand": "zob hand"
+        "hand": "zob hand",
+        "face": "zob"
     },
     {
         "name": "runner",
@@ -34,7 +36,8 @@
             "base_speed": 1.3,
             "base_strength": 0.8
         },
-        "hand": "zob hand"
+        "hand": "zob hand",
+        "face": "zob"
     },
     {
         "name": "bigy",
@@ -45,7 +48,8 @@
             "base_speed": 0.9,
             "base_strength": 1.5
         },
-        "hand": "bigy hand"
+        "hand": "bigy hand",
+        "face": "zob"
     },
     {
         "name": "me",
@@ -61,6 +65,8 @@
         },
         "normal": "../player/body",
         "crawling": "../player/crawling",
-        "lying": "../player/lying"
+        "lying": "../player/lying",
+        "face": "../player",
+        "lying_face_offset": [0, 0]
     }
 ]
