@@ -1448,15 +1448,27 @@ impl<'a> PlayerContainer<'a>
                                     },
                                     Drug::BoneHeal{amount} =>
                                     {
-                                        heal_particles();
-                                        anatomy.bone_heal(*amount)
+                                        let consumed = anatomy.bone_heal(*amount);
+
+                                        if consumed
+                                        {
+                                            heal_particles();
+                                        }
+
+                                        consumed
                                     }
                                 }
                             },
                             ItemUsage::BoneHeal(amount) =>
                             {
-                                heal_particles();
-                                anatomy.bone_heal(*amount)
+                                let consumed = anatomy.bone_heal(*amount);
+
+                                if consumed
+                                {
+                                    heal_particles();
+                                }
+
+                                consumed
                             }
                         };
 
