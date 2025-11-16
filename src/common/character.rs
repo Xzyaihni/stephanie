@@ -2039,7 +2039,7 @@ impl Character
 
     pub fn anatomy_changed(&mut self, entities: &ClientEntities, anatomy: &Anatomy)
     {
-        let state = if anatomy.is_conscious()
+        let state = if anatomy.is_conscious() && anatomy.can_move()
         {
             if anatomy.is_crawling()
             {

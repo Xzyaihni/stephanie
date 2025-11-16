@@ -1526,7 +1526,12 @@ macro_rules! define_entities_both
                 {
                     if const { !matches!(Component::$name, Component::transform) }
                     {
-                        self.changed_entities.borrow_mut().$name.push(entity);
+                        let mut entities = self.changed_entities.borrow_mut();
+
+                        if !entities.$name.contains(&entity)
+                        {
+                            entities.$name.push(entity);
+                        }
                     }
 
                     self.$mut_func_no_change(entity)
@@ -1544,7 +1549,14 @@ macro_rules! define_entities_both
 
                 pub fn $set_func(&mut self, entity: Entity, component: Option<$component_type>)
                 {
-                    self.changed_entities.get_mut().$name.push(entity);
+                    {
+                        let entities = self.changed_entities.get_mut();
+
+                        if !entities.$name.contains(&entity)
+                        {
+                            entities.$name.push(entity);
+                        }
+                    }
 
                     self.$set_func_no_change(entity, component)
                 }
@@ -1943,10 +1955,14 @@ macro_rules! define_entities_both
             {
                 self.changed_entities.get_mut().position_rotation.clear();
 
-                $(
-                    let changed_entities = self.changed_entities.get_mut();
+                let changed_entities = self.changed_entities.get_mut();
 
-                    let taken = mem::take(&mut changed_entities.$name);
+                $(
+                    let $name = mem::take(&mut changed_entities.$name);
+                )+
+
+                $(
+                    let taken = $name;
 
                     if DebugConfig::is_enabled(DebugTool::PrintListenerUpdates)
                     {
