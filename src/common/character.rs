@@ -32,6 +32,7 @@ use crate::{
         short_rotation,
         angle_to_direction_3d,
         ease_out,
+        random_f32,
         inventory_remove_item_with,
         damage_durability_with,
         ENTITY_SCALE,
@@ -222,6 +223,40 @@ enum BufferedAction
     Throw
 }
 
+// a spontaneous blink has about a 100ms down time and 250ms up time
+// the median blinking rate is 11.1 per minute
+#[derive(Debug, Clone)]
+struct BlinkingInfo
+{
+    next_blink: f32,
+    blink_length: f32,
+    value: f32
+}
+
+impl BlinkingInfo
+{
+    fn next_blink() -> f32
+    {
+        60.0 / random_f32(8.0..=12.0)
+    }
+
+    fn update(&mut self, dt: f32)
+    {
+        self.value += dt;
+
+        if self.value > self.next_blink
+        {
+            self.value -= self.next_blink;
+            self.next_blink = Self::next_blink();
+        }
+    }
+
+    fn is_closed(&self) -> bool
+    {
+        self.value < self.blink_length
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct AfterInfo
 {
@@ -233,6 +268,7 @@ pub struct AfterInfo
     rotation: f32,
     moving: bool,
     sprint_await: bool,
+    blinking: BlinkingInfo,
     last_held_item: Option<Option<ItemId>>,
     buffered: [f32; BufferedAction::COUNT]
 }
@@ -483,6 +519,11 @@ impl Character
             rotation,
             moving: false,
             sprint_await: false,
+            blinking: BlinkingInfo{
+                next_blink: BlinkingInfo::next_blink(),
+                blink_length: random_f32(0.150..=0.175),
+                value: 0.0
+            },
             last_held_item: None,
             buffered: [0.0; BufferedAction::COUNT]
         };
@@ -1924,6 +1965,9 @@ impl Character
             let is_sprinting = self.is_sprinting();
 
             let info = some_or_return!(self.info.as_mut());
+
+            info.blinking.update(dt);
+
             if let Some(mut anatomy) = combined_info.entities.anatomy_mut_no_change(info.this)
             {
                 let movement_drain = if info.moving
@@ -2254,6 +2298,11 @@ impl Character
     pub fn aggressive(&self, other: &Self) -> bool
     {
         self.faction.aggressive(&other.faction)
+    }
+
+    pub fn is_blinking(&self) -> bool
+    {
+        self.info.as_ref().map(|x| x.blinking.is_closed()).unwrap_or(false)
     }
 
     pub fn visibility(&self) -> f32

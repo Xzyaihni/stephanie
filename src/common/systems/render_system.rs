@@ -214,11 +214,12 @@ pub struct SkyColors
                         _ => false
                     };
 
+                    let force_eyes_closed = !anatomy.is_conscious() || character.is_blinking();
+
                     let is_eye_closed = |side|
                     {
-                        (draw_eyes
-                            && anatomy.get_human::<()>(AnatomyId::Organ(OrganId::Eye(side))).unwrap().is_none())
-                            || !anatomy.is_conscious()
+                        force_eyes_closed ||
+                            (draw_eyes && anatomy.get_human::<()>(AnatomyId::Organ(OrganId::Eye(side))).unwrap().is_none())
                     };
 
                     let left_closed = is_eye_closed(Side1d::Left);
