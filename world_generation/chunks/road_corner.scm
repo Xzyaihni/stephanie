@@ -1,5 +1,4 @@
-(define (line-tile flip)
-    (tile (if (xor (side-horizontal? rotation) flip) 'asphalt-line-vertical 'asphalt-line-horizontal)))
+(define (line-tile flip) (tile 'asphalt-line (side-combine rotation (if flip side-right side-up))))
 
 (define horizontal-line (line-tile #f))
 (define vertical-line (line-tile #t))
@@ -32,14 +31,7 @@
 (this-put-tile (make-point 7 8) horizontal-line)
 (this-put-tile (make-point 8 7) vertical-line)
 
-(define
-    corner
-    (tile
-        (cond
-            ((= rotation side-up) 'asphalt-line-corner-up)
-            ((= rotation side-right) 'asphalt-line-corner-right)
-            ((= rotation side-left) 'asphalt-line-corner-left)
-            (else 'asphalt-line-corner-down))))
+(define corner (tile 'asphalt-line-l (side-combine rotation side-left)))
 
 (this-put-tile (make-point 8 8) corner)
 (this-put-tile (make-point 7 7) corner)

@@ -1622,6 +1622,8 @@ impl InterReprPos
                         Command::IsTag{check: Register::Operator, tag: ValueTag::List}.into(),
                         Command::JumpIfFalse{target: error_branch, check: Register::Temporary}.into(),
                         Command::Car{target: Register::Environment, source: Register::Operator}.into(),
+                        Command::IsTag{check: Register::Environment, tag: ValueTag::List}.into(),
+                        Command::JumpIfFalse{target: error_branch, check: Register::Temporary}.into(),
                         Command::Car{target: Register::Temporary, source: Register::Environment}.into(),
                         Command::IsTag{check: Register::Temporary, tag: ValueTag::EnvironmentMarker}.into(),
                         Command::JumpIfFalse{target: error_branch, check: Register::Temporary}.into()

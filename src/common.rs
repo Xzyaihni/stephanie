@@ -24,6 +24,7 @@ pub use sender_loop::{sender_loop, BufferSender};
 pub use receiver_loop::receiver_loop;
 
 pub use tilemap::{
+    TEXTURE_TILE_SIZE,
     TileMap,
     TileInfo,
     SpecialTile,
@@ -528,7 +529,7 @@ macro_rules! frame_time_this
     }
 }
 
-pub const ENTITY_SCALE: f32 = TILE_SIZE * 0.9;
+pub const ENTITY_SCALE: f32 = TILE_SIZE * (ENTITY_PIXEL_SCALE as f32 / TEXTURE_TILE_SIZE as f32);
 pub const ENTITY_PIXEL_SCALE: u32 = 32;
 
 pub fn texture_scale(texture: &Texture) -> Vector2<f32>

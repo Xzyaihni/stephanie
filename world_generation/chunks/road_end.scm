@@ -8,4 +8,4 @@
     (make-area
         (make-point 0 (- (/ size-y 2) 1))
         (make-point (- size-x 11) 2))
-    (tile (if (side-horizontal? rotation) 'asphalt-line-vertical 'asphalt-line-horizontal)))
+    (tile 'asphalt-line rotation))

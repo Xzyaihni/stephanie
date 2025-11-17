@@ -1139,6 +1139,7 @@ impl WindowKind
                     ..Default::default()
                 });
 
+                add_padding_horizontal(body, UiSize::Pixels(BODY_PADDING).into());
                 body.update(id(StatsPart::KillsText), UiElement{
                     texture: UiTexture::Text(TextInfo{
                         font_size: SMALL_TEXT_SIZE,

@@ -29,7 +29,7 @@ use crate::common::{
 
 pub const PADDING: f32 = 0.01;
 
-const TEXTURE_TILE_SIZE: usize = 16;
+pub const TEXTURE_TILE_SIZE: usize = 36;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SpecialTile
@@ -65,6 +65,7 @@ impl TileInfoRaw
         let mut this = self.clone();
 
         this.name = other.name.clone();
+        this.textures = other.textures.clone();
 
         macro_rules! with_fields
         {

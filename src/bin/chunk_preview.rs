@@ -24,6 +24,7 @@ use nalgebra::{Vector2, Vector3};
 
 use yanyaengine::{
     game_object::*,
+    FontsContainer,
     ShadersContainer,
     Transform,
     DefaultTexture,
@@ -51,12 +52,14 @@ use stephanie::{
             ConditionalInfo
         }
     },
-    client::game_state::{
-        UiControls,
-        ControlsController,
-        Control as GameControl,
-        default_bindings,
-        ui::controller::*
+    client::{
+        ui_common::*,
+        game_state::{
+            UiControls,
+            ControlsController,
+            Control as GameControl,
+            default_bindings
+        }
     },
     common::{
         with_z,
@@ -148,14 +151,6 @@ enum TextboxId
     Name,
     Seed,
     Tag(u32)
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-enum TextboxPartId
-{
-    Panel,
-    Body,
-    Text
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -435,15 +430,34 @@ impl<T> ModifiedWatcher<T>
     }
 }
 
+#[derive(Debug, Clone)]
+struct TextboxWrapper(TextboxInfo);
+
+impl From<String> for TextboxWrapper
+{
+    fn from(s: String) -> Self
+    {
+        Self(TextboxInfo::new(s))
+    }
+}
+
+impl PartialEq for TextboxWrapper
+{
+    fn eq(&self, other: &Self) -> bool
+    {
+        self.0.text == other.0.text
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 struct Tags
 {
-    name: String,
+    name: TextboxWrapper,
     height: i32,
     difficulty: f32,
     rotation: TileRotation,
-    seed: String,
-    others: Vec<String>
+    seed: TextboxWrapper,
+    others: Vec<TextboxWrapper>
 }
 
 struct AssetsDependent
@@ -499,6 +513,7 @@ impl AssetsDependent
 struct ChunkPreviewer
 {
     shaders: DrawShaders,
+    fonts: Rc<FontsContainer>,
     assets_dependent: ModifiedWatcher<AssetsDependent>,
     rules: ChunkRulesGroup,
     controls: ControlsController<UiId>,
@@ -509,7 +524,7 @@ struct ChunkPreviewer
     controller: Controller<UiId>,
     update_timer: f32,
     regenerate: bool,
-    selected_textbox: Option<TextboxId>,
+    selected_textbox: Option<UiId>,
     chunk_code: Option<Lisp>,
     current_tags: ModifiedWatcher<Tags>,
     preview_tags: ModifiedWatcher<Tags>,
@@ -525,7 +540,7 @@ impl ChunkPreviewer
         let memory = some_or_return!(self.assets_dependent.tilemap.as_ref()).0.clone();
 
         let parent_directory = PathBuf::from(PARENT_DIRECTORY);
-        let filepath = parent_directory.join("chunks").join(format!("{}.scm", &self.preview_tags.name));
+        let filepath = parent_directory.join("chunks").join(format!("{}.scm", &self.preview_tags.name.0.text));
 
         if !filepath.exists()
         {
@@ -558,7 +573,7 @@ impl ChunkPreviewer
         match Lisp::new_with_config(config, &[&standard_code, &default_code, &chunk_code])
         {
             Ok(lisp) => self.chunk_code = Some(lisp),
-            Err(err) => eprintln!("error compiling {}: {err}", &self.preview_tags.name)
+            Err(err) => eprintln!("error compiling {}: {err}", &self.preview_tags.name.0.text)
         }
     }
 }
@@ -595,11 +610,11 @@ impl YanyaApp for ChunkPreviewer
         let controller = Controller::new(&info.object_info);
 
         let tags = ModifiedWatcher::new(PARENT_DIRECTORY, Tags{
-            name: String::new(),
+            name: String::new().into(),
             height: 1,
             difficulty: 0.0,
             rotation: TileRotation::Up,
-            seed: String::new(),
+            seed: String::new().into(),
             others: Vec::new()
         });
 
@@ -612,6 +627,7 @@ impl YanyaApp for ChunkPreviewer
 
         Self{
             shaders: app_info.unwrap(),
+            fonts: info.object_info.builder_wrapper.fonts().clone(),
             assets_dependent,
             rules,
             controls,
@@ -638,7 +654,7 @@ impl YanyaApp for ChunkPreviewer
         {
             if self.current_tags.modified_check()
             {
-                eprintln!("hot reloading chunk `{}`", &self.current_tags.name);
+                eprintln!("hot reloading chunk `{}`", &self.current_tags.name.0.text);
                 self.regenerate = true;
             }
 
@@ -771,12 +787,9 @@ impl YanyaApp for ChunkPreviewer
                 button.is_mouse_inside() && controls.take_click_down()
             };
 
-            let mut update_textbox = |controls: &mut UiControls<_>, textbox_id, text: &mut String, centered|
+            let mut update_textbox = |controls: &mut UiControls<_>, id: TextboxId, text: &mut TextboxInfo, centered|
             {
-                let id = |part|
-                {
-                    UiId::Textbox(textbox_id, part)
-                };
+                let id = |part| UiId::Textbox(id, part);
 
                 let parent = if centered
                 {
@@ -799,23 +812,17 @@ impl YanyaApp for ChunkPreviewer
 
                 if name_body.is_mouse_inside() && controls.take_click_down()
                 {
-                    self.selected_textbox = Some(textbox_id);
+                    self.selected_textbox = Some(id(TextboxPartId::Body));
                 }
 
                 add_padding_horizontal(name_body, UiSize::Pixels(10.0).into());
 
-                if self.selected_textbox.as_ref().map(|x| *x == textbox_id).unwrap_or(false)
+                if self.selected_textbox.as_ref().map(|x| *x == id(TextboxPartId::Body)).unwrap_or(false)
                 {
                     name_body.element().mix = Some(MixColorLch::color(Lcha{l: 0.0, c: 0.0, h: 0.0, a: 0.5}));
 
-                    let mut _position = 0;
-                    text_input_handle(controls, None, &mut _position, text);
+                    textbox_update(controls, &self.fonts, id, name_body, 20, text);
                 }
-
-                name_body.update(id(TextboxPartId::Text), UiElement{
-                    texture: UiTexture::Text(TextInfo::new_simple(20, text.clone())),
-                    ..UiElement::fit_content()
-                });
 
                 add_padding_horizontal(name_body, UiSize::Pixels(10.0).into());
             };
@@ -832,13 +839,13 @@ impl YanyaApp for ChunkPreviewer
 
             add_padding_vertical(screen_body, UiSize::Pixels(10.0).into());
 
-            update_textbox(controls, TextboxId::Seed, &mut self.current_tags.seed, false);
+            update_textbox(controls, TextboxId::Seed, &mut self.current_tags.seed.0, false);
 
             add_padding_vertical(screen_body, UiSize::Pixels(20.0).into());
 
             if update_button(controls, "add tag", ButtonId::Add)
             {
-                self.current_tags.others.push(String::new());
+                self.current_tags.others.push(String::new().into());
             }
 
             if update_button(controls, "remove tag", ButtonId::Remove)
@@ -850,12 +857,12 @@ impl YanyaApp for ChunkPreviewer
             {
                 add_padding_vertical(screen_body, UiSize::Pixels(10.0).into());
 
-                update_textbox(controls, TextboxId::Tag(index as u32), tag, false);
+                update_textbox(controls, TextboxId::Tag(index as u32), &mut tag.0, false);
             });
 
             add_padding_vertical(screen_body, UiSize::Rest(1.0).into());
 
-            update_textbox(controls, TextboxId::Name, &mut self.current_tags.name, true);
+            update_textbox(controls, TextboxId::Name, &mut self.current_tags.name.0, true);
         }
 
         self.controller.create_renders(&mut info, dt);
@@ -884,11 +891,11 @@ impl YanyaApp for ChunkPreviewer
 
                 let tags = self.preview_tags.others.iter().filter_map(|text|
                 {
-                    let equals_pos = text.chars().position(|x| x == '=')?;
+                    let equals_pos = text.0.text.chars().position(|x| x == '=')?;
 
-                    let name = text.chars().take(equals_pos).collect::<String>();
+                    let name = text.0.text.chars().take(equals_pos).collect::<String>();
 
-                    let content: i32 = text.chars().skip(equals_pos + 1).collect::<String>()
+                    let content: i32 = text.0.text.chars().skip(equals_pos + 1).collect::<String>()
                         .trim()
                         .parse()
                         .ok()?;
@@ -903,9 +910,9 @@ impl YanyaApp for ChunkPreviewer
                     tags: &tags
                 };
 
-                if !self.preview_tags.seed.is_empty()
+                if !self.preview_tags.seed.0.text.is_empty()
                 {
-                    let seed = self.preview_tags.seed.bytes().fold(0_u64, |acc, x| acc + x as u64);
+                    let seed = self.preview_tags.seed.0.text.bytes().fold(0_u64, |acc, x| acc + x as u64);
 
                     fastrand::seed(seed);
                 }
@@ -914,7 +921,7 @@ impl YanyaApp for ChunkPreviewer
                 let tiles = ChunkGenerator::generate_chunk_with(
                     &chunk_info,
                     &self.rules,
-                    &self.preview_tags.name,
+                    &self.preview_tags.name.0.text,
                     chunk_code,
                     &mut |marker|
                     {
@@ -1038,7 +1045,7 @@ impl YanyaApp for ChunkPreviewer
                             }).chain(markers).collect()
                         });
                     },
-                    Err(err) => eprintln!("{err} in ({})", &self.preview_tags.name)
+                    Err(err) => eprintln!("{err} in ({})", &self.preview_tags.name.0.text)
                 }
             }
 

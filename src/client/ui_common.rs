@@ -53,7 +53,7 @@ pub const ACCENT_COLOR_FADED: Lcha = Lcha{l: 90.0, c: 25.0, ..ACCENT_COLOR};
 
 pub const YELLOW_COLOR: Lcha = Lcha{l: 86.0, c: 50.0, h: ACCENT_COLOR.h + f32::consts::PI * 2.0 / 3.0 - 0.23, ..ACCENT_COLOR};
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct TextboxInfo
 {
     pub text: String,
@@ -98,6 +98,7 @@ impl TextboxInfo
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TextboxPartId
 {
+    Panel,
     Body,
     Entry,
     Text,
@@ -109,7 +110,7 @@ pub enum TextboxPartId
 pub fn textbox_update<Id: Idable, ControlId: Idable>(
     controls: &mut UiControls<ControlId>,
     fonts: &FontsContainer,
-    id: fn(TextboxPartId) -> Id,
+    id: impl Fn(TextboxPartId) -> Id,
     body: TreeInserter<Id>,
     font_size: u32,
     info: &mut TextboxInfo

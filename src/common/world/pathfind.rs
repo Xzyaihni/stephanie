@@ -240,7 +240,7 @@ impl Pathfinder<'_>
 
         self.straight_line_free(entity, start, direction, scale, layer).then(||
         {
-            WorldPath::new(vec![end, start])
+            WorldPath::new(vec![end.into(), start.into()])
         })
     }
 
@@ -308,8 +308,12 @@ impl Pathfinder<'_>
             if current.value == target
             {
                 let current_position: Vector3<f32> = current.value.center_position().into();
-                let mut path = vec![Vector3::new(end.x, end.y, current_position.z), current_position];
-                current.path_to(&mut explored, &mut path, |x| x.center_position().into());
+                let mut path: Vec<WorldPathNode> = vec![
+                    Vector3::new(end.x, end.y, current_position.z).into(),
+                    current_position.into()
+                ];
+
+                current.path_to(&mut explored, &mut path, |x| Vector3::from(x.center_position()).into());
 
                 debug_timer.print();
                 return Some(crate::debug_time_this!{"simplify-path", self.simplify_path(entity, scale, layer, path)});
@@ -318,7 +322,7 @@ impl Pathfinder<'_>
             let below = current.value.offset(Pos3::new(0, 0, -1));
             let is_grounded = tile_colliding(below);
 
-            let mut try_push = |position: TilePos|
+            let mut try_push = |explored: &mut HashMap<TilePos, NodeInfo>, position: TilePos|
             {
                 let moves_from_start = explored[&current.value].moves_from_start;
 
@@ -360,15 +364,16 @@ impl Pathfinder<'_>
                         self.is_colliding_entity(limits, entity, layer, scale, position, debug_timer)
                     };
 
-                    if (position == target)
+                    if explored.contains_key(&position)
+                        || (position == target)
                         || (!tile_colliding(position) && !is_colliding_entity(&mut limits, &mut debug_timer))
                     {
-                        try_push(position);
+                        try_push(&mut explored, position);
                     }
                 });
             } else
             {
-                try_push(below);
+                try_push(&mut explored, below);
             }
         }
 
@@ -469,23 +474,23 @@ impl Pathfinder<'_>
         entity: Entity,
         scale: Vector3<f32>,
         layer: Option<ColliderLayer>,
-        tiles: Vec<Vector3<f32>>
+        tiles: Vec<WorldPathNode>
     ) -> WorldPath
     {
         let mut check = 0;
 
-        let mut simplified = vec![tiles[0]];
+        let mut simplified = vec![tiles[0].clone()];
 
         let mut index = 1;
         while index < tiles.len()
         {
             let is_next = (check + 1) == index;
 
-            let is_tile_reachable = |tiles: &[Vector3<f32>]|
+            let is_tile_reachable = |tiles: &[WorldPathNode]|
             {
-                let distance = tiles[index] - tiles[check];
+                let distance = tiles[index].position - tiles[check].position;
 
-                let start = Vector3::from(tiles[check]);
+                let start = tiles[check].position;
 
                 self.straight_line_free(entity, start, distance, scale, layer)
             };
@@ -499,7 +504,7 @@ impl Pathfinder<'_>
             {
                 check = index - 1;
 
-                simplified.push(tiles[check]);
+                simplified.push(tiles[check].clone());
             }
         }
 
@@ -580,21 +585,37 @@ impl Pathfinder<'_>
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+struct WorldPathNode
+{
+    position: Vector3<f32>
+}
+
+impl From<Vector3<f32>> for WorldPathNode
+{
+    fn from(position: Vector3<f32>) -> Self
+    {
+        Self{
+            position
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorldPath
 {
-    values: Vec<Vector3<f32>>
+    values: Vec<WorldPathNode>
 }
 
 impl WorldPath
 {
-    pub fn new(values: Vec<Vector3<f32>>) -> Self
+    fn new(values: Vec<WorldPathNode>) -> Self
     {
         Self{values}
     }
 
     pub fn target(&self) -> Option<&Vector3<f32>>
     {
-        self.values.first()
+        self.values.first().map(|x| &x.position)
     }
 
     pub fn remove_current_target(&mut self)
@@ -615,7 +636,7 @@ impl WorldPath
 
         let target_position = self.values.last().unwrap();
 
-        let distance = target_position - position;
+        let distance = target_position.position - position;
 
         if distance.magnitude() < near
         {
@@ -629,8 +650,10 @@ impl WorldPath
     pub fn debug_display(&self, entities: &ClientEntities)
     {
         let amount = self.values.len();
-        self.values.iter().copied().enumerate().for_each(|(index, position)|
+        self.values.iter().cloned().enumerate().for_each(|(index, node)|
         {
+            let position = node.position;
+
             let is_selected = (index + 1) == amount;
 
             let color = if is_selected
@@ -663,7 +686,7 @@ impl WorldPath
 
         self.values.iter().zip(self.values.iter().skip(1)).for_each(|(previous, current)|
         {
-            if let Some(info) = line_info(*previous, *current, TILE_SIZE * 0.1, [0.2, 0.2, 1.0])
+            if let Some(info) = line_info(previous.position, current.position, TILE_SIZE * 0.1, [0.2, 0.2, 1.0])
             {
                 let entity = entities.push(true, info);
                 entities.add_watcher(entity, Watcher::simple_one_frame());

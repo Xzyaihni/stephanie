@@ -1,56 +1,41 @@
 [
     {
         "name": "asphalt",
-	"health": 0.9
+        "textures": [1.0, 0.15, 0.05],
+        "health": 0.9
     },
     {
-        "name": "asphalt-line-horizontal",
-	"inherit": "asphalt"
+        "name": "asphalt-line",
+        "inherit": "asphalt"
     },
     {
-        "name": "asphalt-line-vertical",
-	"inherit": "asphalt"
-    },
-    {
-        "name": "asphalt-line-corner-up",
-	"inherit": "asphalt"
-    },
-    {
-        "name": "asphalt-line-corner-right",
-	"inherit": "asphalt"
-    },
-    {
-        "name": "asphalt-line-corner-left",
-	"inherit": "asphalt"
-    },
-    {
-        "name": "asphalt-line-corner-down",
-	"inherit": "asphalt"
+        "name": "asphalt-line-l",
+        "inherit": "asphalt"
     },
     {
         "name": "grassie",
         "textures": [0.1, 0.15, 0.2],
-	"health": 0.15
+        "health": 0.15
     },
     {
         "name": "concrete"
     },
     {
         "name": "wood",
-	"health": 0.1
+        "health": 0.1
     },
     {
         "name": "soil",
-	"health": 0.2
+        "health": 0.2
     },
     {
         "name": "glass",
-	"health": 0.004
+        "health": 0.004
     },
     {
         "name": "concrete-fence",
         "transparent": true,
-	"colliding": false
+        "colliding": false
     },
     {
         "name": "concrete-fence-l",
