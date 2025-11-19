@@ -1,7 +1,7 @@
 (define (generate-ground)
     (define this-chunk
         (fill-area
-            (filled-chunk (tile 'concrete))
+            (filled-chunk (tile 'concrete-path))
             (make-area
                 (make-point 2 2)
                 (make-point (- size-x 4) (- size-y 4)))

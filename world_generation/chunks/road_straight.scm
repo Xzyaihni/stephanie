@@ -1,7 +1,13 @@
 (if (= height 0)
     (fill-area
         (fill-area
-            (filled-chunk (tile 'concrete))
+            (filled-chunk
+                (tile
+                    (let ((r (random-integer-between 0 10)))
+                        (cond
+                            ((= r 0) 'concrete-path-tiled)
+                            ((= r 1) 'brick-path)
+                            (else 'concrete-path)))))
             (make-area
                 (make-point 0 2)
                 (make-point size-x (- size-y 4)))

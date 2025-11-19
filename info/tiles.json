@@ -21,6 +21,16 @@
         "name": "concrete"
     },
     {
+        "name": "concrete-path"
+    },
+    {
+        "name": "concrete-path-tiled"
+    },
+    {
+        "name": "brick-path",
+        "health": 0.9
+    },
+    {
         "name": "wood",
         "health": 0.1
     },
