@@ -1,15 +1,16 @@
 use std::f32;
 
-use strum::EnumString;
+use strum::{EnumString, EnumIter};
 
 use serde::{Serialize, Deserialize};
 
-use nalgebra::{Vector2, Vector3};
+use nalgebra::{vector, Vector2, Vector3};
 
 use yanyaengine::Transform;
 
 use crate::common::{
     ENTITY_SCALE,
+    ENTITY_PIXEL_SCALE,
     with_z,
     some_or_return,
     rotate_point_z_3d,
@@ -26,9 +27,20 @@ use crate::common::{
 };
 
 
-pub const DOOR_WIDTH: f32 = 0.3;
+pub const DOOR_WIDTH: f32 = 11.0 / ENTITY_PIXEL_SCALE as f32 * ENTITY_SCALE;
+const OFFSET_INSIDE: f32 = 2.0 / ENTITY_PIXEL_SCALE as f32 * ENTITY_SCALE;
 
-#[derive(Debug, Clone, Copy, EnumString, Serialize, Deserialize)]
+pub fn door_scale(width: u32) -> Vector2<f32>
+{
+    vector![width as f32 * TILE_SIZE + OFFSET_INSIDE * 2.0, DOOR_WIDTH]
+}
+
+pub fn door_texture(material: DoorMaterial, width: u32) -> String
+{
+    format!("furniture/{}_door{width}.png", <&str>::from(material))
+}
+
+#[derive(Debug, Clone, Copy, EnumString, EnumIter, Serialize, Deserialize)]
 #[strum(ascii_case_insensitive)]
 pub enum DoorMaterial
 {
@@ -240,16 +252,16 @@ impl Door
 
     pub fn door_transform(&self) -> Transform
     {
-        const OFFSET_INSIDE: f32 = 0.075;
-
         let rotation = self.door_rotation();
 
-        let offset = -(TILE_SIZE / 2.0 + TILE_SIZE * OFFSET_INSIDE)
+        let offset = -(TILE_SIZE / 2.0 + OFFSET_INSIDE)
             + (self.width as f32 * TILE_SIZE) / 2.0;
+
+        let scale = door_scale(self.width);
 
         Transform{
             position: self.position + rotate_point_z_3d(Vector3::new(offset, 0.0, 0.0), rotation),
-            scale: with_z(Vector2::new(self.width as f32 + OFFSET_INSIDE * 2.0, DOOR_WIDTH) * TILE_SIZE, ENTITY_SCALE),
+            scale: with_z(scale, ENTITY_SCALE),
             rotation,
             ..Default::default()
         }
@@ -257,11 +269,7 @@ impl Door
 
     pub fn texture(&self) -> String
     {
-        format!(
-            "furniture/{}_door{}.png",
-            <&str>::from(self.material),
-            self.width
-        )
+        door_texture(self.material, self.width)
     }
 
     pub fn update_visible(entities: &ClientEntities, entity: Entity)

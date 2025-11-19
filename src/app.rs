@@ -6,6 +6,10 @@ use std::{
     collections::HashMap
 };
 
+use nalgebra::{vector, Vector2};
+
+use strum::IntoEnumIterator;
+
 use vulkano::device::Device;
 
 #[cfg(debug_assertions)]
@@ -43,6 +47,8 @@ use crate::{
         PartCreator
     },
     common::{
+        ENTITY_SCALE,
+        ENTITY_PIXEL_SCALE,
         TileMap,
         TileMapWithTextures,
         DataInfos,
@@ -52,6 +58,7 @@ use crate::{
         CharactersInfo,
         CharacterInfo,
         Crafts,
+        door::{door_scale, door_texture, DoorMaterial},
         sender_loop::{waiting_loop, DELTA_TIME}
     }
 };
@@ -531,6 +538,40 @@ impl YanyaApp for App
                             debug: client_info.debug,
                             controls: x.bindings()
                         };
+
+                        if client_info.debug
+                        {
+                            fn compare_size(name: &str, this: Vector2<u32>, other: Vector2<u32>)
+                            {
+                                fn s(size: Vector2<u32>) -> String { format!("{}x{}", size.x, size.y) }
+
+                                if this != other
+                                {
+                                    eprintln!("{name} sprite size ({}) is incorrect, has to be: {}", s(this), s(other));
+                                }
+                            }
+
+                            let assets = info.partial.assets.lock();
+
+                            DoorMaterial::iter().for_each(|material|
+                            {
+                                (1..=2).for_each(|width|
+                                {
+                                    let name = door_texture(material, width);
+                                    if let Some(texture) = assets.try_texture_by_name(&name)
+                                    {
+                                        let [x, y, _z] = texture.lock().image().extent();
+                                        let expected_size = door_scale(width);
+
+                                        compare_size(
+                                            &name,
+                                            vector![x, y],
+                                            (expected_size / ENTITY_SCALE * ENTITY_PIXEL_SCALE as f32).map(|x| x.round() as u32)
+                                        );
+                                    }
+                                });
+                            });
+                        }
 
                         self.client.initialize(&mut info, client_info);
                         self.scene = Scene::Game;
