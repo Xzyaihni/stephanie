@@ -156,6 +156,16 @@ impl Tile
         self.0.is_none()
     }
 
+    pub fn health(&self, tilemap: &TileMap) -> f32
+    {
+        self.0.map(|x|
+        {
+            let fraction = x.info.map(|x| x.health_fraction).unwrap_or(1.0);
+
+            tilemap.info(*self).health * fraction
+        }).unwrap_or(0.0)
+    }
+
     pub fn damage(&mut self, tilemap: &TileMap, damage: DamageType) -> bool
     {
         let this_tile = *self;

@@ -155,7 +155,7 @@ fn main()
             });
 
             println!("level {level}:");
-            ItemRarity::iter().zip(rarities.into_iter()).for_each(|(rarity, amount)|
+            ItemRarity::iter().zip(rarities).for_each(|(rarity, amount)|
             {
                 let fraction = amount as f64 / total as f64;
 

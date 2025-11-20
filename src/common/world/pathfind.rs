@@ -50,15 +50,21 @@ fn debug_display_current(entities: &ClientEntities, node: Node)
     let v = node.cost * 0.05;
     let color = [v, 0.0, 1.0 - v, 0.5];
 
+    let name = match node.value.kind
+    {
+        NodeKind::MoveTo => "solid.png",
+        NodeKind::BreakTile => "ui/close_button.png"
+    };
+
     let entity = entities.push(true, EntityInfo{
         transform: Some(Transform{
-            position: node.value.center_position().into(),
+            position: node.value.position.center_position().into(),
             scale: Vector3::repeat(TILE_SIZE),
             ..Default::default()
         }),
         render: Some(RenderInfo{
             object: Some(RenderObjectKind::Texture{
-                name: "solid.png".into()
+                name: name.into()
             }.into()),
             mix: Some(MixColor::color(color)),
             above_world: true,
@@ -240,7 +246,7 @@ impl Pathfinder<'_>
 
         self.straight_line_free(entity, start, direction, scale, layer).then(||
         {
-            WorldPath::new(vec![end.into(), start.into()])
+            WorldPath::new(vec![WorldPathNode::MoveTo(end), WorldPathNode::MoveTo(start)])
         })
     }
 
@@ -274,9 +280,14 @@ impl Pathfinder<'_>
         let mut limits = PathfindLimits(0);
         let mut debug_timer = DebugTimer::new();
 
-        let tile_colliding = |pos|
+        let tile_colliding = |pos| -> Option<f32>
         {
-            self.world.tile(pos).map(|x| self.world.tile_info(*x).colliding).unwrap_or(true)
+            self.world.tile(pos).and_then(|tile|
+            {
+                let tile_info = self.world.tile_info(*tile);
+
+                (tile_info.colliding).then_some(self.world.tile_health(*tile))
+            })
         };
 
         let target = TilePos::from(end);
@@ -285,10 +296,10 @@ impl Pathfinder<'_>
         let mut steps = 0;
 
         let mut unexplored = BinaryHeap::from([
-            Node{cost: 0.0, value: start}
+            Node{cost: 0.0, value: NodeValue{position: start, kind: NodeKind::MoveTo}}
         ]);
 
-        let mut explored = HashMap::from([(start, NodeInfo{moves_from_start: 0, previous: None})]);
+        let mut explored = HashMap::from([(start, NodeInfo{moves_from_start: 0.0, previous: None})]);
 
         while !unexplored.is_empty()
         {
@@ -305,48 +316,52 @@ impl Pathfinder<'_>
                 debug_display_current(self.entities, current.clone());
             }
 
-            if current.value == target
+            if current.value.position == target
             {
-                let current_position: Vector3<f32> = current.value.center_position().into();
+                let current_position: Vector3<f32> = current.value.position.center_position().into();
                 let mut path: Vec<WorldPathNode> = vec![
-                    Vector3::new(end.x, end.y, current_position.z).into(),
-                    current_position.into()
+                    WorldPathNode::MoveTo(Vector3::new(end.x, end.y, current_position.z)),
+                    WorldPathNode::MoveTo(current_position)
                 ];
 
-                current.path_to(&mut explored, &mut path, |x| Vector3::from(x.center_position()).into());
+                current.path_to(&mut explored, &mut path, Into::into);
 
                 debug_timer.print();
                 return Some(crate::debug_time_this!{"simplify-path", self.simplify_path(entity, scale, layer, path)});
             }
 
-            let below = current.value.offset(Pos3::new(0, 0, -1));
-            let is_grounded = tile_colliding(below);
+            let below = current.value.position.offset(Pos3::new(0, 0, -1));
+            let is_grounded = tile_colliding(below).is_some();
 
-            let mut try_push = |explored: &mut HashMap<TilePos, NodeInfo>, position: TilePos|
+            let mut try_push = |
+                explored: &mut HashMap<TilePos, NodeInfo>,
+                position: TilePos,
+                node: NodeKind,
+                move_cost: f32
+            |
             {
-                let moves_from_start = explored[&current.value].moves_from_start;
+                let moves_from_start = explored[&current.value.position].moves_from_start;
+                let new_cost = moves_from_start + move_cost;
 
                 if let Some(explored) = explored.get_mut(&position)
                 {
-                    if explored.moves_from_start > moves_from_start + 1
+                    if explored.moves_from_start > new_cost
                     {
-                        explored.moves_from_start = moves_from_start + 1;
+                        explored.moves_from_start = new_cost;
                         explored.previous = Some(current.clone());
                     }
                 } else
                 {
-                    let moves_from_start = moves_from_start + 1;
-
-                    let info = NodeInfo{moves_from_start, previous: Some(current.clone())};
+                    let info = NodeInfo{moves_from_start: new_cost, previous: Some(current.clone())};
                     explored.insert(position, info);
 
                     let goal_distance = Vector3::from(position.distance(target)).cast::<f32>().magnitude();
 
-                    let cost = moves_from_start as f32 + goal_distance;
+                    let cost = new_cost + goal_distance;
 
                     unexplored.push(Node{
                         cost,
-                        value: position
+                        value: NodeValue{position, kind: node}
                     });
                 }
             };
@@ -355,7 +370,7 @@ impl Pathfinder<'_>
             {
                 PosDirection::iter_non_z().for_each(|direction|
                 {
-                    let position = current.value.offset(Pos3::from(direction));
+                    let position = current.value.position.offset(Pos3::from(direction));
 
                     let is_colliding_entity = |limits, debug_timer|
                     {
@@ -366,14 +381,23 @@ impl Pathfinder<'_>
 
                     if explored.contains_key(&position)
                         || (position == target)
-                        || (!tile_colliding(position) && !is_colliding_entity(&mut limits, &mut debug_timer))
+                        || !is_colliding_entity(&mut limits, &mut debug_timer)
                     {
-                        try_push(&mut explored, position);
+                        let base_move_cost = 1.0;
+                        let (node, cost) = if let Some(health) = tile_colliding(position)
+                        {
+                            (NodeKind::BreakTile, base_move_cost + health / 0.0015)
+                        } else
+                        {
+                            (NodeKind::MoveTo, base_move_cost)
+                        };
+
+                        try_push(&mut explored, position, node, cost);
                     }
                 });
             } else
             {
-                try_push(&mut explored, below);
+                try_push(&mut explored, below, NodeKind::MoveTo, 1.0);
             }
         }
 
@@ -479,32 +503,67 @@ impl Pathfinder<'_>
     {
         let mut check = 0;
 
-        let mut simplified = vec![tiles[0].clone()];
+        let mut simplified = Vec::new();
 
-        let mut index = 1;
-        while index < tiles.len()
+        let mut simplified_move = |simplified: &mut Vec<WorldPathNode>, start: usize, end: usize|
         {
-            let is_next = (check + 1) == index;
+            simplified.push(tiles[start].clone());
 
-            let is_tile_reachable = |tiles: &[WorldPathNode]|
+            let mut index = start + 1;
+            while index < end
             {
-                let distance = tiles[index].position - tiles[check].position;
+                let is_next = (check + 1) == index;
 
-                let start = tiles[check].position;
+                let is_tile_reachable = |tiles: &[WorldPathNode]|
+                {
+                    let start = tiles[check].as_move_to().unwrap();
 
-                self.straight_line_free(entity, start, distance, scale, layer)
-            };
+                    let distance = tiles[index].as_move_to().unwrap() - start;
 
-            let is_reachable = is_next || is_tile_reachable(&tiles);
+                    self.straight_line_free(entity, start, distance, scale, layer)
+                };
 
-            if is_reachable
+                let is_reachable = is_next || is_tile_reachable(&tiles);
+
+                if is_reachable
+                {
+                    index += 1;
+                } else
+                {
+                    check = index - 1;
+
+                    simplified.push(tiles[check].clone());
+                }
+            }
+        };
+
+        let mut start = 0;
+        let mut end = 0;
+
+        let limit = tiles.len();
+
+        while start != limit
+        {
+            if end == limit
             {
-                index += 1;
+                simplified_move(&mut simplified, start, limit);
+                break;
+            }
+
+            if let WorldPathNode::MoveTo(_) = tiles[end]
+            {
+                end += 1;
+            } else if start != end
+            {
+                simplified_move(&mut simplified, start, end);
+
+                start = end;
             } else
             {
-                check = index - 1;
+                simplified.push(tiles[end].clone());
 
-                simplified.push(tiles[check].clone());
+                start += 1;
+                end = start;
             }
         }
 
@@ -585,19 +644,47 @@ impl Pathfinder<'_>
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-struct WorldPathNode
+enum WorldPathNode
 {
-    position: Vector3<f32>
+    MoveTo(Vector3<f32>),
+    BreakTile(TilePos)
 }
 
-impl From<Vector3<f32>> for WorldPathNode
+impl From<NodeValue> for WorldPathNode
 {
-    fn from(position: Vector3<f32>) -> Self
+    fn from(value: NodeValue) -> Self
     {
-        Self{
-            position
+        let position = value.position;
+
+        match value.kind
+        {
+            NodeKind::MoveTo => Self::MoveTo(position.center_position().into()),
+            NodeKind::BreakTile => Self::BreakTile(position)
         }
     }
+}
+
+impl WorldPathNode
+{
+    fn as_move_to(&self) -> Option<Vector3<f32>>
+    {
+        if let Self::MoveTo(x) = self { Some(*x) } else { None }
+    }
+
+    fn to_position(&self) -> Vector3<f32>
+    {
+        match self
+        {
+            Self::MoveTo(x) => *x,
+            Self::BreakTile(x) => x.center_position().into()
+        }
+    }
+}
+
+pub enum WorldPathAction
+{
+    MoveDirection(Vector3<f32>),
+    Attack(TilePos)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -613,9 +700,9 @@ impl WorldPath
         Self{values}
     }
 
-    pub fn target(&self) -> Option<&Vector3<f32>>
+    pub fn target(&self) -> Option<Vector3<f32>>
     {
-        self.values.first().map(|x| &x.position)
+        self.values.first().map(|x| x.as_move_to().expect("target must be a moveto"))
     }
 
     pub fn remove_current_target(&mut self)
@@ -623,28 +710,37 @@ impl WorldPath
         self.values.pop();
     }
 
-    pub fn move_along(
+    pub fn action(
         &mut self,
+        world: &World,
         near: f32,
         position: Vector3<f32>
-    ) -> Option<Vector3<f32>>
+    ) -> Option<WorldPathAction>
     {
-        if self.values.is_empty()
+        let target = self.values.last()?;
+
+        let distance = target.to_position() - position;
+
+        match target
         {
-            return None;
+            WorldPathNode::MoveTo(_) =>
+            {
+                if distance.magnitude() < near
+                {
+                    self.remove_current_target();
+                    return self.action(world, near, position);
+                }
+
+                Some(WorldPathAction::MoveDirection(distance))
+            },
+            WorldPathNode::BreakTile(tile_pos) =>
+            {
+                world.tile(*tile_pos).map(|tile| !tile.is_none()).unwrap_or(false).then(||
+                {
+                    WorldPathAction::Attack(*tile_pos)
+                })
+            }
         }
-
-        let target_position = self.values.last().unwrap();
-
-        let distance = target_position.position - position;
-
-        if distance.magnitude() < near
-        {
-            self.remove_current_target();
-            return self.move_along(near, position)
-        }
-
-        Some(distance)
     }
 
     pub fn debug_display(&self, entities: &ClientEntities)
@@ -652,7 +748,7 @@ impl WorldPath
         let amount = self.values.len();
         self.values.iter().cloned().enumerate().for_each(|(index, node)|
         {
-            let position = node.position;
+            let position = node.to_position();
 
             let is_selected = (index + 1) == amount;
 
@@ -664,6 +760,12 @@ impl WorldPath
                 [0.0, 0.0, 1.0, 0.5]
             };
 
+            let name = match node
+            {
+                WorldPathNode::BreakTile(_) => "ui/close_button.png",
+                WorldPathNode::MoveTo(_) => "circle.png"
+            };
+
             let entity = entities.push(true, EntityInfo{
                 transform: Some(Transform{
                     position,
@@ -672,7 +774,7 @@ impl WorldPath
                 }),
                 render: Some(RenderInfo{
                     object: Some(RenderObjectKind::Texture{
-                        name: "circle.png".into()
+                        name: name.into()
                     }.into()),
                     mix: Some(MixColor::color(color)),
                     above_world: true,
@@ -686,7 +788,10 @@ impl WorldPath
 
         self.values.iter().zip(self.values.iter().skip(1)).for_each(|(previous, current)|
         {
-            if let Some(info) = line_info(previous.position, current.position, TILE_SIZE * 0.1, [0.2, 0.2, 1.0])
+            let previous_position = previous.to_position();
+            let current_position = current.to_position();
+
+            if let Some(info) = line_info(previous_position, current_position, TILE_SIZE * 0.1, [0.2, 0.2, 1.0])
             {
                 let entity = entities.push(true, info);
                 entities.add_watcher(entity, Watcher::simple_one_frame());
@@ -697,29 +802,43 @@ impl WorldPath
 
 struct NodeInfo
 {
-    moves_from_start: u32,
+    moves_from_start: f32,
     previous: Option<Node>
+}
+
+#[derive(Debug, Clone, Copy)]
+enum NodeKind
+{
+    MoveTo,
+    BreakTile
+}
+
+#[derive(Debug, Clone)]
+struct NodeValue
+{
+    position: TilePos,
+    kind: NodeKind
 }
 
 #[derive(Debug, Clone)]
 struct Node
 {
     cost: f32,
-    value: TilePos
+    value: NodeValue
 }
 
 impl Node
 {
-    fn path_to<T, F: Fn(TilePos) -> T>(
+    fn path_to<T, F: Fn(NodeValue) -> T>(
         self,
         explored: &mut HashMap<TilePos, NodeInfo>,
         path: &mut Vec<T>,
         f: F
     )
     {
-        if let Some(node) = explored.remove(&self.value).unwrap().previous
+        if let Some(node) = explored.remove(&self.value.position).unwrap().previous
         {
-            path.push(f(node.value));
+            path.push(f(node.value.clone()));
             node.path_to(explored, path, f);
         }
     }

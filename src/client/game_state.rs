@@ -1058,7 +1058,7 @@ impl GameState
             {
                 let mut player = some_or_return!(entities.player_mut_no_change(entity));
 
-                if let Some(_) = player.take_leveled_up()
+                if player.take_leveled_up().is_some()
                 {
                     drop(player);
 

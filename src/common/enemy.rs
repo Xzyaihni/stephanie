@@ -227,6 +227,43 @@ fn close_enough(other: &Transform, this: &Transform) -> bool
     is_close_distance && angle_between < close_angle
 }
 
+fn follow_path(
+    world: &World,
+    entities: &ClientEntities,
+    path: &mut WorldPath,
+    entity: Entity,
+    position: Vector3<f32>,
+    dt: f32
+) -> bool
+{
+    let action = path.action(world, PATH_NEAR, position);
+
+    let following = action.is_some();
+
+    if let Some(action) = action
+    {
+        match action
+        {
+            WorldPathAction::MoveDirection(direction) =>
+            {
+                if let Some(direction) = Unit::try_new(direction, PATH_NEAR * 0.1)
+                {
+                    Enemy::move_direction(entities, entity, direction, dt);
+                }
+            },
+            WorldPathAction::Attack(tile_pos) =>
+            {
+                let mut character = some_or_return!(entities.character_mut_no_change(entity));
+
+                character.look_at(entities, entity, Vector3::from(tile_pos.center_position()).xy());
+                character.push_action(CharacterAction::Bash);
+            }
+        }
+    }
+
+    following
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Enemy
 {
@@ -393,12 +430,10 @@ impl Enemy
 
                 let transform = some_or_return!(entities.transform(entity));
 
-                let position = transform.position;
                 if !close_enough(other_transform, &transform)
                 {
-                    if let Some(direction) = path.move_along(PATH_NEAR, position)
+                    if follow_path(world, entities, path, entity, transform.position, dt)
                     {
-                        Self::move_direction(entities, entity, Unit::new_normalize(direction), dt);
                         return;
                     }
                 }
@@ -455,10 +490,7 @@ impl Enemy
 
                             if !is_close_enough
                             {
-                                if let Some(direction) = path.move_along(PATH_NEAR, transform.position)
-                                {
-                                    Self::move_direction(entities, entity, Unit::new_normalize(direction), dt);
-                                }
+                                follow_path(world, entities, path, entity, transform.position, dt);
                             }
 
                             let mut character = some_or_return!(entities.character_mut_no_change(entity));

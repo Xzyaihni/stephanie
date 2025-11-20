@@ -189,6 +189,11 @@ impl World
         self.tilemap.info(tile)
     }
 
+    pub fn tile_health(&self, tile: Tile) -> f32
+    {
+        tile.health(&self.tilemap)
+    }
+
     pub fn overmap_size() -> Pos3<usize>
     {
         Pos3::new(CLIENT_OVERMAP_SIZE, CLIENT_OVERMAP_SIZE, CLIENT_OVERMAP_SIZE_Z)
