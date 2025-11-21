@@ -9,6 +9,7 @@ use yanyaengine::Transform;
 use crate::{
     debug_config::*,
     common::{
+        with_z,
         some_or_value,
         some_or_return,
         angle_between,
@@ -251,6 +252,28 @@ fn follow_path(
                     Enemy::move_direction(entities, entity, direction, dt);
                 }
             },
+            WorldPathAction::StairsMove{pos, down} =>
+            {
+                if let Some(mut target) = entities.target(entity)
+                {
+                    let tile_position = Vector3::from(pos.center_position());
+                    let new_z = target.position.z + TILE_SIZE * 2.0 * (if down { -1.0 } else { 1.0 });
+
+                    let new_position = with_z(tile_position.xy(), new_z);
+
+                    target.position = new_position;
+
+                    if let Some(mut transform) = entities.transform_mut(entity)
+                    {
+                        transform.position = new_position;
+                    }
+
+                    if let Some(mut physical) = entities.physical_mut(entity)
+                    {
+                        *physical.next_position_mut() = new_position;
+                    }
+                }
+            },
             WorldPathAction::Attack(tile_pos) =>
             {
                 let mut character = some_or_return!(entities.character_mut_no_change(entity));
@@ -432,7 +455,10 @@ impl Enemy
 
                 if !close_enough(other_transform, &transform)
                 {
-                    if follow_path(world, entities, path, entity, transform.position, dt)
+                    let position = transform.position;
+                    drop(transform);
+
+                    if follow_path(world, entities, path, entity, position, dt)
                     {
                         return;
                     }
@@ -488,21 +514,26 @@ impl Enemy
 
                             let is_close_enough = close_enough(&other_transform, &transform);
 
+                            {
+                                let mut character = some_or_return!(entities.character_mut_no_change(entity));
+
+                                if is_close_enough
+                                {
+                                    character.look_at(entities, entity, other_transform.position.xy());
+                                }
+
+                                if character.bash_reachable(&transform, &other_transform.scale, &target)
+                                {
+                                    character.push_action(CharacterAction::Bash);
+                                }
+                            }
+
+                            let position = transform.position;
+                            drop(transform);
+
                             if !is_close_enough
                             {
-                                follow_path(world, entities, path, entity, transform.position, dt);
-                            }
-
-                            let mut character = some_or_return!(entities.character_mut_no_change(entity));
-
-                            if is_close_enough
-                            {
-                                character.look_at(entities, entity, other_transform.position.xy());
-                            }
-
-                            if character.bash_reachable(&transform, &other_transform.scale, &target)
-                            {
-                                character.push_action(CharacterAction::Bash);
+                                follow_path(world, entities, path, entity, position, dt);
                             }
 
                             if sees

@@ -32,6 +32,7 @@ use crate::{
         PosDirection,
         Pos3,
         SpatialGrid,
+        SpecialTile,
         entity::iterate_components_with,
         world::{
             TILE_SIZE,
@@ -53,6 +54,7 @@ fn debug_display_current(entities: &ClientEntities, node: Node)
     let name = match node.value.kind
     {
         NodeKind::MoveTo => "solid.png",
+        NodeKind::StairsMove{down} => if down { "ui/down_icon.png" } else { "ui/up_icon.png" },
         NodeKind::BreakTile => "ui/close_button.png"
     };
 
@@ -318,10 +320,10 @@ impl Pathfinder<'_>
 
             if current.value.position == target
             {
-                let current_position: Vector3<f32> = current.value.position.center_position().into();
+                let current_z = Vector3::from(current.value.position.center_position()).z;
                 let mut path: Vec<WorldPathNode> = vec![
-                    WorldPathNode::MoveTo(Vector3::new(end.x, end.y, current_position.z)),
-                    WorldPathNode::MoveTo(current_position)
+                    WorldPathNode::MoveTo(Vector3::new(end.x, end.y, current_z)),
+                    current.value.clone().into()
                 ];
 
                 current.path_to(&mut explored, &mut path, Into::into);
@@ -331,7 +333,9 @@ impl Pathfinder<'_>
             }
 
             let below = current.value.position.offset(Pos3::new(0, 0, -1));
-            let is_grounded = tile_colliding(below).is_some();
+            let below_tile = self.world.tile(below).map(|tile| self.world.tile_info(*tile));
+
+            let is_grounded = below_tile.map(|x| x.colliding).unwrap_or(false);
 
             let mut try_push = |
                 explored: &mut HashMap<TilePos, NodeInfo>,
@@ -365,6 +369,28 @@ impl Pathfinder<'_>
                     });
                 }
             };
+
+            if let Some(SpecialTile::StairsDown) = below_tile.and_then(|x| x.special.as_ref())
+            {
+                try_push(
+                    &mut explored,
+                    current.value.position.offset(Pos3{x: 0, y: 0, z: -2}),
+                    NodeKind::StairsMove{down: true},
+                    1.0
+                );
+            }
+
+            let current_tile_info = self.world.tile(current.value.position).map(|tile| self.world.tile_info(*tile));
+
+            if let Some(SpecialTile::StairsUp) = current_tile_info.and_then(|x| x.special.as_ref())
+            {
+                try_push(
+                    &mut explored,
+                    current.value.position.offset(Pos3{x: 0, y: 0, z: 2}),
+                    NodeKind::StairsMove{down: false},
+                    1.0
+                );
+            }
 
             if is_grounded
             {
@@ -501,12 +527,12 @@ impl Pathfinder<'_>
         tiles: Vec<WorldPathNode>
     ) -> WorldPath
     {
-        let mut check = 0;
-
         let mut simplified = Vec::new();
 
-        let mut simplified_move = |simplified: &mut Vec<WorldPathNode>, start: usize, end: usize|
+        let simplified_move = |simplified: &mut Vec<WorldPathNode>, start: usize, end: usize|
         {
+            let mut check = 0;
+
             simplified.push(tiles[start].clone());
 
             let mut index = start + 1;
@@ -647,6 +673,7 @@ impl Pathfinder<'_>
 enum WorldPathNode
 {
     MoveTo(Vector3<f32>),
+    StairsMove{pos: TilePos, down: bool},
     BreakTile(TilePos)
 }
 
@@ -659,6 +686,7 @@ impl From<NodeValue> for WorldPathNode
         match value.kind
         {
             NodeKind::MoveTo => Self::MoveTo(position.center_position().into()),
+            NodeKind::StairsMove{down} => Self::StairsMove{pos: position, down},
             NodeKind::BreakTile => Self::BreakTile(position)
         }
     }
@@ -671,11 +699,13 @@ impl WorldPathNode
         if let Self::MoveTo(x) = self { Some(*x) } else { None }
     }
 
+    // used for debug stuff only, dont rly care
     fn to_position(&self) -> Vector3<f32>
     {
         match self
         {
             Self::MoveTo(x) => *x,
+            Self::StairsMove{pos, ..} => pos.center_position().into(),
             Self::BreakTile(x) => x.center_position().into()
         }
     }
@@ -684,6 +714,7 @@ impl WorldPathNode
 pub enum WorldPathAction
 {
     MoveDirection(Vector3<f32>),
+    StairsMove{pos: TilePos, down: bool},
     Attack(TilePos)
 }
 
@@ -719,26 +750,43 @@ impl WorldPath
     {
         let target = self.values.last()?;
 
-        let distance = target.to_position() - position;
-
         match target
         {
-            WorldPathNode::MoveTo(_) =>
+            WorldPathNode::MoveTo(move_position) =>
             {
+                let distance = move_position - position;
                 if distance.magnitude() < near
                 {
                     self.remove_current_target();
+
                     return self.action(world, near, position);
                 }
 
                 Some(WorldPathAction::MoveDirection(distance))
             },
+            WorldPathNode::StairsMove{pos, down} =>
+            {
+                if (pos.center_position().z - position.z).abs() < TILE_SIZE
+                {
+                    self.remove_current_target();
+
+                    self.action(world, near, position)
+                } else
+                {
+                    Some(WorldPathAction::StairsMove{pos: *pos, down: *down})
+                }
+            },
             WorldPathNode::BreakTile(tile_pos) =>
             {
-                world.tile(*tile_pos).map(|tile| !tile.is_none()).unwrap_or(false).then(||
+                if world.tile(*tile_pos).map(|tile| !tile.is_none()).unwrap_or(false)
                 {
-                    WorldPathAction::Attack(*tile_pos)
-                })
+                    Some(WorldPathAction::Attack(*tile_pos))
+                } else
+                {
+                    self.remove_current_target();
+
+                    self.action(world, near, position)
+                }
             }
         }
     }
@@ -763,6 +811,10 @@ impl WorldPath
             let name = match node
             {
                 WorldPathNode::BreakTile(_) => "ui/close_button.png",
+                WorldPathNode::StairsMove{down, ..} =>
+                {
+                    if down { "ui/down_icon.png" } else { "ui/up_icon.png" }
+                },
                 WorldPathNode::MoveTo(_) => "circle.png"
             };
 
@@ -810,6 +862,7 @@ struct NodeInfo
 enum NodeKind
 {
     MoveTo,
+    StairsMove{down: bool},
     BreakTile
 }
 
