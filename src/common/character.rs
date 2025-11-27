@@ -69,6 +69,12 @@ use crate::{
 
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum EquipState
+{
+    Held
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SpriteState
 {
     Normal,
@@ -591,7 +597,7 @@ impl Character
         }
     }
 
-    fn unhold(&mut self)
+    pub fn unhold(&mut self)
     {
         self.holding = None;
         self.update_holding();
@@ -2161,6 +2167,17 @@ impl Character
         if let Some(x) = self.rotation_mut()
         {
             *x = rotation;
+        }
+    }
+
+    pub fn get_equip_state(&self, id: InventoryItem) -> Option<EquipState>
+    {
+        if self.holding == Some(id)
+        {
+            Some(EquipState::Held)
+        } else
+        {
+            None
         }
     }
 

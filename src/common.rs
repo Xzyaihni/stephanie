@@ -74,7 +74,7 @@ pub use inventory::{
 
 pub use furnitures_info::{FurnitureId, FurnitureInfo, FurnituresInfo};
 
-pub use character::{CharacterSyncInfo, Character, Faction};
+pub use character::{EquipState, CharacterSyncInfo, Character, Faction};
 pub use characters_info::{Hairstyle, CharacterId, CharactersInfo, CharacterInfo};
 
 pub use player::{Player, OnConnectInfo};

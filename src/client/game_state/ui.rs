@@ -62,6 +62,7 @@ use crate::{
         ItemsInfo,
         OnChangeInfo,
         DataInfos,
+        EquipState,
         player::StatId,
         entity::ClientEntities,
         world::{TILE_SIZE, TilePos}
@@ -466,7 +467,15 @@ impl Hash for NotificationInfo
     }
 }
 
-pub type InventoryOnClick = Box<dyn FnMut(&Item, &ItemInfo, InventoryItem) -> Vec<GameUiEvent>>;
+pub struct InventoryOpenInfo<'a>
+{
+    pub item: &'a Item,
+    pub item_info: &'a ItemInfo,
+    pub equip: Option<EquipState>,
+    pub id: InventoryItem
+}
+
+pub type InventoryOnClick = Box<dyn FnMut(InventoryOpenInfo) -> Vec<GameUiEvent>>;
 
 struct ButtonResult
 {
@@ -537,11 +546,6 @@ fn health_color(anatomy: &Anatomy, id: ChangedPart) -> Lcha
     });
 
     single_health_color(health)
-}
-
-enum EquipState
-{
-    Held
 }
 
 struct UiInventoryItem
@@ -1082,7 +1086,14 @@ impl WindowKind
 
                             if let Some(item) = items_inventory.get(item_id)
                             {
-                                let events = (inventory.on_click)(item, info.items_info.get(item.id), item_id);
+                                let open_info = InventoryOpenInfo{
+                                    item,
+                                    item_info: info.items_info.get(item.id),
+                                    equip: info.entities.character(entity).and_then(|character| character.get_equip_state(item_id)),
+                                    id: item_id
+                                };
+
+                                let events = (inventory.on_click)(open_info);
                                 let event = UiEvent::Action(Rc::new(move |game_state|
                                 {
                                     game_state.ui.borrow_mut().create_popup(entity, item_id, events.clone());

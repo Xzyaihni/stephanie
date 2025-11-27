@@ -598,6 +598,7 @@ pub enum GameUiEvent
     Use{usage: ItemUsage, which: InventoryWhich, item: InventoryItem},
     Drop{which: InventoryWhich, item: InventoryItem},
     Wield(InventoryItem),
+    Unwield,
     Take(InventoryItem)
 }
 
@@ -611,6 +612,7 @@ impl GameUiEvent
             Self::Use{usage, ..} => usage.name(),
             Self::Drop{..} => "drop",
             Self::Wield(..) => "wield",
+            Self::Unwield => "unwield",
             Self::Take(..) => "take"
         }
     }

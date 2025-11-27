@@ -54,7 +54,7 @@ use super::game_state::{
     GameUiEvent,
     ControlState,
     Control,
-    ui::{NotificationDoor, NotificationIcon}
+    ui::{InventoryOpenInfo, NotificationDoor, NotificationIcon}
 };
 
 
@@ -163,42 +163,25 @@ impl Game
     pub fn on_player_connected(&mut self)
     {
         let info0 = self.info.clone();
-        let info1 = self.info.clone();
         with_game_state(&self.game_state, move |game_state|
         {
-            let ui = game_state.ui.clone();
+            let ui0 = game_state.ui.clone();
+            let ui1 = game_state.ui.clone();
 
             let entities = game_state.entities();
             entities.on_inventory(Box::new(move |OnChangeInfo{entity, ..}|
             {
-                let info = info0.borrow();
+                ui0.borrow_mut().inventory_changed(entity);
+            }));
 
-                let which = if entity == info.entity
-                {
-                    Some(InventoryWhich::Player)
-                } else if Some(entity) == info.other_entity
-                {
-                    Some(InventoryWhich::Other)
-                } else
-                {
-                    None
-                };
-
-                if let Some(which) = which
-                {
-                    let entity = match which
-                    {
-                        InventoryWhich::Other => info.other_entity.unwrap(),
-                        InventoryWhich::Player => info.entity
-                    };
-
-                    ui.borrow_mut().inventory_changed(entity);
-                }
+            entities.on_character(Box::new(move |OnChangeInfo{entity, ..}|
+            {
+                ui1.borrow_mut().inventory_changed(entity);
             }));
 
             entities.on_remove(Box::new(move |_entities, entity|
             {
-                let mut info = info1.borrow_mut();
+                let mut info = info0.borrow_mut();
 
                 if Some(entity) == info.other_entity
                 {
@@ -1335,16 +1318,20 @@ impl<'a> PlayerContainer<'a>
 
                         self.info.other_entity = Some(mouse_touched);
 
-                        self.game_state.ui.borrow_mut().open_inventory(mouse_touched, Box::new(move |_item, info, item_id|
+                        self.game_state.ui.borrow_mut().open_inventory(mouse_touched, Box::new(move |InventoryOpenInfo{
+                            item_info: info,
+                            id,
+                            ..
+                        }|
                         {
                             let mut actions = vec![
-                                GameUiEvent::Take(item_id),
-                                GameUiEvent::Info{which: InventoryWhich::Other, item: item_id}
+                                GameUiEvent::Take(id),
+                                GameUiEvent::Info{which: InventoryWhich::Other, item: id}
                             ];
 
                             if let Some(usage) = info.usage().cloned()
                             {
-                                actions.insert(1, GameUiEvent::Use{usage, which: InventoryWhich::Other, item: item_id});
+                                actions.insert(1, GameUiEvent::Use{usage, which: InventoryWhich::Other, item: id});
                             }
 
                             actions
@@ -1517,6 +1504,13 @@ impl<'a> PlayerContainer<'a>
                     character.set_holding(self.game_state.entities(), Some(item));
                 }
             },
+            GameUiEvent::Unwield =>
+            {
+                if let Some(mut character) = self.game_state.entities().character_mut(player)
+                {
+                    character.unhold();
+                }
+            },
             GameUiEvent::Take(item) =>
             {
                 if let Some(taken) = self.get_inventory_entity(InventoryWhich::Other)
@@ -1573,17 +1567,17 @@ impl<'a> PlayerContainer<'a>
 
         if !ui.close_inventory(this)
         {
-            ui.open_inventory(this, Box::new(move |_item, info, item_id|
+            ui.open_inventory(this, Box::new(move |InventoryOpenInfo{item_info: info, id, equip, ..}|
             {
                 let mut actions = vec![
-                    GameUiEvent::Wield(item_id),
-                    GameUiEvent::Info{which: InventoryWhich::Player, item: item_id},
-                    GameUiEvent::Drop{which: InventoryWhich::Player, item: item_id}
+                    if equip == Some(EquipState::Held) { GameUiEvent::Unwield } else { GameUiEvent::Wield(id) },
+                    GameUiEvent::Info{which: InventoryWhich::Player, item: id},
+                    GameUiEvent::Drop{which: InventoryWhich::Player, item: id}
                 ];
 
                 if let Some(usage) = info.usage().cloned()
                 {
-                    actions.insert(1, GameUiEvent::Use{usage, which: InventoryWhich::Player, item: item_id});
+                    actions.insert(1, GameUiEvent::Use{usage, which: InventoryWhich::Player, item: id});
                 }
 
                 actions
