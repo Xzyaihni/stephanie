@@ -734,7 +734,7 @@ fn destroy_tile_dependent(
     }.into();
 
     let transform = Transform{
-        position: tile_pos.center_position().into(),
+        position: tile_pos.entity_position(),
         scale: Vector3::repeat(TILE_SIZE * 0.95),
         ..Default::default()
     };

@@ -161,7 +161,7 @@ fn swept_aabb_world_inner<'a, const EXCLUDE_BEFORE: bool>(
 
         let other = Transform{
             scale: size,
-            position: pos.center_position().into(),
+            position: pos.entity_position(),
             ..Default::default()
         };
 

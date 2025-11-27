@@ -73,6 +73,13 @@ impl OvermapIndexing for Indexer
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct TilePosHeight
+{
+    pub chunk: i32,
+    pub local: u8
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct TilePos
 {
     pub chunk: GlobalPos,
@@ -108,6 +115,11 @@ impl From<Vector3<f32>> for TilePos
 
 impl TilePos
 {
+    pub fn as_height(&self) -> TilePosHeight
+    {
+        TilePosHeight{chunk: self.chunk.0.z, local: self.local.pos().z as u8}
+    }
+
     pub fn position(&self) -> Pos3<f32>
     {
         let big_pos: Pos3<f32> = self.chunk.into();
@@ -284,8 +296,7 @@ impl TilePos
 
     pub fn is_same_height(&self, other: &Self) -> bool
     {
-        self.chunk.0.z == other.chunk.0.z
-            && self.local.pos().z == other.local.pos().z
+        self.as_height() == other.as_height()
     }
 }
 

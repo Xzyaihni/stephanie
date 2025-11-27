@@ -364,7 +364,8 @@ enum ItemPart
     Indicator,
     Body,
     Icon(IconPart),
-    Name
+    Name,
+    EquipIcon
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -538,12 +539,18 @@ fn health_color(anatomy: &Anatomy, id: ChangedPart) -> Lcha
     single_health_color(health)
 }
 
+enum EquipState
+{
+    Held
+}
+
 struct UiInventoryItem
 {
     item: InventoryItem,
     name: String,
     durability_fraction: f32,
     rarity: ItemRarity,
+    equip: Option<EquipState>,
     texture: Sprite
 }
 
@@ -569,6 +576,8 @@ impl UiInventory
     fn items(&self, info: &UpdateInfo) -> Vec<UiInventoryItem>
     {
         let inventory = some_or_return!(info.entities.inventory(self.entity));
+        let character = info.entities.character(self.entity);
+        let character = character.as_ref();
 
         let mut items: Vec<_> = inventory.items_ids().collect();
         items.sort_by(|a, b|
@@ -579,11 +588,21 @@ impl UiInventory
         items.into_iter().map(|(index, x)|
         {
             let item = info.items_info.get(x.id);
+
+            let equip = character.and_then(|x|
+            {
+                (x.holding() == Some(index)).then(||
+                {
+                    EquipState::Held
+                })
+            });
+
             UiInventoryItem{
                 item: index,
                 name: item.name.clone(),
                 durability_fraction: *x.durability / item.durability,
                 rarity: x.rarity,
+                equip,
                 texture: item.texture
             }
         }).collect()
@@ -993,6 +1012,33 @@ impl WindowKind
                         },
                         ..UiElement::fit_content()
                     });
+
+                    add_padding_horizontal(body, UiSize::Rest(1.0).into());
+
+                    if let Some(equip) = item.equip.as_ref()
+                    {
+                        let icon_texture = match equip
+                        {
+                            EquipState::Held => "ui/held_icon.png"
+                        };
+
+                        let texture = UiTexture::Custom(icon_texture.into());
+
+                        let aspect = {
+                            let size = info.controller.texture_size(&texture);
+
+                            size.x / size.y
+                        };
+
+                        let icon_id = id(ItemPart::EquipIcon);
+                        body.update(icon_id.clone(), UiElement{
+                            texture,
+                            mix: Some(MixColorLch::color(color_primary)),
+                            width: UiSize::CopyElement(UiDirection::Vertical, aspect, icon_id).into(),
+                            height: UiSize::Rest(1.0).into(),
+                            ..Default::default()
+                        });
+                    }
                 });
 
                 let bottom_bar = vertical_body.update(id(InventoryPart::BottomInfo), UiElement{
@@ -1829,7 +1875,7 @@ impl Window
         UiId::Window(self.kind.as_id(), WindowPart::Panel)
     }
 
-    fn update(&mut self, ui: &mut UiController, info: &mut UpdateInfo)
+    fn update(&mut self, info: &mut UpdateInfo)
     {
         let id = self.id();
 
@@ -1842,16 +1888,16 @@ impl Window
         }).unwrap_or_default();
 
         {
-            let body = ui.input_of(&id);
+            let body = info.controller.input_of(&id);
             if let (Some(width), Some(height)) = (body.try_width(), body.try_height())
             {
                 let body_size = vector![width, height];
-                let screen_size = ui.screen_size().max();
+                let screen_size = info.controller.screen_size().max();
 
                 let shadow_size = 10.0;
                 let scale = (((body_size * screen_size) + Vector2::repeat(shadow_size)) / screen_size).component_div(&body_size);
 
-                ui.update(UiId::Window(self.kind.as_id(), WindowPart::Shadow), UiElement{
+                info.controller.update(UiId::Window(self.kind.as_id(), WindowPart::Shadow), UiElement{
                     texture: UiTexture::Sliced(info.sliced_textures["shadow"]),
                     mix: Some(MixColorLch::color(Lcha{a: 0.1, ..BLACK_COLOR})),
                     width: UiSize::CopyElement(UiDirection::Horizontal, scale.x, id.clone()).into(),
@@ -1871,7 +1917,7 @@ impl Window
             }
         }
 
-        let body = ui.update(id, UiElement{
+        let body = info.controller.update(id, UiElement{
             texture: UiTexture::Sliced(info.sliced_textures["rounded"]),
             mix: Some(MixColorLch::color(BACKGROUND_COLOR)),
             animation: Animation{
@@ -1888,7 +1934,7 @@ impl Window
             ..Default::default()
         });
 
-        let screen_size = ui.screen_size() / ui.screen_size().max();
+        let screen_size = body.screen_size() / body.screen_size().max();
 
         fn limit(position: &mut f32, size: f32, screen_size: f32)
         {
@@ -1936,6 +1982,7 @@ struct UpdateInfo<'a, 'b, 'c, 'd, 'e>
     mouse_taken: bool,
     player: Entity,
     controls: &'b mut UiControls<ControlUiId>,
+    controller: &'a UiController,
     user_receiver: &'c mut UiReceiver,
     dt: f32
 }
@@ -3144,11 +3191,12 @@ impl Ui
                 mouse_taken: window_taken || popup_taken,
                 player: self.ui_entities.player,
                 controls,
+                controller: &self.controller,
                 user_receiver: &mut self.user_receiver.borrow_mut(),
                 dt
             };
 
-            x.update(&mut self.controller, &mut info);
+            x.update(&mut info);
 
             if let Some((id, start)) = info.dragging_window
             {

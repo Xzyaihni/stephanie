@@ -176,11 +176,6 @@ pub fn update(
 
             let mut this = maybe_colliding_info!{with entity, collider};
 
-            crate::frame_time_this!{
-                [update, update_pre, collider_system_update, world] -> flat_time,
-                this.collide_with_world(world, &mut contacts)
-            };
-
             let mut physical = some_or_return!(entities.physical_mut_no_change(entity));
 
             if physical.move_z
@@ -195,7 +190,7 @@ pub fn update(
 
                             if let Some(mut transform) = entities.transform_mut(entity)
                             {
-                                transform.position.z = next_position.z;
+                                transform.position.z = this.transform.position.z;
                             }
 
                             let hit_velocity = physical.remove_velocity_axis(2);
@@ -209,6 +204,11 @@ pub fn update(
                     }
                 };
             }
+
+            crate::frame_time_this!{
+                [update, update_pre, collider_system_update, world] -> flat_time,
+                this.collide_with_world(world, &mut contacts)
+            };
         })
     };
 

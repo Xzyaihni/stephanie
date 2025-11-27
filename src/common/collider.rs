@@ -26,6 +26,7 @@ use crate::common::{
     world::{
         TILE_SIZE,
         TilePos,
+        TilePosHeight,
         DirectionsGroup,
         World
     }
@@ -304,7 +305,11 @@ pub struct Collider
     pub ghost: bool,
     pub sleeping: bool,
     pub override_transform: Option<OverrideTransform>,
+    #[serde(skip, default)]
+    collided_z: Option<TilePosHeight>,
+    #[serde(skip, default)]
     collided: Vec<Entity>,
+    #[serde(skip, default)]
     collided_tiles: Vec<TilePos>
 }
 
@@ -318,6 +323,7 @@ impl From<ColliderInfo> for Collider
             ghost: info.ghost,
             sleeping: info.sleeping,
             override_transform: info.override_transform,
+            collided_z: None,
             collided: Vec::new(),
             collided_tiles: Vec::new()
         }
@@ -1341,6 +1347,7 @@ impl<'a> CollidingInfoMut<'a>
         {
             self.transform.position += Vector3::new(0.0, 0.0, distance * direction.signum());
             self.collider.push_collided_tile(tile_pos);
+            self.collider.collided_z = Some(tile_pos.as_height());
 
             return true;
         }
@@ -1359,11 +1366,12 @@ impl<'a> CollidingInfoMut<'a>
             return false;
         }
 
-        let collided: Vec<_> = world.tiles_contacts(self, |contact| contacts.push(contact), |tile|
+        let collided: Vec<_> = World::tiles_contacts(self, |contact| contacts.push(contact), |tile_pos|
         {
+            let tile = world.tile(tile_pos);
             let colliding_tile = tile.map(|x| world.tile_info(*x).colliding);
 
-            colliding_tile.unwrap_or(true)
+            colliding_tile.unwrap_or(true) && self.collider.collided_z != Some(tile_pos.as_height())
         }).collect();
 
         let is_collided = !collided.is_empty();

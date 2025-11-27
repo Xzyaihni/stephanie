@@ -60,7 +60,7 @@ fn debug_display_current(entities: &ClientEntities, node: Node)
 
     let entity = entities.push(true, EntityInfo{
         transform: Some(Transform{
-            position: node.value.position.center_position().into(),
+            position: node.value.position.entity_position(),
             scale: Vector3::repeat(TILE_SIZE),
             ..Default::default()
         }),
@@ -80,7 +80,7 @@ fn debug_display_current(entities: &ClientEntities, node: Node)
 
 fn debug_display_collided_entity(entities: &ClientEntities, entity: Entity, position: TilePos)
 {
-    let position: Vector3<f32> = position.center_position().into();
+    let position: Vector3<f32> = position.entity_position();
 
     {
         let entity = entities.push(true, EntityInfo{
@@ -441,7 +441,7 @@ impl Pathfinder<'_>
         debug_timer: &mut DebugTimer
     ) -> bool
     {
-        let center_position = position.center_position().into();
+        let center_position = position.entity_position();
 
         let tile_checker = ColliderInfo{
             kind: ColliderType::Circle,
@@ -685,7 +685,7 @@ impl From<NodeValue> for WorldPathNode
 
         match value.kind
         {
-            NodeKind::MoveTo => Self::MoveTo(position.center_position().into()),
+            NodeKind::MoveTo => Self::MoveTo(position.entity_position()),
             NodeKind::StairsMove{down} => Self::StairsMove{pos: position, down},
             NodeKind::BreakTile => Self::BreakTile(position)
         }
@@ -705,8 +705,8 @@ impl WorldPathNode
         match self
         {
             Self::MoveTo(x) => *x,
-            Self::StairsMove{pos, ..} => pos.center_position().into(),
-            Self::BreakTile(x) => x.center_position().into()
+            Self::StairsMove{pos, ..} => pos.entity_position(),
+            Self::BreakTile(x) => x.entity_position()
         }
     }
 }

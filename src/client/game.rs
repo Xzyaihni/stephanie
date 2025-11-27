@@ -26,6 +26,7 @@ use crate::{
         character::*,
         watcher::*,
         particle_creator::*,
+        World,
         Damageable,
         SpecialTile,
         AnyEntities,
@@ -1843,9 +1844,9 @@ impl<'a> PlayerContainer<'a>
         {
             let world = &self.game_state.world;
 
-            let stairs: Option<TilePos> = world.tiles_inside(&colliding, |tile|
+            let stairs: Option<TilePos> = World::tiles_inside(&colliding, |tile_pos|
             {
-                tile.map(|tile|
+                world.tile(tile_pos).map(|tile|
                 {
                     world.tile_info(*tile).special == Some(SpecialTile::StairsUp)
                 }).unwrap_or(false)
@@ -1891,9 +1892,9 @@ impl<'a> PlayerContainer<'a>
 
             colliding.transform.position.z -= TILE_SIZE;
 
-            let stairs = world.tiles_inside(&colliding, |tile: Option<&_>|
+            let stairs = World::tiles_inside(&colliding, |tile_pos|
             {
-                tile.map(|tile|
+                world.tile(tile_pos).map(|tile|
                 {
                     world.tile_info(*tile).special == Some(SpecialTile::StairsDown)
                 }).unwrap_or(false)

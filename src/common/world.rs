@@ -62,7 +62,7 @@ pub use overmap::{
     }
 };
 
-pub use client_overmap::TilePos;
+pub use client_overmap::{TilePosHeight, TilePos};
 pub use visual_overmap::{OccludedChecker, OccludedCheckerInfo};
 
 use client_overmap::ClientOvermap;
@@ -257,15 +257,14 @@ impl World
     }
 
     pub fn tiles_inside<'a, Colliding, Predicate>(
-        &self,
         collider: &'a CollidingInfo<Colliding>,
         predicate: Predicate
-    ) -> impl Iterator<Item=TilePos> + use<'a, '_, Colliding, Predicate>
+    ) -> impl Iterator<Item=TilePos> + use<'a, Colliding, Predicate>
     where
         Colliding: Borrow<Collider> + 'a,
-        Predicate: Fn(Option<&Tile>) -> bool + Copy
+        Predicate: Fn(TilePos) -> bool + Copy
     {
-        self.tiles_inside_inner::<false, _, _, _>(
+        Self::tiles_inside_inner::<false, _, _, _>(
             collider,
             predicate,
             |info| collider.collide_immutable(&info, |_| {})
@@ -273,17 +272,16 @@ impl World
     }
 
     pub fn tiles_contacts<'a, Colliding, ContactAdder, Predicate>(
-        &self,
         collider: &'a CollidingInfo<Colliding>,
         mut add_contact: ContactAdder,
         predicate: Predicate
-    ) -> impl Iterator<Item=TilePos> + use<'a, '_, Colliding, Predicate, ContactAdder>
+    ) -> impl Iterator<Item=TilePos> + use<'a, Colliding, Predicate, ContactAdder>
     where
         Colliding: Borrow<Collider> + 'a,
         ContactAdder: FnMut(Contact),
-        Predicate: Fn(Option<&Tile>) -> bool + Copy
+        Predicate: Fn(TilePos) -> bool + Copy
     {
-        self.tiles_inside_inner::<true, _, _, _>(
+        Self::tiles_inside_inner::<true, _, _, _>(
             collider,
             predicate,
             move |info| collider.collide_immutable(&info, &mut add_contact)
@@ -291,15 +289,14 @@ impl World
     }
 
     fn tiles_inside_inner<'a, const CHECK_NEIGHBORS: bool, Colliding, CheckCollision, Predicate>(
-        &self,
         collider: &'a CollidingInfo<Colliding>,
         predicate: Predicate,
         mut check_collision: CheckCollision
-    ) -> impl Iterator<Item=TilePos> + use<'a, '_, Colliding, CHECK_NEIGHBORS, Predicate, CheckCollision>
+    ) -> impl Iterator<Item=TilePos> + use<'a, Colliding, CHECK_NEIGHBORS, Predicate, CheckCollision>
     where
         Colliding: Borrow<Collider> + 'a,
         CheckCollision: FnMut(CollidingInfoRef) -> bool,
-        Predicate: Fn(Option<&Tile>) -> bool + Copy
+        Predicate: Fn(TilePos) -> bool + Copy
     {
         let half_scale = collider.half_bounds();
 
@@ -308,12 +305,12 @@ impl World
 
         top_left.tiles_between(bottom_right).filter(move |pos|
         {
-            predicate(self.tile(*pos))
+            predicate(*pos)
         }).filter(move |pos|
         {
             let check_tile = |pos|
             {
-                predicate(self.tile(pos))
+                predicate(pos)
             };
 
             let world = if CHECK_NEIGHBORS

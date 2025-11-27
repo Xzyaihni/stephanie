@@ -538,7 +538,7 @@ impl OccludedChecker
 
                     let entity = entities.push(true, EntityInfo{
                         transform: Some(Transform{
-                            position: tile_pos.center_position().into(),
+                            position: tile_pos.entity_position(),
                             scale: Vector3::repeat(TILE_SIZE),
                             ..Default::default()
                         }),
