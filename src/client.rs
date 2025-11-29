@@ -87,6 +87,7 @@ pub struct ClientInfo
     pub name: String,
     pub host: bool,
     pub debug: bool,
+    pub mouse_position: Vector2<f32>,
     pub controls: Vec<(KeyMapping, Control)>
 }
 

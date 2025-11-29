@@ -1744,6 +1744,11 @@ impl<Id: Idable> Controller<Id>
         self.shared.borrow_mut().mouse_position = position;
     }
 
+    pub fn mouse_position(&self) -> Vector2<f32>
+    {
+        self.shared.borrow().mouse_position
+    }
+
     fn set_screen_size(&mut self, size: Vector2<f32>)
     {
         self.sizer.update_screen_size(size);

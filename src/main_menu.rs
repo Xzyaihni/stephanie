@@ -310,6 +310,7 @@ pub struct MainMenu
     controls: ControlsController<MainMenuId>,
     state: MenuState,
     ui_camera: Camera,
+    client_mouse_position: Vector2<f32>,
     animation: f32,
     controls_taken: Option<GameControl>,
     bindings: UiList<Binding>,
@@ -446,6 +447,7 @@ impl MainMenu
             controls,
             state: MenuState::Main,
             ui_camera,
+            client_mouse_position: Vector2::zeros(),
             animation: 0.0,
             controls_taken: None,
             bindings: bindings.into(),
@@ -1428,10 +1430,18 @@ impl MainMenu
 
     pub fn mouse_move(&mut self, (x, y): (f64, f64))
     {
+        let mouse_position = vector![x as f32, y as f32];
+        self.client_mouse_position = mouse_position;
+
         let normalized_size = self.ui_camera.normalized_size();
-        let position = vector![x as f32, y as f32].component_mul(&normalized_size) - (normalized_size / 2.0);
+        let position = mouse_position.component_mul(&normalized_size) - (normalized_size / 2.0);
 
         self.controller.set_mouse_position(position);
+    }
+
+    pub fn mouse_position(&self) -> Vector2<f32>
+    {
+        self.client_mouse_position
     }
 
     pub fn draw(&mut self, mut info: DrawInfo)

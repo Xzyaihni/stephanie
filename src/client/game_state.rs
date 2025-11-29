@@ -851,8 +851,6 @@ impl GameState
         client_info: &ClientInfo
     ) -> Rc<RefCell<Self>>
     {
-        let mouse_position = Vector2::zeros();
-
         let notifications = Notifications::new();
 
         let mut handler = ConnectionsHandler::new(message_passer);
@@ -942,7 +940,7 @@ impl GameState
         let ui_camera = Camera::new(1.0, -1.0..1.0);
 
         let mut this = Self{
-            mouse_position,
+            mouse_position: client_info.mouse_position,
             camera: info.camera,
             assets,
             object_factory: object_info.partial.object_factory.clone(),

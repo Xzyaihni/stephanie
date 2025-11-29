@@ -536,6 +536,7 @@ impl YanyaApp for App
                             name: client_info.name.display_name(),
                             host: client_info.host,
                             debug: client_info.debug,
+                            mouse_position: x.mouse_position(),
                             controls: x.bindings()
                         };
 
