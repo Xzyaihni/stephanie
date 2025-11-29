@@ -57,6 +57,7 @@ pub enum DebugTool
     PrintContactsCount,
     PrintPushEntity,
     PrintSurfaceRules,
+    PrintGeneratedChunks,
     SaveAnatomyColors,
     DebugTileField,
     DrawTileOcclusion,

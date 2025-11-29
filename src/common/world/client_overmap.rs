@@ -349,11 +349,6 @@ impl ClientOvermap
         {
             self.chunks[local_pos] = Some(Arc::new(chunk));
 
-            local_pos.directions_inclusive().flatten().for_each(|pos|
-            {
-                self.visual_overmap.mark_ungenerated(pos);
-            });
-
             self.visual_overmap.try_generate_sky_occlusion(&self.chunks, local_pos);
         }
     }
@@ -426,9 +421,15 @@ impl ClientOvermap
 
                 self.visual_overmap.try_regenerate(&self.chunks, local);
 
-                local.directions().flatten().for_each(|pos|
+                local.maybe_group().other.map(|direction, chunk_pos|
                 {
-                    self.visual_overmap.try_regenerate(&self.chunks, pos)
+                    if let Some(chunk_pos) = chunk_pos
+                    {
+                        if pos.local.is_edge(direction)
+                        {
+                            self.visual_overmap.try_regenerate(&self.chunks, chunk_pos);
+                        }
+                    }
                 });
             }
         }

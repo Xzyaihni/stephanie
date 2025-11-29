@@ -2481,6 +2481,24 @@ impl Ui
         Some(position_absolute / camera_transform.scale.xy().max())
     }
 
+    fn update_console(&mut self, controls: &mut UiControls<ControlUiId>, dt: f32)
+    {
+        if let Some(text) = self.console_contents.as_mut()
+        {
+            text.update(dt);
+
+            let body = self.controller.update(UiId::Console(TextboxPartId::Body), UiElement{
+                texture: UiTexture::Solid,
+                mix: Some(MixColorLch::color(BACKGROUND_COLOR)),
+                animation: Animation::normal(),
+                position: UiPosition::Absolute{position: Vector2::zeros(), align: Default::default()},
+                ..Default::default()
+            });
+
+            textbox_update(controls, &self.fonts, UiId::Console, body, 15, text);
+        }
+    }
+
     pub fn update(&mut self, entities: &ClientEntities, controls: &mut UiControls<ControlUiId>, dt: f32)
     {
         if let Some(progress) = self.loading
@@ -2532,6 +2550,7 @@ impl Ui
 
             add_padding_horizontal(bar, UiSize::Rest(1.0 - progress).into());
 
+            self.update_console(controls, dt);
             return;
         }
 
@@ -2623,6 +2642,7 @@ impl Ui
                 }
             }
 
+            self.update_console(controls, dt);
             return;
         }
 
@@ -3257,20 +3277,7 @@ impl Ui
             });
         }
 
-        if let Some(text) = self.console_contents.as_mut()
-        {
-            text.update(dt);
-
-            let body = self.controller.update(UiId::Console(TextboxPartId::Body), UiElement{
-                texture: UiTexture::Solid,
-                mix: Some(MixColorLch::color(BACKGROUND_COLOR)),
-                animation: Animation::normal(),
-                position: UiPosition::Absolute{position: Vector2::zeros(), align: Default::default()},
-                ..Default::default()
-            });
-
-            textbox_update(controls, &self.fonts, UiId::Console, body, 15, text);
-        }
+        self.update_console(controls, dt);
 
         if takes_input.is_some() || popup_taken
         {

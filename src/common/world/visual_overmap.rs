@@ -724,6 +724,11 @@ impl VisualOvermap
                     timestamp
                 };
 
+                if DebugConfig::is_enabled(DebugTool::PrintGeneratedChunks)
+                {
+                    eprintln!("generated: {:?}", &generated.position);
+                }
+
                 sender.send(generated).unwrap();
             }
         });
@@ -784,7 +789,8 @@ impl VisualOvermap
             return;
         }
 
-        self.force_generate(chunks, pos);
+        self.mark_ungenerated(pos);
+        self.try_generate_sky_occlusion(chunks, pos);
     }
 
     pub fn force_generate(
@@ -836,9 +842,12 @@ impl VisualOvermap
 
         pos.directions_inclusive().flatten().for_each(|pos|
         {
-            if creatable_with(&self.chunks, pos, |chunk| chunk.occlusion.is_some())
+            if !self.chunks[pos].chunk.is_generated()
             {
-                self.force_generate(chunks, pos);
+                if TileReader::creatable(chunks, pos) && creatable_with(&self.chunks, pos, |chunk| chunk.occlusion.is_some())
+                {
+                    self.force_generate(chunks, pos);
+                }
             }
         });
 

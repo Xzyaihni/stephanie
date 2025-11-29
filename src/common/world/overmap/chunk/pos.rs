@@ -1014,8 +1014,7 @@ macro_rules! impl_directionals
                 }
             }
 
-            #[allow(dead_code)]
-            pub fn offset(&self, direction: PosDirection) -> Option<Self>
+            pub fn is_edge(&self, direction: PosDirection) -> bool
             {
                 let edge = if direction.is_negative()
                 {
@@ -1025,9 +1024,13 @@ macro_rules! impl_directionals
                     self.size().plane_of(direction) - 1
                 };
 
-                let is_edge = *self.pos().plane_of(direction) == edge;
+                *self.pos().plane_of(direction) == edge
+            }
 
-                (!is_edge).then(||
+            #[allow(dead_code)]
+            pub fn offset(&self, direction: PosDirection) -> Option<Self>
+            {
+                (!self.is_edge(direction)).then(||
                 {
                     let mut value = *self;
 
