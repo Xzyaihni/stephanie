@@ -818,6 +818,16 @@ impl Drop for GameState
 {
     fn drop(&mut self)
     {
+        self.entities.entities.sync_all_shared(self.entities.player_entity, |message|
+        {
+            self.connections_handler.send_message(message);
+        });
+
+        if let Err(err) = self.connections_handler.send_buffered()
+        {
+            eprintln!("error syncing player components: {err}");
+        }
+
         if let Err(err) = self.connections_handler.send_blocking(&Message::PlayerDisconnect{
             time: Some(self.world.time()),
             restart: self.is_restart,

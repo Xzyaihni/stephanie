@@ -579,6 +579,8 @@ impl GameServer
                 {
                     let player_info = self.entities.info(player_entity);
 
+                    debug_assert!(player_info.character.is_some());
+
                     println!("saving player \"{player_name}\"");
 
                     let path = self.player_info_path(&player_name);

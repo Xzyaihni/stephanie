@@ -2634,6 +2634,19 @@ macro_rules! define_entities
                 $(($name, $set_func, $set_func_no_change, $default_type, $default_type),)+
                 $(($side_name, $side_set_func, $side_set_func_no_change, $side_default_type, $client_type),)+
             }
+
+            pub fn sync_all_shared(&self, entity: Entity, mut f: impl FnMut(Message))
+            {
+                $(
+                    if self.$exists_name(entity)
+                    {
+                        f(Message::$message_name{
+                            entity,
+                            component: self.$name(entity).map(|x| Box::new(x.clone()))
+                        });
+                    }
+                )+
+            }
         }
 
         impl ServerEntities
