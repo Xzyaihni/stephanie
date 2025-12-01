@@ -93,7 +93,8 @@ impl DamagingType
                 let kind = *damage * (info.relative_velocity?.magnitude() / TILE_SIZE);
                 let damage = DamagePartial{
                     data: kind,
-                    height
+                    height,
+                    poke: false
                 };
 
                 Some((info.global_rotation, damage))

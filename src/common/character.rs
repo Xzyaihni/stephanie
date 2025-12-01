@@ -745,6 +745,8 @@ impl Character
             }
         }
 
+        self.attack_cooldown = 0.5;
+
         let info = some_or_return!(self.info.as_ref());
 
         let entities = &combined_info.entities;
@@ -1448,7 +1450,8 @@ impl Character
 
         let damage = DamagePartial{
             data: damage,
-            height
+            height,
+            poke: true
         };
 
         combined_info.entities.push(true, EntityInfo{
@@ -1569,7 +1572,8 @@ impl Character
         let damage_scale = strength_scale * mass_damage * damage_buff * crit.unwrap_or(1.0) * level_buff;
         let damage = DamagePartial{
             data: (*item_info).clone().with_changed(|x| x.mass += hand_mass).bash_damage() * damage_scale,
-            height: self.melee_height()
+            height: self.melee_height(),
+            poke: false
         };
 
         let angle = short_rotation(opposite_angle(self.bash_side.opposite().to_angle() - f32::consts::FRAC_PI_2)) * 0.6;
@@ -1655,7 +1659,8 @@ impl Character
         let damage_scale = strength_scale * mass_damage * damage_buff * crit.unwrap_or(1.0) * level_buff;
         let damage = DamagePartial{
             data: item_info.clone().with_changed(|x| x.mass += hand_mass).poke_damage() * damage_scale,
-            height: self.melee_height()
+            height: self.melee_height(),
+            poke: true
         };
 
         let projectile_entity = combined_info.entities.push(

@@ -135,6 +135,11 @@ impl PierceType
                     return None;
                 }
 
+                if let AnatomyId::Part(id) = id
+                {
+                    this.maybe_wound(id, &damage);
+                }
+
                 this.body.get_mut::<DamagerGetter>(id).unwrap()(damage)
             })
         }
@@ -190,6 +195,11 @@ impl PierceType
                 }
 
                 let target = fastrand::choice(possible_actions).unwrap();
+
+                if let AnatomyId::Part(id) = target
+                {
+                    this.maybe_wound(id, &damage);
+                }
 
                 let pierce = this.body.get_mut::<DamagerGetter>(target).unwrap()(damage);
 
@@ -430,12 +440,11 @@ impl HumanAnatomyValues
         );
 
         let head = {
-            let mut head = HumanPart::new(
+            let mut head = HumanPart::new_full(
                 DebugName::new("head"),
-                BodyPartInfo{
-                    bone: part.bone * 400.0,
-                    ..part
-                },
+                Health::new(0.95, part.bone * 100.0),
+                Health::new(0.5, part.skin),
+                Health::new(0.0, 0.0),
                 0.39,
                 HeadOrgans{eyes: Halves::repeat(Some(Eye::new(1.0))), brain: Some(Brain::new(0.5))}
             );
@@ -456,9 +465,11 @@ impl HumanAnatomyValues
             legs: Halves{left: make_leg("left"), right: make_leg("right")}
         };
 
-        let torso = HumanPart::new(
+        let torso = HumanPart::new_full(
             DebugName::new("torso"),
-            BodyPartInfo{bone: part.bone * 33.0, muscle: part.muscle * 5.0, skin: part.skin * 2.0, ..part},
+            Health::new(0.8, part.bone * 9.0),
+            Health::new(0.5, part.skin * 2.0),
+            Health::new(0.9, part.muscle * 5.0),
             0.82,
             TorsoOrgans{
                 lungs: Halves::repeat(Some(Lung::new(1.0))),
@@ -603,11 +614,23 @@ impl HumanAnatomyValues
             self.body.get::<()>(*id).is_some() || pierce.any_exists(self)
         });
 
-        let ids: &Vec<_> = &ids;
+        let ids = if ids.is_empty()
+        {
+            HumanPartId::iter().filter(|id|
+            {
+                self.body.get_part::<()>(*id).is_some()
+            }).map(|id|
+            {
+                (AnatomyId::Part(id), PierceType::empty())
+            }).collect::<Vec<_>>()
+        } else
+        {
+            ids
+        };
 
         let picked = WeightedPicker::pick_from(
             fastrand::f64(),
-            ids,
+            &ids,
             |(id, pierce)|
             {
                 self.body.get::<SizeGetter>(*id).copied().unwrap_or_else(|| pierce.combined_scale(self))
@@ -616,6 +639,11 @@ impl HumanAnatomyValues
 
         picked.and_then(|(picked, on_pierce)|
         {
+            if let AnatomyId::Part(id) = picked
+            {
+                self.maybe_wound(*id, &damage);
+            }
+
             let picked_damage = self.body.get_mut::<DamagerGetter>(*picked).map(|x| x(damage.clone()));
 
             if let Some(damage) = picked_damage
@@ -629,6 +657,135 @@ impl HumanAnatomyValues
                 (on_pierce.action)(self, damage)
             }
         })
+    }
+
+    fn maybe_wound(&mut self, id: HumanPartId, damage: &Damage)
+    {
+        let blunt_damage = |x: f32| -> Option<WoundKind>
+        {
+            let abrasion_chance = falloff(1.0, x * 0.3);
+
+            let laceration_chance = falloff(1.0, x * 0.1);
+            let deep_laceration_chance = laceration_chance * 0.5;
+
+            if DebugConfig::is_enabled(DebugTool::PrintDamage)
+            {
+                eprintln!(
+                    "[{id:?} blunt damage] abrasion chance: {:.3}%",
+                    abrasion_chance * 100.0
+                );
+
+                eprintln!(
+                    "[{id:?} blunt damage] laceration chance: {:.3}% (deep {:.3}%)",
+                    abrasion_chance * laceration_chance * 100.0,
+                    deep_laceration_chance * 100.0
+                );
+            }
+
+            if fastrand::f32() >= abrasion_chance
+            {
+                return None;
+            }
+
+            if fastrand::f32() < laceration_chance
+            {
+                Some(WoundKind::Laceration{deep: fastrand::f32() < deep_laceration_chance})
+            } else
+            {
+                Some(WoundKind::Abrasion)
+            }
+        };
+
+        let is_poke = damage.poke;
+        let kind = match damage.data
+        {
+            DamageType::AreaEach(_) => return,
+            DamageType::Blunt(x) => some_or_return!(blunt_damage(x)),
+            DamageType::Sharp{sharpness, damage} =>
+            {
+                let sharp_chance = falloff(1.8, sharpness * 1.5);
+
+                if DebugConfig::is_enabled(DebugTool::PrintDamage)
+                {
+                    eprintln!("{sharpness} sharp chance: {:.3}%", sharp_chance * 100.0);
+                }
+
+                if fastrand::f32() < sharp_chance
+                {
+                    let sharp_damage = damage * sharpness;
+
+                    if is_poke
+                    {
+                        let puncture_chance = falloff(1.0, sharp_damage);
+                        let deep_puncture_chance = puncture_chance * 0.5;
+
+                        if DebugConfig::is_enabled(DebugTool::PrintDamage)
+                        {
+                            eprintln!(
+                                "[{id:?} poke sharp damage] puncture chance: {:.3}% (deep {:.3}%)",
+                                puncture_chance * 100.0,
+                                deep_puncture_chance * 100.0
+                            );
+                        }
+
+                        if fastrand::f32() >= puncture_chance
+                        {
+                            return;
+                        }
+
+                        if fastrand::f32() < 0.1
+                        {
+                            WoundKind::Incision{deep: true}
+                        } else
+                        {
+                            WoundKind::Puncture{deep: fastrand::f32() < deep_puncture_chance}
+                        }
+                    } else
+                    {
+                        let incision_chance = falloff(1.0, sharp_damage);
+                        let deep_incision_chance = incision_chance * 0.5;
+
+                        if DebugConfig::is_enabled(DebugTool::PrintDamage)
+                        {
+                            eprintln!(
+                                "[{id:?} non poke sharp damage] incision chance: {:.3}% (deep {:.3}%)",
+                                incision_chance * 100.0,
+                                deep_incision_chance * 100.0
+                            );
+                        }
+
+                        if fastrand::f32() >= incision_chance
+                        {
+                            return;
+                        }
+
+                        WoundKind::Incision{deep: fastrand::f32() < deep_incision_chance}
+                    }
+                } else
+                {
+                    some_or_return!(blunt_damage(damage * (1.0 + sharpness * 2.0)))
+                }
+            },
+            DamageType::Bullet(_) =>
+            {
+                WoundKind::Puncture{deep: true}
+            }
+        };
+
+        let relative_damage = damage.data.as_flat();
+
+        let wound = Wound{
+            part: id,
+            duration: lerp(1.0, 50.0, falloff(1.0, relative_damage).clamp(0.0, 1.0)).into(),
+            kind
+        };
+
+        if DebugConfig::is_enabled(DebugTool::PrintDamage)
+        {
+            eprintln!("[{id:?} damage] wound: {wound:#?}");
+        }
+
+        self.wounds.push(wound);
     }
 }
 
@@ -663,7 +820,7 @@ impl HumanAnatomy
         Self::from(HumanAnatomyValues::new(info))
     }
 
-    pub fn update(&mut self, dt: f32) -> bool
+    pub fn update(&mut self, is_player: bool, dt: f32) -> bool
     {
         let cached = self.cached.as_ref().unwrap();
 
@@ -705,7 +862,7 @@ impl HumanAnatomy
 
         let is_winded = self.this.hypoxic > 0.1;
 
-        if is_winded
+        if is_winded && !is_player
         {
             self.this.fainted = 15.0;
         }

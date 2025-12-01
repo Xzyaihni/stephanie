@@ -1,7 +1,6 @@
 use std::{
     f32,
-    ops::{Mul, MulAssign},
-    fmt::{self, Debug}
+    ops::{Mul, MulAssign}
 };
 
 use serde::{Serialize, Deserialize};
@@ -13,7 +12,8 @@ use crate::common::Side2d;
 pub struct DamagePartial
 {
     pub data: DamageType,
-    pub height: DamageHeight
+    pub height: DamageHeight,
+    pub poke: bool
 }
 
 impl DamagePartial
@@ -25,26 +25,16 @@ impl DamagePartial
             height: self.height
         };
 
-        Damage::new(direction, self.data)
+        Damage{direction, data: self.data, poke: self.poke}
     }
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Damage
 {
     pub data: DamageType,
-    pub direction: DamageDirection
-}
-
-impl Debug for Damage
-{
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
-    {
-        f.debug_struct("Damage")
-            .field("data", &self.data)
-            .field("direction", &self.direction)
-            .finish()
-    }
+    pub direction: DamageDirection,
+    pub poke: bool
 }
 
 impl Mul<f32> for Damage
@@ -62,14 +52,9 @@ impl Mul<f32> for Damage
 
 impl Damage
 {
-    pub fn new(direction: DamageDirection, data: DamageType) -> Self
-    {
-        Self{data, direction}
-    }
-
     pub fn area_each(amount: f32) -> Self
     {
-        Self{data: DamageType::AreaEach(amount), direction: DamageDirection::default()}
+        Self{data: DamageType::AreaEach(amount), direction: DamageDirection::default(), poke: false}
     }
 }
 

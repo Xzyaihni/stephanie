@@ -301,11 +301,11 @@ impl Anatomy
         }
     }
 
-    pub fn update(&mut self, dt: f32) -> bool
+    pub fn update(&mut self, is_player: bool, dt: f32) -> bool
     {
         match self
         {
-            Self::Human(x) => x.update(dt)
+            Self::Human(x) => x.update(is_player, dt)
         }
     }
 
@@ -998,10 +998,11 @@ impl<Contents: Organ> BodyPart<Contents>
         }
 
         let direction = damage.direction;
+        let poke = damage.poke;
 
         self.damage_inner(direction.side, damage.data).map(|damage|
         {
-            Damage{direction, data: damage}
+            Damage{direction, data: damage, poke}
         })
     }
 

@@ -82,12 +82,15 @@ fn anatomy_stats_single(
 
     while !anatomy.take_killed()
     {
+        let is_poke = fastrand::bool();
+
         let damage = Damage{
-            data: (if fastrand::bool() { item.bash_damage() } else { item.poke_damage() }) * 30.0,
+            data: (if !is_poke { item.bash_damage() } else { item.poke_damage() }) * 30.0,
             direction: DamageDirection{
                 side: Side2d::random(),
                 height: DamageHeight::random()
-            }
+            },
+            poke: is_poke
         };
 
         stats.kill_hits += 1.0;

@@ -13,7 +13,7 @@ pub fn update(
 {
     for_each_component!(entities, anatomy, |entity, anatomy: &RefCell<Anatomy>|
     {
-        if anatomy.borrow_mut().update(dt)
+        if anatomy.borrow_mut().update(entities.player_exists(entity), dt)
         {
             entities.set_changed().anatomy(entity);
         }
