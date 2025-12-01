@@ -227,8 +227,8 @@ impl Anatomy
 {
     simple_getter!(speed);
     simple_getter!(strength);
-    simple_getter!(oxygen_speed);
     simple_getter!(oxygen, SimpleHealth);
+    simple_getter!(blood, SimpleHealth);
     simple_getter!(vision);
     simple_getter!(vision_angle);
     simple_getter!(can_move, bool);

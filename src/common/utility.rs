@@ -281,6 +281,33 @@ impl<K: Hash + Eq, V: Hash + Eq> BiMap<K, V>
     }
 }
 
+pub struct WeightedAverager
+{
+    total: f32,
+    current: f32
+}
+
+impl WeightedAverager
+{
+    pub fn new() -> Self
+    {
+        Self{total: 0.0, current: 0.0}
+    }
+
+    pub fn add(&mut self, weight: f32, fraction: f32)
+    {
+        debug_assert!((0.0..=1.0).contains(&fraction));
+
+        self.total += weight;
+        self.current += weight * fraction;
+    }
+
+    pub fn average(&self) -> f32
+    {
+        self.current / self.total
+    }
+}
+
 pub struct WeightedPicker<I>
 {
     total: f64,
@@ -599,6 +626,11 @@ impl EaseOut for Vector3<f32>
                 ease_out(a, b, decay, dt)
             })
     }
+}
+
+pub fn falloff(b: f32, value: f32) -> f32
+{
+    b - (b / (1.0 + value))
 }
 
 // thanks freya holmer

@@ -448,7 +448,6 @@ impl ClientOvermap
         let old_rounded_position = self.indexer.player_position.rounded();
 
         let position_difference = (rounded_position - old_rounded_position).0;
-        let z_changed = position_difference.z != 0;
 
         self.indexer.player_position = position;
 
@@ -458,15 +457,9 @@ impl ClientOvermap
             self.position_offset(position_difference);
         }
 
-        if z_changed
+        if position_difference.z > 0
         {
-            if position_difference.z < 0
-            {
-                self.visual_overmap.moved_down(&self.chunks);
-            } else
-            {
-                self.visual_overmap.regenerate_sky_occlusions(&self.chunks);
-            }
+            self.visual_overmap.regenerate_sky_occlusions(&self.chunks);
         }
     }
 

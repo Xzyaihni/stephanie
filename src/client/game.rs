@@ -1680,6 +1680,15 @@ impl<'a> PlayerContainer<'a>
             }
         }
 
+        {
+            let blood = self.game_state.entities().anatomy(self.info.entity).and_then(|anatomy|
+            {
+                anatomy.blood().fraction()
+            }).unwrap_or(0.0);
+
+            self.game_state.ui.borrow_mut().set_blood(blood);
+        }
+
         if self.info.animation.is_none()
         {
             let movement_direction = self.movement_direction();

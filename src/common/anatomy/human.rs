@@ -9,10 +9,13 @@ use serde::{Serialize, Deserialize};
 use crate::{
     debug_config::*,
     common::{
+        falloff,
+        lerp,
         some_or_return,
         some_or_unexpected_return,
         TILE_SIZE,
         damage::*,
+        WeightedAverager,
         Side1d,
         Side2d,
         DamageHeight,
@@ -78,7 +81,8 @@ pub struct CachedProps
     speed: Speeds<f32>,
     strength: f32,
     vision: f32,
-    oxygen_change: f32,
+    oxygen_regen: f32,
+    oxygen_consumption: f32,
     blood_change: f32
 }
 
@@ -241,6 +245,42 @@ impl PierceType
     }
 }
 
+// pointless complexity, go!
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum WoundKind
+{
+    Abrasion,
+    Puncture{deep: bool},
+    Laceration{deep: bool},
+    Incision{deep: bool},
+    Avulsion
+}
+
+impl WoundKind
+{
+    pub fn blood_loss(&self) -> f32
+    {
+        let factor = match self
+        {
+            Self::Abrasion => 0.03,
+            Self::Puncture{deep} => if *deep { 0.1 } else { 0.05 },
+            Self::Laceration{deep} => if *deep { 0.2 } else { 0.1 },
+            Self::Incision{deep} => if *deep { 0.4 } else { 0.2 },
+            Self::Avulsion => 1.0
+        };
+
+        factor * 0.1
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Wound
+{
+    pub part: HumanPartId,
+    pub duration: SimpleHealth,
+    pub kind: WoundKind
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HumanAnatomyValues
 {
@@ -255,6 +295,7 @@ pub struct HumanAnatomyValues
     fainted: f32,
     conscious: bool,
     body: HumanBody,
+    wounds: Vec<Wound>,
     broken: Vec<AnatomyId>,
     killed: Option<bool>
 }
@@ -420,7 +461,8 @@ impl HumanAnatomyValues
             BodyPartInfo{bone: part.bone * 33.0, muscle: part.muscle * 5.0, skin: part.skin * 2.0, ..part},
             0.82,
             TorsoOrgans{
-                lungs: Halves::repeat(Some(Lung::new(1.0)))
+                lungs: Halves::repeat(Some(Lung::new(1.0))),
+                heart: Some(Heart::new(3.0))
             }
         );
 
@@ -448,6 +490,7 @@ impl HumanAnatomyValues
             fainted: 0.0,
             conscious: true,
             body,
+            wounds: Vec::new(),
             broken: Vec::new(),
             killed: None
         }
@@ -624,10 +667,29 @@ impl HumanAnatomy
     {
         let cached = self.cached.as_ref().unwrap();
 
-        self.this.blood.change(cached.blood_change * dt);
+        {
+            let blood_loss: f32 = self.this.wounds.iter().map(|wound|
+            {
+                wound.kind.blood_loss() * wound.duration.fraction().unwrap_or(0.0)
+            }).sum();
+
+            let blood_change = cached.blood_change - blood_loss;
+
+            self.this.blood.change(blood_change * dt);
+        }
+
+        self.this.wounds.retain_mut(|wound|
+        {
+            let rate = if self.this.hypoxic > 0.0 { 0.3 } else { 1.0 };
+            wound.duration.current -= rate * dt;
+
+            wound.duration.current > 0.0
+        });
 
         {
-            let oxygen_change = cached.oxygen_change + self.this.external_oxygen_change;
+            let internal_oxygen_change = (cached.oxygen_regen * self.this.blood.fraction().unwrap_or(0.0)) - cached.oxygen_consumption;
+
+            let oxygen_change = internal_oxygen_change + self.this.external_oxygen_change;
             self.this.oxygen.change(oxygen_change * dt);
         }
 
@@ -741,11 +803,6 @@ impl HumanAnatomy
         self.cached().strength
     }
 
-    pub fn oxygen_speed(&self) -> f32
-    {
-        self.cached().oxygen_change
-    }
-
     pub fn oxygen(&self) -> SimpleHealth
     {
         self.this.oxygen
@@ -759,6 +816,11 @@ impl HumanAnatomy
     pub fn external_oxygen_change_mut(&mut self) -> &mut f32
     {
         &mut self.this.external_oxygen_change
+    }
+
+    pub fn blood(&self) -> SimpleHealth
+    {
+        self.this.blood
     }
 
     pub fn vision(&self) -> f32
@@ -963,11 +1025,6 @@ impl HumanAnatomy
         torso.contents.lungs.as_ref()[side].as_ref()
     }
 
-    fn updated_blood_change(&self) -> f32
-    {
-        0.0
-    }
-
     fn updated_oxygen_regen(&self) -> f32
     {
         let brain = some_or_return!(self.brain());
@@ -987,15 +1044,48 @@ impl HumanAnatomy
 
         let torso_muscle = torso.muscle.fraction().unwrap_or(0.0);
 
-        0.25 * amount * torso_muscle * nerve_fraction
+        let heart_health = torso.contents.heart.as_ref().and_then(|x| x.0.fraction()).unwrap_or(0.0);
+
+        0.25 * amount * torso_muscle * nerve_fraction * heart_health
     }
 
-    fn updated_oxygen_change(&self) -> f32
+    fn updated_oxygen_consumption(&self) -> f32
     {
-        let regen = self.updated_oxygen_regen();
-        let consumption = 0.05;
+        let mut avger = WeightedAverager::new();
 
-        regen - consumption
+        avger.add(10.0, self.brain().and_then(|x| x.average_health()).unwrap_or(0.0));
+
+        [Side1d::Left, Side1d::Right].into_iter().for_each(|side|
+        {
+            avger.add(1.0, self.lung(side).and_then(|x| x.average_health()).unwrap_or(0.0));
+        });
+
+        avger.average() * 0.05
+    }
+
+    fn updated_blood_change(&self) -> f32
+    {
+        let (amount, total) = [
+            HumanPartId::Spine,
+            HumanPartId::Torso,
+            HumanPartId::Pelvis,
+            HumanPartId::Thigh(Side1d::Left),
+            HumanPartId::Thigh(Side1d::Right),
+            HumanPartId::Arm(Side1d::Left),
+            HumanPartId::Arm(Side1d::Right)
+        ].into_iter().fold((0, 0.0), |(amount, total), id|
+        {
+            let health = self.this.body.get_part::<BoneHealthGetter>(id).and_then(|x| x.fraction()).unwrap_or(0.0);
+
+            (amount + 1, total + health)
+        });
+
+        let fraction = total / amount as f32;
+
+        // around a month for 4 liters of blood, i guess like 5 mins is reasonable lol
+        let change = 4.0 / (60.0 * 5.0);
+
+        fraction * change
     }
 
     fn updated_oxygen_max(&self) -> f32
@@ -1029,7 +1119,8 @@ impl HumanAnatomy
             speed: self.updated_speed(),
             strength: self.updated_strength(),
             vision: self.updated_vision(),
-            oxygen_change: self.updated_oxygen_change(),
+            oxygen_regen: self.updated_oxygen_regen(),
+            oxygen_consumption: self.updated_oxygen_consumption(),
             blood_change: self.updated_blood_change()
         });
 
@@ -1127,6 +1218,44 @@ impl HumanAnatomy
 
             if let Some(bone) = self.this.body.get_part_mut::<BoneHealthGetter>(id)
             {
+                let abrasion_chance = falloff(1.0, damage * 0.5);
+
+                if DebugConfig::is_enabled(DebugTool::PrintDamage)
+                {
+                    eprintln!("[fall damage] abrasion chance: {:.3}%", abrasion_chance * 100.0);
+                }
+
+                if fastrand::f32() < abrasion_chance
+                {
+                    let laceration_chance = falloff(1.0, damage * 0.1);
+
+                    if DebugConfig::is_enabled(DebugTool::PrintDamage)
+                    {
+                        eprintln!("[fall damage] laceration chance: {:.3}%", laceration_chance * abrasion_chance * 100.0);
+                    }
+
+                    let kind = if fastrand::f32() < laceration_chance
+                    {
+                        WoundKind::Laceration{deep: false}
+                    } else
+                    {
+                        WoundKind::Abrasion
+                    };
+
+                    let wound = Wound{
+                        part: id,
+                        duration: lerp(1.0, 50.0, falloff(1.0, damage * 0.2).clamp(0.0, 1.0)).into(),
+                        kind
+                    };
+
+                    if DebugConfig::is_enabled(DebugTool::PrintDamage)
+                    {
+                        eprintln!("[fall damage] wound: {wound:#?}");
+                    }
+
+                    self.this.wounds.push(wound);
+                }
+
                 let organ_damage = bone.simple_pierce(damage * scale);
                 if let Some(organ_damager) = self.this.body.get_part_mut::<OrgansDamagerGetter>(id)
                 {

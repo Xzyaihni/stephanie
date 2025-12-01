@@ -1,4 +1,7 @@
-use std::fmt::{self, Display};
+use std::{
+    iter,
+    fmt::{self, Display}
+};
 
 use serde::{Serialize, Deserialize};
 
@@ -482,6 +485,46 @@ impl Organ for Lung
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Heart(pub HealthField);
+
+impl Heart
+{
+    pub fn new(base: f32) -> Self
+    {
+        Self(Health::new(0.1, base).into())
+    }
+}
+
+impl HealthIterate for Heart
+{
+    fn health_iter(&self) -> impl Iterator<Item=(HealthOf, &HealthField)>
+    {
+        [(HealthOf::Organ, &self.0)].into_iter()
+    }
+
+    fn health_sided_iter_mut(&mut self, _side: Side2d) -> impl Iterator<Item=(HealthOf, &mut HealthField)>
+    {
+        [(HealthOf::Organ, &mut self.0)].into_iter()
+    }
+}
+
+impl HealReceiver for Heart {}
+impl DamageReceiver for Heart {}
+
+impl Organ for Heart
+{
+    fn size(&self) -> &f64
+    {
+        &0.1
+    }
+
+    fn consume_accessed(&mut self) -> bool
+    {
+        self.0.consume_accessed()
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SpinalCord
 {
     pub cervical: HealthField,
@@ -660,7 +703,8 @@ pub enum OrganId
     Eye(Side1d),
     Brain(Option<Side1d>, Option<BrainId>),
     SpinalCord(SpinalCordId),
-    Lung(Side1d)
+    Lung(Side1d),
+    Heart
 }
 
 impl Display for OrganId
@@ -683,7 +727,8 @@ impl Display for OrganId
                 {
                     return write!(f, "{name}");
                 }
-            }
+            },
+            Self::Heart => return write!(f, "heart")
         };
 
         write!(f, "{side} {name}")
@@ -703,6 +748,7 @@ impl OrganId
             .chain(BrainId::iter().map(|id| Self::Brain(Some(Side1d::Left), Some(id))))
             .chain(BrainId::iter().map(|id| Self::Brain(Some(Side1d::Right), Some(id))))
             .chain(SpinalCordId::iter().map(Self::SpinalCord))
+            .chain(iter::once(Self::Heart))
     }
 }
 
@@ -892,19 +938,20 @@ impl Organ for HeadOrgans
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TorsoOrgans
 {
-    pub lungs: Halves<Option<Lung>>
+    pub lungs: Halves<Option<Lung>>,
+    pub heart: Option<Heart>
 }
 
 impl HealthIterate for TorsoOrgans
 {
     fn health_iter(&self) -> impl Iterator<Item=(HealthOf, &HealthField)>
     {
-        self.lungs.health_iter()
+        self.lungs.health_iter().chain(self.heart.as_ref().map(|x| x.health_iter()).into_iter().flatten())
     }
 
     fn health_sided_iter_mut(&mut self, side: Side2d) -> impl Iterator<Item=(HealthOf, &mut HealthField)>
     {
-        self.lungs.health_sided_iter_mut(side)
+        self.lungs.health_sided_iter_mut(side).chain(self.heart.as_mut().map(|x| x.health_sided_iter_mut(side)).into_iter().flatten())
     }
 }
 
@@ -1303,6 +1350,10 @@ macro_rules! impl_get
                     };
 
                     Some(F::get(part))
+                },
+                OrganId::Heart =>
+                {
+                    Some(F::get(self.spine.$option_fn()?.torso.$option_fn()?.contents.heart.$option_fn()?))
                 }
             }
         }

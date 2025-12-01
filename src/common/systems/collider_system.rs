@@ -176,33 +176,34 @@ pub fn update(
 
             let mut this = maybe_colliding_info!{with entity, collider};
 
-            let mut physical = some_or_return!(entities.physical_mut_no_change(entity));
-
-            if physical.move_z
+            if let Some(mut physical) = entities.physical_mut_no_change(entity)
             {
-                crate::frame_time_this!{
-                    [update, update_pre, collider_system_update, world] -> z_time,
-                    {
-                        let next_position = physical.next_position_mut();
-                        if this.collide_with_world_z(world, *next_position) && !this.collider.ghost
+                if physical.move_z
+                {
+                    crate::frame_time_this!{
+                        [update, update_pre, collider_system_update, world] -> z_time,
                         {
-                            next_position.z = this.transform.position.z;
-
-                            if let Some(mut transform) = entities.transform_mut(entity)
+                            let next_position = physical.next_position_mut();
+                            if this.collide_with_world_z(world, *next_position) && !this.collider.ghost
                             {
-                                transform.position.z = this.transform.position.z;
-                            }
+                                next_position.z = this.transform.position.z;
 
-                            let hit_velocity = physical.remove_velocity_axis(2);
+                                if let Some(mut transform) = entities.transform_mut(entity)
+                                {
+                                    transform.position.z = this.transform.position.z;
+                                }
 
-                            if hit_velocity < -FALL_VELOCITY
-                            {
-                                let damage = ((-hit_velocity - FALL_VELOCITY) * 5.0 + 1.0).powi(2) - 1.0;
-                                damaging_system::fall_damage(entities, textures, loot, entity, damage);
+                                let hit_velocity = physical.remove_velocity_axis(2);
+
+                                if hit_velocity < -FALL_VELOCITY
+                                {
+                                    let damage = ((-hit_velocity - FALL_VELOCITY) * 5.0 + 1.0).powi(2) - 1.0;
+                                    damaging_system::fall_damage(entities, textures, loot, entity, damage);
+                                }
                             }
                         }
-                    }
-                };
+                    };
+                }
             }
 
             crate::frame_time_this!{

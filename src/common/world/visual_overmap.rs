@@ -384,7 +384,7 @@ impl OvermapIndexing for GlobalMapper
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct ChunkSkyOcclusion
 {
     occluded: [[bool; CHUNK_SIZE * CHUNK_SIZE]; CHUNK_SIZE]
@@ -838,18 +838,33 @@ impl VisualOvermap
     )
     {
         let occlusion = self.sky_occlusion_of(chunks, pos);
+
+        let occlusion_changed = self.chunks[pos].occlusion.as_ref().map(|x| *x != occlusion).unwrap_or(true);
+
         self.chunks[pos].occlusion = Some(occlusion);
 
-        pos.directions_inclusive().flatten().for_each(|pos|
         {
-            if !self.chunks[pos].chunk.is_generated()
+            let generate = |this: &mut Self, pos|
             {
-                if TileReader::creatable(chunks, pos) && creatable_with(&self.chunks, pos, |chunk| chunk.occlusion.is_some())
+                if TileReader::creatable(chunks, pos) && creatable_with(&this.chunks, pos, |chunk| chunk.occlusion.is_some())
                 {
-                    self.force_generate(chunks, pos);
+                    this.force_generate(chunks, pos);
                 }
+            };
+
+            if occlusion_changed || !self.chunks[pos].chunk.is_generated()
+            {
+                generate(self, pos);
             }
-        });
+
+            pos.directions().flatten().for_each(|pos|
+            {
+                if !self.chunks[pos].chunk.is_generated()
+                {
+                    generate(self, pos);
+                }
+            });
+        }
 
         if let Some(back) = pos.back()
         {
@@ -925,20 +940,6 @@ impl VisualOvermap
                 (exists, missing + 1)
             }
         })
-    }
-
-    pub fn moved_down(
-        &mut self,
-        chunks: &ChunksContainer<Option<Arc<Chunk>>>
-    )
-    {
-        let z_size = self.chunks.size().z;
-        chunks.flat_slice_iter(z_size - 1)
-            .filter(|(_pos, chunk)| chunk.is_some())
-            .for_each(|(pos, _chunk)|
-            {
-                self.try_generate_sky_occlusion(chunks, LocalPos{pos: pos.pos, size: Pos3{z: z_size, ..pos.size}});
-            });
     }
 
     pub fn regenerate_sky_occlusions(
