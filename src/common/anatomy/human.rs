@@ -60,11 +60,11 @@ fn maybe_update(current_value: &mut f32, new_value: f32) -> bool
     changed
 }
 
-#[derive(Debug, Default, Clone, Serialize, Deserialize)]
-struct Speeds<T=f32>
+#[derive(Debug, Default, Clone, Copy, Serialize, Deserialize)]
+pub struct Speeds<T=f32>
 {
-    arms: T,
-    legs: T
+    pub arms: T,
+    pub legs: T
 }
 
 impl<T> Speeds<T>
@@ -297,7 +297,7 @@ pub struct HumanAnatomyValues
     base_speed: f32,
     base_strength: f32,
     encumbrance_speed: f32,
-    override_crawling: bool,
+    crawling: bool,
     blood: SimpleHealth,
     oxygen: SimpleHealth,
     external_oxygen_change: f32,
@@ -493,7 +493,7 @@ impl HumanAnatomyValues
             base_speed,
             base_strength,
             encumbrance_speed: 1.0,
-            override_crawling: false,
+            crawling: false,
             blood: SimpleHealth::new(4.0),
             oxygen: SimpleHealth::new(1.0),
             external_oxygen_change: 0.0,
@@ -992,9 +992,7 @@ impl HumanAnatomy
 
     pub fn is_crawling(&self) -> bool
     {
-        let crawl_threshold = self.cached().speed.arms * 0.9; // prefer walking
-
-        self.this.override_crawling || (self.cached().speed.legs < crawl_threshold)
+        self.this.crawling
     }
 
     pub fn is_standing(&self) -> bool
@@ -1162,9 +1160,14 @@ impl HumanAnatomy
         })
     }
 
-    pub fn override_crawling(&mut self, state: bool)
+    pub fn speeds(&self) -> Speeds
     {
-        self.this.override_crawling = state;
+        self.cached().speed
+    }
+
+    pub fn set_crawling(&mut self, state: bool)
+    {
+        self.this.crawling = state;
     }
 
     fn updated_strength(&self) -> f32
@@ -1291,6 +1294,8 @@ impl HumanAnatomy
 
     fn on_damage(&mut self)
     {
+        let was_standing = self.is_standing();
+
         HumanPartId::iter().for_each(|id|
         {
             if let Some(muscle) = self.this.body.get_part::<MuscleHealthGetter>(id)
@@ -1312,8 +1317,35 @@ impl HumanAnatomy
             }
         });
 
-        self.this.body.detach_broken(|id| { self.this.broken.push(id); });
+        self.this.body.detach_broken(|id|
+        {
+            if let AnatomyId::Part(id) = id
+            {
+                self.this.wounds.retain(|wound| wound.part != id);
+
+                let wound = Wound{
+                    part: id,
+                    duration: 60.0.into(),
+                    kind: WoundKind::Avulsion
+                };
+
+                if DebugConfig::is_enabled(DebugTool::PrintDamage)
+                {
+                    eprintln!("[{id:?} break] detaching with: {wound:?}");
+                }
+
+                self.this.wounds.push(wound);
+            }
+
+            self.this.broken.push(id);
+        });
+
         self.update_cache();
+
+        if was_standing && !self.is_standing()
+        {
+            Self::fall_damage(self, true, 1.0);
+        }
     }
 
     fn fall_damage(&mut self, body_height: bool, damage: f32)
@@ -1439,16 +1471,9 @@ impl Damageable for HumanAnatomy
             damage = damage * 2.0;
         }
 
-        let was_standing = self.is_standing();
-
         let damage = self.this.damage_random_part(damage);
 
         self.on_damage();
-
-        if was_standing && !self.is_standing()
-        {
-            Self::fall_damage(self, true, 1.0);
-        }
 
         damage
     }

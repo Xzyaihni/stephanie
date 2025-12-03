@@ -107,12 +107,12 @@ pub fn craft_item(entities: &ClientEntities, entity: Entity, items: Vec<CraftCom
 
             inventory.push(&infos.items_info, item);
         });
-
-        items.iter().filter(|x| !x.consume).for_each(|x|
-        {
-            damage_durability(entities, entity, x.id);
-        });
     }
+
+    items.iter().filter(|x| !x.consume).for_each(|x|
+    {
+        damage_durability(entities, entity, x.id);
+    });
 
     inventory_remove_items(entities, entity, items.into_iter().filter_map(|x| x.consume.then_some(x.id)));
 }

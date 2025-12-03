@@ -1041,6 +1041,16 @@ impl GameState
                     {
                         character.anatomy_changed(entities, &anatomy);
                     }
+
+                    if entities.enemy_exists(entity)
+                    {
+                        let speeds = anatomy.speeds();
+                        let crawl_threshold = speeds.arms * 0.9; // prefer walking
+
+                        let crawling = speeds.legs < crawl_threshold;
+
+                        anatomy.set_crawling(crawling);
+                    }
                 }
             }));
         }

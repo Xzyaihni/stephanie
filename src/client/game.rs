@@ -1219,7 +1219,7 @@ impl<'a> PlayerContainer<'a>
                 let entities = self.game_state.entities();
                 if let Some(mut anatomy) = entities.anatomy_mut(self.info.entity)
                 {
-                    anatomy.override_crawling(state.to_bool());
+                    anatomy.set_crawling(state.to_bool());
                 }
             },
             Control::Poke =>

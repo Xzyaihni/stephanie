@@ -261,11 +261,19 @@ impl Anatomy
         }
     }
 
-    pub fn override_crawling(&mut self, state: bool)
+    pub fn speeds(&self) -> Speeds
     {
         match self
         {
-            Self::Human(x) => x.override_crawling(state)
+            Self::Human(x) => x.speeds()
+        }
+    }
+
+    pub fn set_crawling(&mut self, state: bool)
+    {
+        match self
+        {
+            Self::Human(x) => x.set_crawling(state)
         }
     }
 
