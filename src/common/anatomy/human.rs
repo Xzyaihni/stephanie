@@ -1317,28 +1317,37 @@ impl HumanAnatomy
             }
         });
 
-        self.this.body.detach_broken(|id|
         {
-            if let AnatomyId::Part(id) = id
+            let mut any_detached = false;
+
+            self.this.body.detach_broken(|id|
             {
-                self.this.wounds.retain(|wound| wound.part != id);
+                any_detached = true;
 
-                let wound = Wound{
-                    part: id,
-                    duration: 60.0.into(),
-                    kind: WoundKind::Avulsion
-                };
-
-                if DebugConfig::is_enabled(DebugTool::PrintDamage)
+                if let AnatomyId::Part(id) = id
                 {
-                    eprintln!("[{id:?} break] detaching with: {wound:?}");
+                    let wound = Wound{
+                        part: id,
+                        duration: 60.0.into(),
+                        kind: WoundKind::Avulsion
+                    };
+
+                    if DebugConfig::is_enabled(DebugTool::PrintDamage)
+                    {
+                        eprintln!("[{id:?} break] detaching with: {wound:?}");
+                    }
+
+                    self.this.wounds.push(wound);
                 }
 
-                self.this.wounds.push(wound);
-            }
+                self.this.broken.push(id);
+            });
 
-            self.this.broken.push(id);
-        });
+            if any_detached
+            {
+                self.this.wounds.retain(|wound| self.this.body.get_part::<()>(wound.part).is_some());
+            }
+        }
 
         self.update_cache();
 
