@@ -16,10 +16,8 @@ use crate::{
     server,
     client,
     common::{
-        with_z,
         some_or_return,
         write_log,
-        ENTITY_SCALE,
         render_info::*,
         collider::*,
         watcher::*,
@@ -47,6 +45,7 @@ use crate::{
         FurnitureId,
         Item,
         furniture_creator,
+        characters_info::CHARACTER_DEFORMATION,
         character::PartialCombinedInfo
     }
 };
@@ -823,14 +822,7 @@ macro_rules! entity_info_common
 
             if self.character.is_some()
             {
-                self.lazy_transform.as_mut().unwrap().deformation = Deformation::Stretch(
-                    StretchDeformation{
-                        animation: ValueAnimation::EaseOut(1.1),
-                        limit: 1.3,
-                        onset: 0.5,
-                        strength: 0.2
-                    }
-                );
+                self.lazy_transform.as_mut().unwrap().deformation = CHARACTER_DEFORMATION;
             }
         }
     }
@@ -2255,15 +2247,17 @@ macro_rules! define_entities_both
                             combined_info,
                             entity,
                             dt,
-                            |texture|
+                            |entity, texture|
                             {
+                                if let Some(mut target) = self.target(entity)
                                 {
-                                    let mut render = self.render_mut(entity).unwrap();
-                                    let mut target = self.target(entity).unwrap();
+                                    if let Some(mut render) = self.render_mut(entity)
+                                    {
+                                        target.scale.x = texture.scale.x;
+                                        target.scale.y = texture.scale.y;
 
-                                    target.scale = with_z(texture.scale, ENTITY_SCALE);
-
-                                    render.set_sprite(create_info, Some(&target), texture.id);
+                                        render.set_sprite(create_info, Some(&target), texture.id);
+                                    }
                                 }
 
                                 self.end_sync(entity, |mut transform, end| transform.scale = end.scale);

@@ -56,7 +56,6 @@ use crate::{
         EnemiesInfo,
         FurnituresInfo,
         CharactersInfo,
-        CharacterInfo,
         Crafts,
         door::{door_scale, door_texture, DoorMaterial},
         sender_loop::{waiting_loop, DELTA_TIME}
@@ -360,11 +359,6 @@ impl YanyaApp for App
 
         let mut characters_info = CharactersInfo::new();
 
-        let player_character = characters_info.push(CharacterInfo::player(
-            &partial_info.object_info.assets.lock(),
-            &items_info
-        ));
-
         let enemies_info = EnemiesInfo::parse(
             &partial_info.object_info.assets.lock(),
             &mut characters_info,
@@ -372,6 +366,11 @@ impl YanyaApp for App
             "enemy".into(),
             "info/enemies.json".into()
         );
+
+        let player_character = enemies_info.get(enemies_info.get_id("me").unwrap_or_else(||
+        {
+            panic!("enemy named `me` is required, cant get player character id")
+        })).character;
 
         let furnitures_info = FurnituresInfo::parse(
             &partial_info.object_info.assets.lock(),

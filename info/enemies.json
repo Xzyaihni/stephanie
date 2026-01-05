@@ -1,7 +1,6 @@
 [
     {
-        "name": "zob",
-        "hand": "zob hand"
+        "name": "zob"
     },
     {
         "name": "smol",
@@ -24,7 +23,14 @@
             "base_speed": 0.4,
             "base_strength": 0.6
         },
-        "hand": "zob hand",
+        "hairstyle": {
+            "base": {
+                "base": {"sprite": "old/hair"},
+                "crawling": {"sprite": "old/hair_crawling", "offset": [0, 0]},
+                "lying": {"sprite": "old/hair_lying", "offset": [0, 0]}
+            }
+        },
+        "body": "zob",
         "face": "zob"
     },
     {
@@ -36,7 +42,7 @@
             "base_speed": 1.3,
             "base_strength": 0.8
         },
-        "hand": "zob hand",
+        "body": "zob",
         "face": "zob"
     },
     {
@@ -53,6 +59,7 @@
     },
     {
         "name": "me",
+        "hand": "hand",
         "anatomy": {
             "bone": 0.5,
             "muscle": 0.5,
@@ -61,12 +68,29 @@
             "base_strength": 0.4
         },
         "hairstyle": {
-            "Pons": "../player/pon"
+            "base": {
+                "base": {"sprite": "../player/hair"},
+                "crawling": {"sprite": "../player/hair_crawling", "offset": [8, -3]},
+                "lying": {"sprite": "../player/hair_lying", "offset": [-6, -3]}
+            },
+            "accessory": {
+                "Pons": {
+                    "left": {
+                        "base": [-1, -1],
+                        "crawling": [41, -4],
+                        "lying": [-3, -4]
+                    },
+                    "right": {
+                        "base": [-1, 22],
+                        "crawling": [41, 20],
+                        "lying": [-3, 20]
+                    },
+                    "value": "../player/pon"
+                }
+            }
         },
-        "normal": "../player/body",
-        "crawling": "../player/crawling",
-        "lying": "../player/lying",
+        "body": "../player",
         "face": "../player",
-        "lying_face_offset": [0, 0]
+        "lying_face_offset": [-5, 0]
     }
 ]

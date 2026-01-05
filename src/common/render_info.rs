@@ -668,8 +668,12 @@ pub enum ZLevel
     Shoulders,
     Head,
     Hair,
+    HairAccessory,
+    HairLying,
     PlayerHead,
     PlayerHair,
+    PlayerHairAccessory,
+    PlayerHairLying,
     Hat,
     AboveParticle,
     Door

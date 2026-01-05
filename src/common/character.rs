@@ -35,6 +35,7 @@ use crate::{
         random_f32,
         inventory_remove_item_with,
         damage_durability_with,
+        ENTITY_PIXEL_SCALE,
         ENTITY_SCALE,
         render_info::*,
         lazy_transform::*,
@@ -47,7 +48,6 @@ use crate::{
         item::*,
         anatomy::*,
         Sprite,
-        Hairstyle,
         Side1d,
         Side2d,
         AnyEntities,
@@ -61,7 +61,7 @@ use crate::{
         ItemsInfo,
         Parent,
         World,
-        characters_info::{CharacterInfo, FacialExpression},
+        characters_info::*,
         player::StatId,
         entity::ClientEntities
     }
@@ -85,6 +85,22 @@ pub enum SpriteState
 fn true_fn() -> bool
 {
     true
+}
+
+fn hair_offset_of(offset: Vector2<i8>, pixel_offset: Vector2<f32>) -> Vector3<f32>
+{
+    let combined_offset = (offset.cast() / ENTITY_PIXEL_SCALE as f32 * ENTITY_SCALE) + pixel_offset;
+
+    with_z(combined_offset, 0.0)
+}
+
+fn base_hair_z(state: SpriteState, is_player: bool) -> ZLevel
+{
+    match state
+    {
+        SpriteState::Normal | SpriteState::Crawling => if is_player { ZLevel::PlayerHair } else { ZLevel::Hair },
+        SpriteState::Lying => if is_player { ZLevel::PlayerHairLying } else { ZLevel::HairLying }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -264,13 +280,20 @@ impl BlinkingInfo
 }
 
 #[derive(Debug, Clone)]
-pub struct AfterInfo
+struct HairInfo
+{
+    base: Option<Entity>,
+    other: Vec<(BaseHair<Vector2<f32>>, Entity)>
+}
+
+#[derive(Debug, Clone)]
+struct AfterInfo
 {
     this: Entity,
     hand_left: Entity,
     hand_right: Entity,
     holding: Option<Entity>,
-    hair: Vec<Entity>,
+    hair: HairInfo,
     rotation: f32,
     moving: bool,
     sprint_await: bool,
@@ -452,7 +475,33 @@ impl Character
             }
         };
 
-        let mut hair = Vec::new();
+        let base_hair = |(hair_sprite, pixel_offset): (HairSprite, Vector2<f32>)|
+        {
+            let texture = hair_sprite.sprite;
+
+            EntityInfo{
+                lazy_transform: Some(LazyTransformInfo{
+                    deformation: CHARACTER_DEFORMATION,
+                    transform: Transform{
+                        position: hair_offset_of(hair_sprite.offset, pixel_offset),
+                        scale: with_z(texture.scale, ENTITY_SCALE * 0.1),
+                        ..Default::default()
+                    },
+                    unscaled_position: true,
+                    inherit_scale: false,
+                    ..Default::default()
+                }.into()),
+                parent: Some(Parent::new(entity)),
+                render: Some(RenderInfo{
+                    object: Some(RenderObjectKind::TextureId{
+                        id: texture.id
+                    }.into()),
+                    z_level: base_hair_z(*self.sprite_state.value(), is_player),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }
+        };
 
         let pon = |texture: Sprite, position: Vector3<f32>|
         {
@@ -490,6 +539,7 @@ impl Character
                         position,
                         ..Default::default()
                     },
+                    unscaled_position: true,
                     inherit_scale: false,
                     ..Default::default()
                 }.into()),
@@ -498,22 +548,70 @@ impl Character
                     object: Some(RenderObjectKind::TextureId{
                         id: texture.id
                     }.into()),
-                    z_level: if is_player { ZLevel::PlayerHair } else { ZLevel::Hair },
+                    z_level: if is_player { ZLevel::PlayerHairAccessory } else { ZLevel::HairAccessory },
                     ..Default::default()
                 }),
                 ..Default::default()
             }
         };
 
-        match character_info.hairstyle
-        {
-            Hairstyle::None => (),
-            Hairstyle::Pons(texture) =>
+        let hair = {
+            let hairstyle = character_info.hairstyle;
+
+            let base = hairstyle.base.as_ref().map(|base|
             {
-                hair.push(inserter(pon(texture, Vector3::new(-0.35, 0.35, 0.0))));
-                hair.push(inserter(pon(texture, Vector3::new(-0.35, -0.35, 0.0))));
+                inserter(base_hair(self.hair_size_select(character_info, base, |x| x.sprite.scale)))
+            });
+
+            let other = hairstyle.accessory.map(|accessory|
+            {
+                fn create_accessory(
+                    f: impl FnOnce(Vector3<f32>) -> Entity,
+                    (state, offset): (SpriteState, BaseHair<Vector2<f32>>)
+                ) -> (BaseHair<Vector2<f32>>, Entity)
+                {
+                    let this_offset = match state
+                    {
+                        SpriteState::Normal => offset.base,
+                        SpriteState::Crawling => offset.crawling,
+                        SpriteState::Lying => offset.lying
+                    };
+
+                    (offset, f(with_z(this_offset, 0.0)))
+                }
+
+                let get_offset = |offset: BaseHair<Vector2<i8>>, texture: Sprite| -> (SpriteState, BaseHair<Vector2<f32>>)
+                {
+                    let f = |a: Vector2<i8>, b: Sprite| -> Vector2<f32>
+                    {
+                        hair_offset_of(a, (texture.scale - b.scale) * 0.5).xy()
+                    };
+
+                    let offsets = BaseHair{
+                        base: f(offset.base, character_info.normal),
+                        crawling: f(offset.crawling, character_info.crawling),
+                        lying: f(offset.lying, character_info.lying)
+                    };
+
+                    (*self.sprite_state.value(), offsets)
+                };
+
+                match accessory
+                {
+                    HairAccessory::Pons{left, right, value: texture} => {
+                        vec![
+                            create_accessory(|p| inserter(pon(texture, p)), get_offset(left, texture)),
+                            create_accessory(|p| inserter(pon(texture, p)), get_offset(right, texture))
+                        ]
+                    }
+                }
+            }).unwrap_or_default();
+
+            HairInfo{
+                base,
+                other
             }
-        }
+        };
 
         let hand_left = inserter(held_item(None, true));
         let info = AfterInfo{
@@ -548,6 +646,35 @@ impl Character
         {
             self.update_anatomy_dependent(entities, &anatomy);
         }
+    }
+
+    fn hair_select<'a, T>(&self, base: &'a BaseHair<T>) -> &'a T
+    {
+        match self.sprite_state.value()
+        {
+            SpriteState::Normal => &base.base,
+            SpriteState::Crawling => &base.crawling,
+            SpriteState::Lying => &base.lying
+        }
+    }
+
+    fn hair_size_select<T: Copy>(
+        &self,
+        character_info: &CharacterInfo,
+        base: &BaseHair<T>,
+        f: impl FnOnce(&T) -> Vector2<f32>
+    ) -> (T, Vector2<f32>)
+    {
+        let (state, this_size) = match self.sprite_state.value()
+        {
+            SpriteState::Normal => (base.base, character_info.normal.scale),
+            SpriteState::Crawling => (base.crawling, character_info.crawling.scale),
+            SpriteState::Lying => (base.lying, character_info.lying.scale)
+        };
+
+        let pixel_offset = (f(&state) - this_size) * 0.5;
+
+        (state, pixel_offset)
     }
 
     pub fn with_previous(&mut self, previous: Self)
@@ -1951,7 +2078,7 @@ impl Character
         combined_info: CombinedInfo,
         entity: Entity,
         dt: f32,
-        set_sprite: impl FnOnce(Sprite)
+        mut set_sprite: impl FnMut(Entity, Sprite)
     )
     {
         let entities = combined_info.entities;
@@ -2008,7 +2135,38 @@ impl Character
             return;
         }
 
+        let is_player = entities.player_exists(entity);
+
         let character_info = combined_info.characters_info.get(self.id);
+
+        if let Some(hair_base) = character_info.hairstyle.base
+        {
+            let info = self.info.as_ref().unwrap();
+
+            debug_assert!(info.hair.base.is_some());
+
+            if let Some(base_entity) = info.hair.base
+            {
+                let (hair_sprite, pixel_offset) = self.hair_size_select(character_info, &hair_base, |x| x.sprite.scale);
+                let sprite = hair_sprite.sprite;
+
+                set_sprite(base_entity, sprite);
+                entities.set_z_level(base_entity, base_hair_z(*self.sprite_state.value(), is_player));
+
+                if let Some(mut target) = entities.target(base_entity)
+                {
+                    target.position = hair_offset_of(hair_sprite.offset, pixel_offset);
+                }
+            }
+        }
+
+        self.info.as_ref().unwrap().hair.other.iter().for_each(|(positions, accessory)|
+        {
+            if let Some(mut target) = entities.target(*accessory)
+            {
+                target.position = with_z(*self.hair_select(positions), 0.0);
+            }
+        });
 
         let set_visible = |sprite_state: &mut Stateful<_>, entity, is_visible|
         {
@@ -2022,20 +2180,11 @@ impl Character
             }
         };
 
-        let is_player = entities.player_exists(entity);
-
         let z_level = match self.sprite_state.value()
         {
             SpriteState::Normal => if is_player { ZLevel::PlayerHead } else { ZLevel::Head },
             SpriteState::Crawling
             | SpriteState::Lying => ZLevel::Feet
-        };
-
-        let hair_visibility = match self.sprite_state.value()
-        {
-            SpriteState::Normal => true,
-            SpriteState::Crawling
-            | SpriteState::Lying => false
         };
 
         let texture = self.sprite_texture(character_info);
@@ -2055,10 +2204,6 @@ impl Character
                 let visible = self.held_visible(combined_info);
                 set_visible(&mut self.sprite_state, holding, visible);
             }
-
-            let set_visible = |entity| set_visible(&mut self.sprite_state, entity, hair_visibility);
-
-            info.hair.iter().copied().for_each(set_visible);
         }
 
         self.update_held(combined_info);
@@ -2072,7 +2217,7 @@ impl Character
             self.sprite_state.dirty();
         }
 
-        set_sprite(texture);
+        set_sprite(entity, texture);
     }
 
     pub fn facial_expression(&self, anatomy: &Anatomy) -> FacialExpression

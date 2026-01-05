@@ -4,40 +4,105 @@ use nalgebra::Vector2;
 
 use serde::Deserialize;
 
-use yanyaengine::{TextureId, Assets};
+use yanyaengine::TextureId;
 
 use crate::common::{
+    lazy_transform::*,
     ItemId,
-    ItemsInfo,
     generic_info::{define_info_id, Sprite}
 };
 
 
 define_info_id!{CharacterId}
 
+pub const CHARACTER_DEFORMATION: Deformation = Deformation::Stretch(
+    StretchDeformation{
+        animation: ValueAnimation::EaseOut(1.1),
+        limit: 1.3,
+        onset: 0.5,
+        strength: 0.2
+    }
+);
+
 #[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
-pub enum Hairstyle<T=Sprite>
+pub struct HairSprite<T=Sprite>
 {
-    None,
-    Pons(T)
+    #[serde(default)]
+    pub offset: Vector2<i8>,
+    pub sprite: T
 }
 
-impl<T> Default for Hairstyle<T>
+impl<T> HairSprite<T>
 {
-    fn default() -> Self
+    pub fn map<U>(self, f: impl FnOnce(T) -> U) -> HairSprite<U>
     {
-        Self::None
+        HairSprite{
+            offset: self.offset,
+            sprite: f(self.sprite)
+        }
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
+pub struct BaseHair<T=HairSprite<Sprite>>
+{
+    pub base: T,
+    pub crawling: T,
+    pub lying: T
+}
+
+impl<T> BaseHair<T>
+{
+    pub fn map<U>(self, mut f: impl FnMut(T) -> U) -> BaseHair<U>
+    {
+        BaseHair{
+            base: f(self.base),
+            crawling: f(self.crawling),
+            lying: f(self.lying)
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
+pub enum HairAccessory<T=Sprite>
+{
+    Pons{left: BaseHair<Vector2<i8>>, right: BaseHair<Vector2<i8>>, value: T}
+}
+
+impl<T> HairAccessory<T>
+{
+    pub fn map<U>(self, mut f: impl FnMut(T) -> U) -> HairAccessory<U>
+    {
+        match self
+        {
+            Self::Pons{left, right, value} => HairAccessory::Pons{left, right, value: f(value)}
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Deserialize)]
+pub struct Hairstyle<T=Sprite>
+{
+    pub base: Option<BaseHair<HairSprite<T>>>,
+    pub accessory: Option<HairAccessory<T>>
 }
 
 impl<T> Hairstyle<T>
 {
     pub fn map<U>(self, mut f: impl FnMut(T) -> U) -> Hairstyle<U>
     {
-        match self
+        let base = self.base.map(|x|
         {
-            Self::None => Hairstyle::None,
-            Self::Pons(x) => Hairstyle::Pons(f(x))
+            BaseHair{
+                base: x.base.map(&mut f),
+                crawling: x.crawling.map(&mut f),
+                lying: x.lying.map(&mut f)
+            }
+        });
+
+        Hairstyle{
+            base,
+            accessory: self.accessory.map(|x| x.map(&mut f))
         }
     }
 }
@@ -112,35 +177,6 @@ pub struct CharacterInfo
     pub normal: Sprite,
     pub crawling: Sprite,
     pub lying: Sprite
-}
-
-impl CharacterInfo
-{
-    pub fn player(
-        assets: &Assets,
-        items_info: &ItemsInfo
-    ) -> Self
-    {
-        let f = |texture|
-        {
-            Sprite::new(assets, texture)
-        };
-
-        let s = |name: &str|
-        {
-            f(assets.texture_id(name))
-        };
-
-        Self{
-            hand: items_info.id("hand"),
-            hairstyle: Hairstyle::Pons(s("player/pon.png")),
-            face: CharacterFace::load_at("player".into(), |mut path| { path.set_extension("png"); s(&path.to_string_lossy()).id }),
-            lying_face_offset: Vector2::zeros(),
-            normal: s("player/body.png"),
-            crawling: s("player/crawling.png"),
-            lying: s("player/lying.png")
-        }
-    }
 }
 
 #[derive(Default)]

@@ -32,9 +32,7 @@ struct EnemyInfoRaw
     face: Option<String>,
     lying_face_offset: Option<Vector2<i8>>,
     behavior: Option<EnemyBehavior>,
-    normal: Option<String>,
-    crawling: Option<String>,
-    lying: Option<String>,
+    body: Option<String>,
     hand: Option<String>
 }
 
@@ -68,18 +66,6 @@ impl EnemyInfo
         raw: EnemyInfoRaw
     ) -> Self
     {
-        let get_texture = |default_name: &str, texture: Option<String>|
-        {
-            texture.map(|x| load_texture(assets, textures_root, &x))
-                .unwrap_or_else(||
-                {
-                    let name = PathBuf::from(&raw.name).join(default_name);
-                    let name = name.to_string_lossy().into_owned();
-
-                    load_texture(assets, textures_root, &name)
-                })
-        };
-
         let hand = raw.hand.and_then(|x|
         {
             let info = items_info.get_id(&x);
@@ -90,21 +76,29 @@ impl EnemyInfo
             }
 
             info
-        }).unwrap_or_else(|| items_info.id("hand"));
+        }).unwrap_or_else(|| items_info.id("zob hand"));
 
         let face = CharacterFace::load_at(raw.face.unwrap_or_else(|| raw.name.clone()).into(), |name|
         {
             load_texture(assets, textures_root, &name.to_string_lossy()).id
         });
 
+        let body_part = |name|
+        {
+            let path = raw.body.as_ref().map(|body| PathBuf::from(body).join(name))
+                .unwrap_or_else(|| PathBuf::from(raw.name.clone()).join(name));
+
+            load_texture(assets, textures_root, &path.to_string_lossy())
+        };
+
         let character = characters_info.push(CharacterInfo{
             hand,
             hairstyle: raw.hairstyle.map(|x| load_texture(assets, textures_root, &x)),
             face,
             lying_face_offset: raw.lying_face_offset.unwrap_or(vector![-6, 0]),
-            normal: get_texture("body", raw.normal),
-            crawling: get_texture("crawling", raw.crawling),
-            lying: get_texture("lying", raw.lying)
+            normal: body_part("body"),
+            crawling: body_part("crawling"),
+            lying: body_part("lying")
         });
 
         Self{
