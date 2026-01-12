@@ -76,7 +76,7 @@ pub fn craft_item(entities: &ClientEntities, entity: Entity, items: Vec<CraftCom
 
         debug_assert!(items.iter().all(|x| inventory.get(x.id).is_some()));
 
-        let average_durability = items.iter().map(|x|
+        let average_durability = items.iter().filter(|x| x.consume).map(|x|
         {
             inventory.get(x.id).map(|x| *x.durability / infos.items_info.get(x.id).durability).unwrap_or(0.0)
         }).sum::<f32>() / items.len() as f32;
