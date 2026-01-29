@@ -74,6 +74,10 @@
                 this-chunk
                 (make-point (/ size-x 2) (/ size-y 2))
                 (single-marker (list 'light 1.3)))
+            (combine-markers
+                this-chunk
+                (make-point 8 6)
+                (list 'enemy 'runner))
             (place-furniture (make-point 6 6) 'wood_table side-left)
             (let ((chair-index (random-integer 4)))
                 (cond

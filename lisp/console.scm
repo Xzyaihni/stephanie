@@ -23,15 +23,18 @@
         (position-add (position-entity a) amount)))
 
 (define (distance a b)
-    (sqrt
-        (fold
-            +
-            0
-            (map
-                square
-                (map
-                    (lambda (x) (- (car x) (cdr x)))
-                    (zip (entity->position a) (entity->position b)))))))
+    (let ((a-pos (entity->position a)) (b-pos (entity->position b)))
+        (if (or (null? a-pos) (null? b-pos))
+            (/ 1.0 0.0)
+            (sqrt
+                (fold
+                    +
+                    0
+                    (map
+                        square
+                        (map
+                            (lambda (x) (- (car x) (cdr x)))
+                            (zip a-pos b-pos))))))))
 
 (define (fold-entities f start)
     (define query (all-entities-query))

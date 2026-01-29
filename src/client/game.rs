@@ -37,6 +37,7 @@ use crate::{
         EntityInfo,
         OnChangeInfo,
         ItemUsage,
+        clothing::ClothingInfo,
         entity::ClientEntities,
         lazy_transform::{Scaling, EaseInInfo},
         lisp::{self, *},
@@ -762,9 +763,15 @@ impl Game
 
                         let entity = Self::pop_entity(entities, &mut args)?;
 
-                        let position = entities.transform(entity).unwrap().position;
+                        if let Some(transform) = entities.transform(entity)
+                        {
+                            let position = transform.position;
 
-                        args.memory.cons_list([position.x, position.y, position.z])
+                            args.memory.cons_list([position.x, position.y, position.z])
+                        } else
+                        {
+                            Ok(().into())
+                        }
                     })
                 }));
         }
@@ -782,9 +789,13 @@ impl Game
 
                         let entity = Self::pop_entity(entities, &mut args)?;
 
-                        let rotation = entities.transform(entity).unwrap().rotation;
-
-                        Ok(rotation.into())
+                        if let Some(transform) = entities.transform(entity)
+                        {
+                            Ok(transform.rotation.into())
+                        } else
+                        {
+                            Ok(().into())
+                        }
                     })
                 }));
         }
@@ -1501,7 +1512,7 @@ impl<'a> PlayerContainer<'a>
             {
                 if let Some(mut character) = self.game_state.entities().character_mut(player)
                 {
-                    character.set_holding(self.game_state.entities(), Some(item));
+                    character.try_set_holding(self.game_state.entities(), Some(item));
                 }
             },
             GameUiEvent::Unwield =>
@@ -1509,6 +1520,31 @@ impl<'a> PlayerContainer<'a>
                 if let Some(mut character) = self.game_state.entities().character_mut(player)
                 {
                     character.unhold();
+                }
+            },
+            GameUiEvent::Equip(item) =>
+            {
+                if let Some(mut character) = self.game_state.entities().character_mut(player)
+                {
+                    if let Some(inventory) = self.get_inventory(InventoryWhich::Player)
+                    {
+                        let item_info = self.game_state.data_infos.items_info.get(inventory[item].id);
+
+                        if let Some(ClothingInfo{slot, ..}) = item_info.clothing
+                        {
+                            character.set_equip(slot, Some(item));
+                        } else
+                        {
+                            eprintln!("tried to equip an item that cant be equipped");
+                        }
+                    }
+                }
+            },
+            GameUiEvent::Unequip(slot) =>
+            {
+                if let Some(mut character) = self.game_state.entities().character_mut(player)
+                {
+                    character.set_equip(slot, None);
                 }
             },
             GameUiEvent::Take(item) =>
@@ -1570,10 +1606,25 @@ impl<'a> PlayerContainer<'a>
             ui.open_inventory(this, Box::new(move |InventoryOpenInfo{item_info: info, id, equip, ..}|
             {
                 let mut actions = vec![
-                    if equip == Some(EquipState::Held) { GameUiEvent::Unwield } else { GameUiEvent::Wield(id) },
-                    GameUiEvent::Info{which: InventoryWhich::Player, item: id},
-                    GameUiEvent::Drop{which: InventoryWhich::Player, item: id}
+                    if equip == Some(EquipState::Held) { GameUiEvent::Unwield } else { GameUiEvent::Wield(id) }
                 ];
+
+                if let Some(ClothingInfo{slot, ..}) = info.clothing
+                {
+                    if let Some(equip_state) = equip
+                    {
+                        if let EquipState::Equipped = equip_state
+                        {
+                            actions.push(GameUiEvent::Unequip(slot));
+                        }
+                    } else
+                    {
+                        actions.push(GameUiEvent::Equip(id));
+                    }
+                }
+
+                actions.push(GameUiEvent::Info{which: InventoryWhich::Player, item: id});
+                actions.push(GameUiEvent::Drop{which: InventoryWhich::Player, item: id});
 
                 if let Some(usage) = info.usage().cloned()
                 {

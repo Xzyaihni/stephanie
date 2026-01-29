@@ -30,6 +30,16 @@
         "mass": 0.3
     },
     {
+        "name": "runner cap",
+        "damage_scale": 0.1,
+        "mass": 0.05,
+        "clothing": {
+            "slot": "Head",
+            "armor_multiply": 0.3,
+            "armor_normal": 0.01
+        }
+    },
+    {
         "name": "branch",
         "comfort": 0.5,
         "sharpness": 0.1,

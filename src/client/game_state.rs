@@ -68,6 +68,7 @@ use crate::{
         message::Message,
         character::PartialCombinedInfo,
         inventory::anatomy_weight_limit,
+        clothing::EquipSlot,
         systems::{
             render_system,
             physical_system,
@@ -599,6 +600,8 @@ pub enum GameUiEvent
     Drop{which: InventoryWhich, item: InventoryItem},
     Wield(InventoryItem),
     Unwield,
+    Equip(InventoryItem),
+    Unequip(EquipSlot),
     Take(InventoryItem)
 }
 
@@ -613,6 +616,8 @@ impl GameUiEvent
             Self::Drop{..} => "drop",
             Self::Wield(..) => "wield",
             Self::Unwield => "unwield",
+            Self::Equip(..) => "equip",
+            Self::Unequip(..) => "unequip",
             Self::Take(..) => "take"
         }
     }
@@ -1068,6 +1073,7 @@ impl GameState
             if let Some(mut character) = entities.character_mut_no_change(entity)
             {
                 character.update_holding();
+                character.update_clothing();
                 character.verify_valid(entities);
             }
         }));

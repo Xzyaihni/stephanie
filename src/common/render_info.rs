@@ -658,6 +658,10 @@ pub enum ZLevel
 {
     BelowFeet = 0,
     Feet,
+    HairLying,
+    HatLying,
+    PlayerHairLying,
+    PlayerHatLying,
     Knee,
     Hips,
     Waist,
@@ -669,12 +673,11 @@ pub enum ZLevel
     Head,
     Hair,
     HairAccessory,
-    HairLying,
+    Hat,
     PlayerHead,
     PlayerHair,
     PlayerHairAccessory,
-    PlayerHairLying,
-    Hat,
+    PlayerHat,
     AboveParticle,
     Door
 }

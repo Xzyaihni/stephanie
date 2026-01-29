@@ -109,61 +109,61 @@ impl ItemRarity
         }).unwrap_or(Self::Mythical)
     }
 
-        pub fn random_buffs(&self) -> Vec<ItemBuff>
+    pub fn random_buffs(&self) -> Vec<ItemBuff>
+    {
+        if let Self::Normal = self
         {
-            if let Self::Normal = self
+            return Vec::new();
+        }
+
+        let durability_boost = ItemBuff::Durability((-random_f32(match self
+        {
+            Self::Broken => -0.3..=-0.1,
+            Self::Normal => unreachable!(),
+            Self::Uncommon => 0.1..=0.2,
+            Self::Rare => 0.2..=0.3,
+            Self::Mythical => 0.3..=0.5,
+        })).into());
+
+        let damage_boost = ItemBuff::Damage(random_f32(match self
+        {
+            Self::Broken => -0.1..=-0.05,
+            Self::Normal => unreachable!(),
+            Self::Uncommon => 0.05..=0.1,
+            Self::Rare => 0.1..=0.2,
+            Self::Mythical => 0.2..=0.4
+        }).into());
+
+        let crit_boost = ItemBuff::Crit(random_f32(match self
+        {
+            Self::Broken => -0.01..=-0.005,
+            Self::Normal => unreachable!(),
+            Self::Uncommon => 0.005..=0.01,
+            Self::Rare => 0.01..=0.02,
+            Self::Mythical => 0.02..=0.05
+        }).into());
+
+        let amount = match self
+        {
+            Self::Broken => 1,
+            Self::Normal => unreachable!(),
+            Self::Uncommon => 1,
+            Self::Rare => 2,
+            Self::Mythical => 3
+        };
+
+        (0..amount).scan(vec![durability_boost, damage_boost, crit_boost], |possible_boosts, _|
+        {
+            if possible_boosts.is_empty()
             {
-                return Vec::new();
+                return None;
             }
 
-            let durability_boost = ItemBuff::Durability((-random_f32(match self
-            {
-                Self::Broken => -0.3..=-0.1,
-                Self::Normal => unreachable!(),
-                Self::Uncommon => 0.1..=0.2,
-                Self::Rare => 0.2..=0.3,
-                Self::Mythical => 0.3..=0.5,
-            })).into());
+            let i = fastrand::usize(0..possible_boosts.len());
 
-            let damage_boost = ItemBuff::Damage(random_f32(match self
-            {
-                Self::Broken => -0.1..=-0.05,
-                Self::Normal => unreachable!(),
-                Self::Uncommon => 0.05..=0.1,
-                Self::Rare => 0.1..=0.2,
-                Self::Mythical => 0.2..=0.4
-            }).into());
-
-            let crit_boost = ItemBuff::Crit(random_f32(match self
-            {
-                Self::Broken => -0.01..=-0.005,
-                Self::Normal => unreachable!(),
-                Self::Uncommon => 0.005..=0.01,
-                Self::Rare => 0.01..=0.02,
-                Self::Mythical => 0.02..=0.05
-            }).into());
-
-            let amount = match self
-            {
-                Self::Broken => 1,
-                Self::Normal => unreachable!(),
-                Self::Uncommon => 1,
-                Self::Rare => 2,
-                Self::Mythical => 3
-            };
-
-            (0..amount).scan(vec![durability_boost, damage_boost, crit_boost], |possible_boosts, _|
-            {
-                if possible_boosts.is_empty()
-                {
-                    return None;
-                }
-
-                let i = fastrand::usize(0..possible_boosts.len());
-
-                Some(possible_boosts.swap_remove(i))
-            }).collect()
-        }
+            Some(possible_boosts.swap_remove(i))
+        }).collect()
+    }
 
     pub fn name(&self) -> Option<&'static str>
     {

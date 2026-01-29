@@ -48,7 +48,23 @@ pub fn create(
     let mut inventory = Inventory::new(anatomy_weight_limit(&anatomy));
     loot.create(LootState::Create, &name).into_iter().for_each(|item| { inventory.push(items_info, item); });
 
-    let character = Character::new(info.character, Faction::Zob);
+    let mut character = Character::new(info.character, Faction::Zob);
+    loot.create(LootState::Equip, &name).into_iter().for_each(|item|
+    {
+        let item_info = items_info.get(item.id);
+
+        if let Some(clothing) = item_info.clothing.as_ref()
+        {
+            let slot = clothing.slot;
+
+            let id = inventory.push(items_info, item);
+
+            character.set_equip(slot, Some(id));
+        } else
+        {
+            eprintln!("cant equip {}", item_info.name);
+        }
+    });
 
     let scale = characters_info.get(info.character).normal.scale;
 

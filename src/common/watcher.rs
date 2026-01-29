@@ -1,4 +1,4 @@
-use nalgebra::Vector3;
+use nalgebra::Vector2;
 
 use serde::{Serialize, Deserialize};
 
@@ -72,7 +72,7 @@ pub enum WatcherType
     Lifetime(Lifetime),
     Frames(Frames),
     RotationDistance{from: f32, near: f32},
-    ScaleDistance{from: Vector3<f32>, near: f32}
+    ScaleDistance{from: Vector2<f32>, near: f32}
 }
 
 impl WatcherType
@@ -107,7 +107,7 @@ impl WatcherType
             {
                 if let Some(transform) = entities.transform(entity)
                 {
-                    transform.scale.metric_distance(from) < *near
+                    transform.scale.xy().metric_distance(from) < *near
                 } else
                 {
                     false

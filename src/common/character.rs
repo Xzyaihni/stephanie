@@ -1,8 +1,10 @@
 use std::{
     f32,
     mem,
+    iter,
     cell::Ref,
-    sync::Arc
+    sync::Arc,
+    ops::Index
 };
 
 use parking_lot::Mutex;
@@ -47,6 +49,7 @@ use crate::{
         physics::*,
         item::*,
         anatomy::*,
+        clothing::EquipSlot,
         Sprite,
         Side1d,
         Side2d,
@@ -71,7 +74,8 @@ use crate::{
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum EquipState
 {
-    Held
+    Held,
+    Equipped
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -80,6 +84,21 @@ pub enum SpriteState
     Normal,
     Crawling,
     Lying
+}
+
+impl<T> Index<SpriteState> for CharacterSprites<T>
+{
+    type Output = T;
+
+    fn index(&self, index: SpriteState) -> &Self::Output
+    {
+        match index
+        {
+            SpriteState::Normal => &self.base,
+            SpriteState::Crawling => &self.crawling,
+            SpriteState::Lying => &self.lying
+        }
+    }
 }
 
 fn true_fn() -> bool
@@ -98,8 +117,8 @@ fn base_hair_z(state: SpriteState, is_player: bool) -> ZLevel
 {
     match state
     {
-        SpriteState::Normal | SpriteState::Crawling => if is_player { ZLevel::PlayerHair } else { ZLevel::Hair },
-        SpriteState::Lying => if is_player { ZLevel::PlayerHairLying } else { ZLevel::HairLying }
+        SpriteState::Normal => if is_player { ZLevel::PlayerHair } else { ZLevel::Hair },
+        SpriteState::Crawling | SpriteState::Lying => if is_player { ZLevel::PlayerHairLying } else { ZLevel::HairLying }
     }
 }
 
@@ -294,6 +313,7 @@ struct AfterInfo
     hand_right: Entity,
     holding: Option<Entity>,
     hair: HairInfo,
+    clothing: CharacterEquips<Option<Entity>>,
     rotation: f32,
     moving: bool,
     sprint_await: bool,
@@ -317,6 +337,32 @@ enum AttackState
     Throw
 }
 
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct CharacterEquips<T>
+{
+    pub head: T
+}
+
+impl<T> CharacterEquips<T>
+{
+    pub fn iter(&self) -> impl Iterator<Item=&T>
+    {
+        let mut index = 0;
+        iter::from_fn(move ||
+        {
+            let value = match index
+            {
+                0 => Some(&self.head),
+                _ => None
+            };
+
+            index += 1;
+
+            value
+        })
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Character
 {
@@ -325,14 +371,15 @@ pub struct Character
     sprinting: bool,
     jiggle: f32,
     holding: Option<InventoryItem>,
+    equips: CharacterEquips<Option<InventoryItem>>,
     hands_infront: bool,
     #[serde(skip, default)]
     cached: CachedInfo,
     attack_state: AttackState,
     #[serde(skip, default)]
     info: Option<AfterInfo>,
-    #[serde(skip, default="true_fn")]
     held_update: bool,
+    clothing_update: bool,
     attack_cooldown: f32,
     knockback_recovery: f32,
     bash_side: Side1d,
@@ -355,10 +402,12 @@ impl Character
             jiggle: 0.0,
             info: None,
             holding: None,
+            equips: CharacterEquips::default(),
             hands_infront: false,
             cached: CachedInfo::default(),
             attack_state: AttackState::None,
             held_update: true,
+            clothing_update: false,
             attack_cooldown: 0.0,
             knockback_recovery: 1.0,
             bash_side: Side1d::Left,
@@ -475,7 +524,7 @@ impl Character
             }
         };
 
-        let base_hair = |(hair_sprite, pixel_offset): (HairSprite, Vector2<f32>)|
+        let base_hair = |(hair_sprite, pixel_offset): (HairSprite<Sprite>, Vector2<f32>)|
         {
             let texture = hair_sprite.sprite;
 
@@ -620,6 +669,7 @@ impl Character
             hand_right: inserter(held_item(None, false)),
             holding: needs_holding.then(|| inserter(held_item(Some(hand_left), false))),
             hair,
+            clothing: CharacterEquips::default(),
             rotation,
             moving: false,
             sprint_await: false,
@@ -650,12 +700,7 @@ impl Character
 
     fn hair_select<'a, T>(&self, base: &'a BaseHair<T>) -> &'a T
     {
-        match self.sprite_state.value()
-        {
-            SpriteState::Normal => &base.base,
-            SpriteState::Crawling => &base.crawling,
-            SpriteState::Lying => &base.lying
-        }
+        &base[*self.sprite_state.value()]
     }
 
     fn hair_size_select<T: Copy>(
@@ -665,13 +710,15 @@ impl Character
         f: impl FnOnce(&T) -> Vector2<f32>
     ) -> (T, Vector2<f32>)
     {
-        let (state, this_size) = match self.sprite_state.value()
+        let state = *self.sprite_state.value();
+        let this_size = match state
         {
-            SpriteState::Normal => (base.base, character_info.normal.scale),
-            SpriteState::Crawling => (base.crawling, character_info.crawling.scale),
-            SpriteState::Lying => (base.lying, character_info.lying.scale)
+            SpriteState::Normal => character_info.normal.scale,
+            SpriteState::Crawling => character_info.crawling.scale,
+            SpriteState::Lying => character_info.lying.scale
         };
 
+        let state = base[state];
         let pixel_offset = (f(&state) - this_size) * 0.5;
 
         (state, pixel_offset)
@@ -701,7 +748,17 @@ impl Character
         });
     }
 
-    pub fn set_holding(&mut self, entities: &ClientEntities, holding: Option<InventoryItem>)
+    pub fn set_equip(&mut self, which: EquipSlot, value: Option<InventoryItem>)
+    {
+        match which
+        {
+            EquipSlot::Head => self.equips.head = value
+        }
+
+        self.clothing_update = true;
+    }
+
+    pub fn try_set_holding(&mut self, entities: &ClientEntities, holding: Option<InventoryItem>)
     {
         if let Some(holding) = holding
         {
@@ -713,11 +770,21 @@ impl Character
                 some_or_return!(self.can_hold(entities, item))
             };
 
-            if can_hold
+            if !can_hold
             {
-                self.holding = Some(holding);
-                self.update_holding();
+                return;
             }
+        }
+
+        self.set_holding(holding);
+    }
+
+    pub fn set_holding(&mut self, holding: Option<InventoryItem>)
+    {
+        if let Some(holding) = holding
+        {
+            self.holding = Some(holding);
+            self.update_holding();
         } else
         {
             self.unhold();
@@ -998,6 +1065,116 @@ impl Character
         some_or_return!(self.info.as_mut()).last_held_item = Some(held_item_id);
 
         self.held_update = false;
+    }
+
+    pub fn update_clothing(&mut self)
+    {
+        self.clothing_update = true;
+    }
+
+    fn update_clothing_inner(
+        &mut self,
+        combined_info: CombinedInfo
+    )
+    {
+        let info = some_or_return!(self.info.as_mut());
+
+        let entities = combined_info.entities;
+
+        let is_player = entities.player_exists(info.this);
+
+        let state = *self.sprite_state.value();
+
+        let inventory = some_or_return!(entities.inventory(info.this));
+
+        let create_if = |
+            slot: &mut Option<Entity>,
+            equip: &mut Option<InventoryItem>,
+            exists: bool
+        |
+        {
+            let clear_slot = |slot: &mut Option<Entity>|
+            {
+                if let Some(slot_entity) = slot
+                {
+                    entities.remove_deferred(*slot_entity);
+                }
+
+                *slot = None;
+            };
+
+            let exists = exists && equip.is_some();
+
+            if slot.is_some()
+            {
+                if !exists
+                {
+                    clear_slot(slot);
+                }
+            } else
+            {
+                let new_slot = exists.then(||
+                {
+                    entities.push(true, EntityInfo{
+                        transform: Some(Transform::default()),
+                        parent: Some(Parent::new(info.this)),
+                        ..Default::default()
+                    })
+                });
+
+                *slot = new_slot;
+            }
+
+            if let Some(equip_item) = *equip
+            {
+                if let Some(item) = inventory.get(equip_item)
+                {
+                    if let Some(entity) = *slot
+                    {
+                        let clothing = some_or_unexpected_return!(combined_info.items_info.get(item.id).clothing.as_ref());
+
+                        let sprite = clothing.sprites[state];
+
+                        let z_level = if state == SpriteState::Normal
+                        {
+                            if is_player { ZLevel::PlayerHat } else { ZLevel::Hat }
+                        } else
+                        {
+                            if is_player { ZLevel::PlayerHatLying } else { ZLevel::HatLying }
+                        };
+
+                        let render = RenderInfo{
+                            object: Some(RenderObject{
+                                kind: RenderObjectKind::TextureId{id: sprite.id}
+                            }),
+                            z_level,
+                            ..Default::default()
+                        };
+
+                        let lazy = LazyTransformInfo{
+                            transform: Transform{
+                                scale: with_z(sprite.scale, ENTITY_SCALE * 0.1),
+                                ..Default::default()
+                            },
+                            deformation: CHARACTER_DEFORMATION,
+                            inherit_scale: false,
+                            ..Default::default()
+                        }.into();
+
+                        entities.set_render(entity, Some(render));
+                        entities.set_lazy_transform(entity, Some(lazy));
+                    }
+                } else
+                {
+                    clear_slot(slot);
+                    *equip = None;
+                }
+            }
+        };
+
+        create_if(&mut info.clothing.head, &mut self.equips.head, true);
+
+        self.clothing_update = false;
     }
 
     fn can_throw(&self, combined_info: CombinedInfo) -> bool
@@ -1871,6 +2048,11 @@ impl Character
         });
     }
 
+    pub fn equips(&self) -> &CharacterEquips<Option<InventoryItem>>
+    {
+        &self.equips
+    }
+
     fn held_item_info<'a>(
         &'a self,
         combined_info: CombinedInfo<'a>
@@ -2090,6 +2272,11 @@ impl Character
             self.update_held(combined_info);
         }
 
+        if self.clothing_update
+        {
+            self.update_clothing_inner(combined_info);
+        }
+
         self.update_jiggle(combined_info, dt);
 
         let knockback_drain = self.update_knockback(dt);
@@ -2207,6 +2394,7 @@ impl Character
         }
 
         self.update_held(combined_info);
+        self.update_clothing_inner(combined_info);
         self.update_cached(combined_info);
 
         if let Some(anatomy) = entities.anatomy(entity)
@@ -2325,6 +2513,9 @@ impl Character
         if self.holding == Some(id)
         {
             Some(EquipState::Held)
+        } else if self.equips.iter().any(|x| *x == Some(id))
+        {
+            Some(EquipState::Equipped)
         } else
         {
             None

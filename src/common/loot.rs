@@ -21,7 +21,8 @@ use strum::IntoStaticStr;
 pub enum LootState
 {
     Create,
-    Destroy
+    Destroy,
+    Equip
 }
 
 #[derive(Clone)]

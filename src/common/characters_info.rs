@@ -25,43 +25,59 @@ pub const CHARACTER_DEFORMATION: Deformation = Deformation::Stretch(
 );
 
 #[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
-pub struct HairSprite<T=Sprite>
+pub struct CharacterSprite<T=Sprite>
 {
     #[serde(default)]
     pub offset: Vector2<i8>,
     pub sprite: T
 }
 
-impl<T> HairSprite<T>
+impl<T> CharacterSprite<T>
 {
-    pub fn map<U>(self, f: impl FnOnce(T) -> U) -> HairSprite<U>
+    pub fn map<U>(self, f: impl FnOnce(T) -> U) -> CharacterSprite<U>
     {
-        HairSprite{
+        CharacterSprite{
             offset: self.offset,
             sprite: f(self.sprite)
         }
     }
 }
 
+pub type HairSprite<T> = CharacterSprite<T>;
+
 #[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
-pub struct BaseHair<T=HairSprite<Sprite>>
+pub struct CharacterSprites<T=CharacterSprite<Sprite>>
 {
     pub base: T,
     pub crawling: T,
     pub lying: T
 }
 
-impl<T> BaseHair<T>
+impl Default for CharacterSprites<&'static str>
 {
-    pub fn map<U>(self, mut f: impl FnMut(T) -> U) -> BaseHair<U>
+    fn default() -> Self
     {
-        BaseHair{
+        Self{
+            base: "normal",
+            crawling: "crawling",
+            lying: "lying"
+        }
+    }
+}
+
+impl<T> CharacterSprites<T>
+{
+    pub fn map<U>(self, mut f: impl FnMut(T) -> U) -> CharacterSprites<U>
+    {
+        CharacterSprites{
             base: f(self.base),
             crawling: f(self.crawling),
             lying: f(self.lying)
         }
     }
 }
+
+pub type BaseHair<T> = CharacterSprites<T>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
 pub enum HairAccessory<T=Sprite>

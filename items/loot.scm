@@ -28,6 +28,8 @@
         (cons x xs)
         xs))
 
+(define (and-always xs x) (cons x xs))
+
 (define (trash) '(rock bottle short_stick stick branch duct_tape))
 
 (define (standard-drops items)
@@ -43,39 +45,51 @@
                 (cons (item-name picked) (points-drops possible (- points (item-cost picked))))))))
 
 (define (zob)
-    (and-maybe
-        (standard-drops '(hammer scissors kitchen_knife))
-        (drop-rate 1 5)
-        'heal_pills))
+    (cond
+        ((eq? state 'create) (and-maybe
+                (standard-drops '(hammer scissors kitchen_knife))
+                (drop-rate 1 5)
+                'heal_pills))
+        ((eq? state 'equip) '())))
 
 (define (smol)
-    (and-maybe
-        (standard-drops '(branch short_stick rock))
-        (drop-rate 1 10)
-        'heal_pills))
+    (cond
+        ((eq? state 'create) (and-maybe
+                (standard-drops '(branch short_stick rock))
+                (drop-rate 1 10)
+                'heal_pills))
+        ((eq? state 'equip) '())))
 
 (define (old)
-    (if ((drop-rate 1 6))
-        '(lamp)
-        (standard-drops '(bottle duct_tape heal_pills))))
+    (cond
+        ((eq? state 'create) (if ((drop-rate 1 6))
+                '(lamp)
+                (standard-drops '(bottle duct_tape heal_pills))))
+        ((eq? state 'equip) '())))
 
 (define (runner)
-    (and-maybe
-        (standard-drops '(scissors bottle baseball_bat))
-        (drop-rate 1 5)
-        'heal_pills))
+    (cond
+        ((eq? state 'create) (and-maybe
+                (standard-drops '(scissors bottle baseball_bat))
+                (drop-rate 1 5)
+                'heal_pills))
+        ((eq? state 'equip) '(runner_cap))))
 
 (define (bigy)
-    (and-maybe
-        (standard-drops '(boulder pipe sledgehammer axe))
-        (drop-rate 1 2)
-        'heal_pills))
+    (cond
+        ((eq? state 'create) (and-maybe
+                (standard-drops '(boulder pipe sledgehammer axe))
+                (drop-rate 1 2)
+                'heal_pills))
+        ((eq? state 'equip) '())))
 
 (define (me)
-    (and-maybe
-        (list (any-of '(meat_cleaver glock lamp)))
-        (drop-rate 1 5)
-        'heal_pills))
+    (cond
+        ((eq? state 'create) (and-maybe
+                (list (any-of '(meat_cleaver glock lamp)))
+                (drop-rate 1 5)
+                'heal_pills))
+        ((eq? state 'equip) '())))
 
 (define (crate)
     (cond

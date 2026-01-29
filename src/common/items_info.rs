@@ -16,6 +16,7 @@ use crate::common::{
     with_z,
     ENTITY_SCALE,
     generic_info::*,
+    clothing::*,
     Drug,
     DamageType,
     Item,
@@ -23,7 +24,7 @@ use crate::common::{
 };
 
 
-pub const DEFAULT_ITEM_DURABILITY: f32 = 25.0;
+pub const DEFAULT_ITEM_DURABILITY: f32 = 150.0;
 
 define_info_id!{ItemId}
 define_info_id!{ItemTag}
@@ -99,6 +100,7 @@ pub struct ItemInfoRaw
     name: String,
     ranged: Option<Ranged>,
     usage: Option<ItemUsage>,
+    clothing: Option<ClothingInfoRaw>,
     rarity_rolls: Option<bool>,
     damage_scale: Option<f32>,
     comfort: Option<f32>,
@@ -119,6 +121,7 @@ pub struct ItemInfo
     pub name: String,
     pub ranged: Option<Ranged>,
     pub usage: Option<ItemUsage>,
+    pub clothing: Option<ClothingInfo>,
     pub rarity_rolls: bool,
     pub damage_scale: f32,
     pub comfort: f32,
@@ -150,7 +153,7 @@ impl ItemInfo
     {
         let texture_name = raw.texture.unwrap_or_else(||
         {
-            raw.name.clone()
+            raw.name.replace(' ', "_")
         });
 
         let texture = assets.map(|assets|
@@ -161,10 +164,16 @@ impl ItemInfo
             Sprite{id: 0.into(), scale: Vector2::repeat(ENTITY_SCALE)}
         });
 
+        let clothing = raw.clothing.zip(assets).map(|(raw, assets)|
+        {
+            ClothingInfo::from_raw(assets, &textures_root.join("clothing").join(&texture_name), raw)
+        });
+
         Self{
             name: raw.name,
             ranged: raw.ranged,
             usage: raw.usage,
+            clothing,
             rarity_rolls: raw.rarity_rolls.unwrap_or(true),
             damage_scale: raw.damage_scale.unwrap_or(1.0),
             comfort: raw.comfort.unwrap_or(1.0),

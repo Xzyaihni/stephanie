@@ -157,6 +157,7 @@ pub mod loot;
 pub mod item;
 pub mod items_info;
 pub mod crafting;
+pub mod clothing;
 
 pub mod inventory;
 

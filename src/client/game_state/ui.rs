@@ -595,10 +595,7 @@ impl UiInventory
 
             let equip = character.and_then(|x|
             {
-                (x.holding() == Some(index)).then(||
-                {
-                    EquipState::Held
-                })
+                x.get_equip_state(index)
             });
 
             UiInventoryItem{
@@ -1023,7 +1020,8 @@ impl WindowKind
                     {
                         let icon_texture = match equip
                         {
-                            EquipState::Held => "ui/held_icon.png"
+                            EquipState::Held => "ui/held_icon.png",
+                            EquipState::Equipped => "ui/equipped_icon.png"
                         };
 
                         let texture = UiTexture::Custom(icon_texture.into());

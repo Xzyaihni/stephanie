@@ -1,6 +1,6 @@
 use std::ops::{Range, RangeInclusive};
 
-use nalgebra::{vector, Vector3, Unit, Rotation as NRotation};
+use nalgebra::{vector, Vector2, Vector3, Unit, Rotation as NRotation};
 
 use serde::{Serialize, Deserialize};
 
@@ -191,7 +191,7 @@ pub fn create_particles(
 
         entities.entities_ref().add_watcher(prototype_entity, Watcher{
             kind: WatcherType::ScaleDistance{
-                from: Vector3::zeros(),
+                from: Vector2::zeros(),
                 near: info.min_scale
             },
             action: Box::new(|entities, entity| entities.remove(entity)),
@@ -229,7 +229,7 @@ impl ParticlesKind
     pub fn create(self, textures: &CommonTextures) -> ExplodeInfo
     {
         let keep = false;
-        let min_scale = (0.5 / ENTITY_PIXEL_SCALE as f32) * ENTITY_SCALE;
+        let min_scale = (3.0 / ENTITY_PIXEL_SCALE as f32) * ENTITY_SCALE;
 
         match self
         {
