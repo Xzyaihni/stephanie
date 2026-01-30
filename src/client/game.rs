@@ -1605,9 +1605,15 @@ impl<'a> PlayerContainer<'a>
         {
             ui.open_inventory(this, Box::new(move |InventoryOpenInfo{item_info: info, id, equip, ..}|
             {
-                let mut actions = vec![
-                    if equip == Some(EquipState::Held) { GameUiEvent::Unwield } else { GameUiEvent::Wield(id) }
-                ];
+                let mut actions = Vec::new();
+
+                if equip == Some(EquipState::Held)
+                {
+                    actions.push(GameUiEvent::Unwield);
+                } else if equip == None
+                {
+                    actions.push(GameUiEvent::Wield(id));
+                }
 
                 if let Some(ClothingInfo{slot, ..}) = info.clothing
                 {
