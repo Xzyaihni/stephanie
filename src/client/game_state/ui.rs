@@ -893,7 +893,7 @@ impl WindowKind
                 let vertical_body = body.update(id(InventoryPart::VerticalBody), UiElement{
                     width: UiElementSize{
                         minimum_size: Some(UiMinimumSize::FitChildren),
-                        size: UiSize::Pixels(SCROLLBAR_HEIGHT * 2.0)
+                        size: UiSize::Rest(1.0)
                     },
                     height: UiSize::Rest(1.0).into(),
                     children_layout: UiLayout::Vertical,
@@ -901,7 +901,10 @@ impl WindowKind
                 });
 
                 let body = vertical_body.update(id(InventoryPart::Body), UiElement{
-                    width: UiSize::Rest(1.0).into(),
+                    width: UiElementSize{
+                        minimum_size: Some(UiMinimumSize::Pixels(SCROLLBAR_HEIGHT * 2.0)),
+                        size: UiSize::Rest(1.0)
+                    },
                     height: UiSize::Rest(1.0).into(),
                     ..Default::default()
                 });
