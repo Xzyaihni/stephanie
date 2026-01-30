@@ -1152,13 +1152,24 @@ impl Character
                             if is_player { ZLevel::PlayerHatLying } else { ZLevel::HatLying }
                         };
 
-                        let render = RenderInfo{
-                            object: Some(RenderObject{
-                                kind: RenderObjectKind::TextureId{id: sprite.id}
-                            }),
-                            z_level,
-                            ..Default::default()
+                        let render_object = RenderObject{
+                            kind: RenderObjectKind::TextureId{id: sprite.id}
                         };
+
+                        if let Some(mut render) = entities.render_mut(entity)
+                        {
+                            render.set_z_level(z_level);
+                            entities.set_deferred_render_object(entity, render_object);
+                        } else
+                        {
+                            let render = RenderInfo{
+                                object: Some(render_object),
+                                z_level,
+                                ..Default::default()
+                            };
+
+                            entities.set_render(entity, Some(render));
+                        }
 
                         let lazy = LazyTransformInfo{
                             transform: Transform{
@@ -1170,7 +1181,6 @@ impl Character
                             ..Default::default()
                         }.into();
 
-                        entities.set_render(entity, Some(render));
                         entities.set_lazy_transform(entity, Some(lazy));
                     }
                 } else
