@@ -608,7 +608,7 @@ macro_rules! impl_common_systems
             mut info: $this_entity_info
         ) -> Entity
         {
-            let entity = self.push_empty(local, info.parent.as_ref().map(|x| x.0));
+            let entity = self.push_empty(local);
 
             info.setup_components(self);
 
@@ -1032,7 +1032,7 @@ macro_rules! common_trait_impl
 
 macro_rules! order_sensitives
 {
-    ($(($name:ident, $resort_name:ident)),+) =>
+    ($($name:ident),+) =>
     {
         const fn order_sensitive(component: Component) -> bool
         {
@@ -1043,6 +1043,16 @@ macro_rules! order_sensitives
                 )+
                 _ => false
             }
+        }
+
+        fn resort_all(&mut self, entity: Entity)
+        {
+            $(
+                if const { !(matches!(Component::$name, Component::parent)) }
+                {
+                    Resorters(self).$name(entity);
+                }
+            )+
         }
     }
 }
@@ -1055,7 +1065,6 @@ macro_rules! define_entities_both
         $set_func:ident,
         $set_func_no_change:ident,
         $on_name:ident,
-        $resort_name:ident,
         $exists_name:ident,
         $message_name:ident,
         $component_type:ident,
@@ -1258,6 +1267,95 @@ macro_rules! define_entities_both
             )+
         }
 
+        struct Resorters<'a, $($component_type,)+>(&'a mut Entities<$($component_type,)+>);
+
+        impl<'a, $($component_type: Debug,)+> Resorters<'a, $($component_type,)+>
+        where
+            Entities<$($component_type,)+>: AnyEntities,
+            for<'b> &'b ParentType: Into<&'b Parent>
+        {
+            $(
+                // resort grandparent if needed
+                fn $set_func_no_change(&mut self, parent_component: usize, parent_entity: Entity)
+                {
+                    if let Some(grand_parent_entity) = self.0.parent(parent_entity).map(|grand_parent|
+                    {
+                        let grand_parent: &Parent = (&*grand_parent).into();
+
+                        grand_parent.entity()
+                    })
+                    {
+                        let grand_parent_component = some_or_return!(
+                            component_index!(self.0, grand_parent_entity, $name)
+                        );
+
+                        if grand_parent_component < parent_component
+                        {
+                            return;
+                        }
+
+                        self.$set_func(grand_parent_component, grand_parent_entity, parent_component, parent_entity);
+                    }
+                }
+
+                // resort this entity fully
+                fn $name(&mut self, parent_entity: Entity)
+                {
+                    let parent_component = some_or_return!(
+                        component_index!(self.0, parent_entity, $name)
+                    );
+
+                    // try resorting the grandparent
+                    self.$set_func_no_change(parent_component, parent_entity);
+
+                    let child = self.0.$name.iter().find_map(|(component_id, &ComponentWrapper{
+                        entity,
+                        ..
+                    })|
+                    {
+                        if parent_component < component_id
+                        {
+                            return None;
+                        }
+
+                        self.0.parent(entity).and_then(|parent|
+                        {
+                            let parent: &Parent = (&*parent).into();
+                            (parent.entity() == parent_entity).then(||
+                            {
+                                (component_id, entity)
+                            })
+                        })
+                    });
+
+                    let (child_component, child) = some_or_return!(child);
+
+                    self.$set_func(parent_component, parent_entity, child_component, child)
+                }
+
+                // resort this entity with known child
+                fn $set_func(
+                    &mut self,
+                    parent_component: usize,
+                    parent_entity: Entity,
+                    child_component: usize,
+                    child: Entity
+                )
+                {
+                    // swap contents
+                    self.0.$name.swap(child_component, parent_component);
+
+                    self.0.swap_component_indices(Component::$name, child, parent_entity);
+
+                    // try resorting the grandparent
+                    self.$set_func_no_change(parent_component, parent_entity);
+
+                    self.$name(child);
+                    self.$name(parent_entity);
+                }
+            )+
+        }
+
         pub struct IterEntities<'a, $($component_type,)+>
         {
             entities: &'a Entities<$($component_type,)+>,
@@ -1361,6 +1459,43 @@ macro_rules! define_entities_both
                 }
 
                 entity
+            }
+        }
+
+        impl<$($component_type: Debug,)+> Entities<$($component_type,)+>
+        {
+            fn swap_component_indices(
+                &mut self,
+                component: Component,
+                a: Entity,
+                b: Entity
+            )
+            {
+                let component_id = component as usize;
+
+                let components_a = components!(self, a);
+                let mut components_a = components_a.borrow_mut();
+
+                if a.local() == b.local()
+                {
+                    let b_i = components_a.get(b.id).unwrap()[component_id];
+
+                    let a_i = &mut components_a.get_mut(a.id).unwrap()[component_id];
+                    let temp = *a_i;
+
+                    *a_i = b_i;
+
+                    components_a.get_mut(b.id).unwrap()[component_id] = temp;
+                } else
+                {
+                    let components_b = components!(self, b);
+                    let mut components_b = components_b.borrow_mut();
+
+                    let a = &mut components_a.get_mut(a.id).unwrap()[component_id];
+                    let b = &mut components_b.get_mut(b.id).unwrap()[component_id];
+
+                    mem::swap(a, b);
+                }
             }
         }
 
@@ -1476,7 +1611,7 @@ macro_rules! define_entities_both
                 )+
             }
 
-            fn push_empty(&self, local: bool, parent_entity: Option<Entity>) -> Entity
+            fn push_empty(&self, local: bool) -> Entity
             {
                 let components = if local
                 {
@@ -1488,13 +1623,7 @@ macro_rules! define_entities_both
 
                 let mut components = components.borrow_mut();
 
-                let id = if let Some(parent) = parent_entity
-                {
-                    components.take_after_key(parent.id)
-                } else
-                {
-                    components.take_vacant_key()
-                };
+                let id = components.take_vacant_key();
 
                 components.insert(id, empty_components());
 
@@ -1566,7 +1695,7 @@ macro_rules! define_entities_both
                         if self.remove_awaiting.iter().any(|x| x.1 == entity.id) { return; }
                     }
 
-                    let parent_order_sensitive = Self::order_sensitive(Component::$name);
+                    let parent_order_sensitive = const { Self::order_sensitive(Component::$name) };
 
                     if !self.exists(entity)
                     {
@@ -1598,7 +1727,6 @@ macro_rules! define_entities_both
                                 component: RefCell::new(component)
                             };
 
-                            let existed_before = slot.is_some();
                             let value = if let Some(id) = slot
                             {
                                 self.$name.insert(*id, component)
@@ -1619,9 +1747,13 @@ macro_rules! define_entities_both
 
                             drop(components);
 
-                            if existed_before && parent_order_sensitive
+                            if const { matches!(Component::$name, Component::parent) }
                             {
-                                self.$resort_name(entity);
+                                self.resort_all(entity);
+                            } else if parent_order_sensitive
+                            {
+                                // even if it didnt exist before it might be a parent and its quicker to check this way
+                                Resorters(self).$name(entity);
                             }
 
                             value
@@ -1643,51 +1775,6 @@ macro_rules! define_entities_both
                 pub fn $on_name(&self, f: OnComponentChange)
                 {
                     self.$on_name.borrow_mut().push(f);
-                }
-
-                fn $resort_name(
-                    &mut self,
-                    parent_entity: Entity
-                )
-                {
-                    let child = self.$name.iter().find_map(|(component_id, &ComponentWrapper{
-                        entity,
-                        ..
-                    })|
-                    {
-                        self.parent(entity).and_then(|parent|
-                        {
-                            ((&*parent).into().entity() == parent_entity).then(||
-                            {
-                                (component_id, entity)
-                            })
-                        })
-                    });
-
-                    let (child_component, child) = some_or_return!(child);
-
-                    let parent_component = some_or_return!(
-                        component_index!(self, parent_entity, $name)
-                    );
-
-                    if parent_component < child_component
-                    {
-                        return;
-                    }
-
-                    // swap contents
-                    self.$name.swap(child_component, parent_component);
-
-                    self.swap_component_indices(Component::$name, child, parent_entity);
-
-                    if let Some(entity) = self.parent(parent_entity)
-                        .map(|parent| (&*parent).into().entity())
-                    {
-                        self.$resort_name(entity);
-                    }
-
-                    self.$resort_name(child);
-                    self.$resort_name(parent_entity);
                 }
             )+
 
@@ -1712,40 +1799,6 @@ macro_rules! define_entities_both
             {
                 self.create_render_queue.borrow_mut()
                     .push((entity, RenderComponent::Scissor(scissor)));
-            }
-
-            fn swap_component_indices(
-                &mut self,
-                component: Component,
-                a: Entity,
-                b: Entity
-            )
-            {
-                let component_id = component as usize;
-
-                let components_a = components!(self, a);
-                let mut components_a = components_a.borrow_mut();
-
-                if a.local() == b.local()
-                {
-                    let b_i = components_a.get(b.id).unwrap()[component_id];
-
-                    let a_i = &mut components_a.get_mut(a.id).unwrap()[component_id];
-                    let temp = *a_i;
-
-                    *a_i = b_i;
-
-                    components_a.get_mut(b.id).unwrap()[component_id] = temp;
-                } else
-                {
-                    let components_b = components!(self, b);
-                    let mut components_b = components_b.borrow_mut();
-
-                    let a = &mut components_a.get_mut(a.id).unwrap()[component_id];
-                    let b = &mut components_b.get_mut(b.id).unwrap()[component_id];
-
-                    mem::swap(a, b);
-                }
             }
 
             fn clear_components_inner(&mut self, entity: Entity)
@@ -1913,10 +1966,10 @@ macro_rules! define_entities_both
             }
 
             order_sensitives!(
-                (parent, resort_parent),
-                (lazy_transform, resort_lazy_transform),
-                (follow_rotation, resort_follow_rotation),
-                (follow_position, resort_follow_position)
+                parent,
+                lazy_transform,
+                follow_rotation,
+                follow_position
             );
         }
 
@@ -2502,7 +2555,6 @@ macro_rules! define_entities
             $side_set_func:ident,
             $side_set_func_no_change:ident,
             $side_on_name:ident,
-            $side_resort_name:ident,
             $side_exists_name:ident,
             $side_message_name:ident,
             $side_component_type:ident,
@@ -2515,7 +2567,6 @@ macro_rules! define_entities
             $set_func:ident,
             $set_func_no_change:ident,
             $on_name:ident,
-            $resort_name:ident,
             $exists_name:ident,
             $message_name:ident,
             $component_type:ident,
@@ -2531,8 +2582,8 @@ macro_rules! define_entities
         }
 
         define_entities_both!{
-            $(($side_name, $side_mut_func, $side_mut_func_no_change, $side_set_func, $side_set_func_no_change, $side_on_name, $side_resort_name, $side_exists_name, $side_message_name, $side_component_type, $side_default_type),)+
-            $(($name, $mut_func, $mut_func_no_change, $set_func, $set_func_no_change, $on_name, $resort_name, $exists_name, $message_name, $component_type, $default_type),)+
+            $(($side_name, $side_mut_func, $side_mut_func_no_change, $side_set_func, $side_set_func_no_change, $side_on_name, $side_exists_name, $side_message_name, $side_component_type, $side_default_type),)+
+            $(($name, $mut_func, $mut_func_no_change, $set_func, $set_func_no_change, $on_name, $exists_name, $message_name, $component_type, $default_type),)+
         }
 
         trait ServerClientConverter<E, T, U>
@@ -2691,7 +2742,7 @@ macro_rules! define_entities
                     eprintln!("pushing {}", info.compact_format());
                 }
 
-                let entity = self.push_empty(local, info.parent.as_ref().map(|x| x.0));
+                let entity = self.push_empty(local);
 
                 self.create_queue.borrow_mut().push((entity, info));
 
@@ -2715,7 +2766,7 @@ macro_rules! define_entities
 
             fn push(&self, local: bool, info: EntityInfo) -> Entity
             {
-                let entity = self.push_empty(local, info.parent.as_ref().map(|x| x.0));
+                let entity = self.push_empty(local);
 
                 self.create_queue.borrow_mut().push((entity, info));
 
@@ -2807,6 +2858,8 @@ macro_rules! define_entities
                     self.transform_mut(entity)
                 })
             }
+
+            fn is_server(&self) -> bool { Self::IS_SERVER }
 
             fn check_guarantees(&mut self);
         }
@@ -3097,29 +3150,29 @@ macro_rules! define_entities
 // im okay :)
 define_entities!{
     (side_specific
-        (render, render_mut, render_mut_no_change, set_render, set_render_no_change, on_render, resort_render, render_exists, SetRender, RenderType, RenderInfo, ClientRenderInfo),
-        (light, light_mut, light_mut_no_change, set_light, set_light_no_change, on_light, resort_light, light_exists, SetLight, LightType, Light, ClientLight),
-        (occluder, occluder_mut, occluder_mut_no_change, set_occluder, set_occluder_no_change, on_occluder_mut, resort_occluder, occluder_exists, SetOccluder, OccluderType, Occluder, ClientOccluder)),
-    (parent, parent_mut, parent_mut_no_change, set_parent, set_parent_no_change, on_parent, resort_parent, parent_exists, SetParent, ParentType, Parent),
-    (sibling, sibling_mut, sibling_mut_no_change, set_sibling, set_sibling_no_change, on_sibling, resort_sibling, sibling_exists, SetSibling, SiblingType, Entity),
-    (furniture, furniture_mut, furniture_mut_no_change, set_furniture, set_furniture_no_change, on_furniture, resort_furniture, furniture_exists, SetFurniture, FurnitureType, FurnitureId),
-    (item, item_mut, item_mut_no_change, set_item, set_item_no_change, on_item, resort_item, item_exists, SetItem, ItemType, Item),
-    (health, health_mut, health_mut_no_change, set_health, set_health_no_change, on_health, resort_health, health_exists, SetHealth, HealthType, f32),
-    (lazy_mix, lazy_mix_mut, lazy_mix_mut_no_change, set_lazy_mix, set_lazy_mix_no_change, on_lazy_mix, resort_lazy_mix, lazy_mix_exists, SetLazyMix, LazyMixType, LazyMix),
-    (lazy_transform, lazy_transform_mut, lazy_transform_mut_no_change, set_lazy_transform, set_lazy_transform_no_change, on_lazy_transform, resort_lazy_transform, lazy_transform_exists, SetLazyTransform, LazyTransformType, LazyTransform),
-    (follow_rotation, follow_rotation_mut, follow_rotation_mut_no_change, set_follow_rotation, set_follow_rotation_no_change, on_follow_rotation, resort_follow_rotation, follow_rotation_exists, SetFollowRotation, FollowRotationType, FollowRotation),
-    (follow_position, follow_position_mut, follow_position_mut_no_change, set_follow_position, set_follow_position_no_change, on_follow_position, resort_follow_position, follow_position_exists, SetFollowPosition, FollowPositionType, FollowPosition),
-    (damaging, damaging_mut, damaging_mut_no_change, set_damaging, set_damaging_no_change, on_damaging, resort_damaging, damaging_exists, SetDamaging, DamagingType, Damaging),
-    (inventory, inventory_mut, inventory_mut_no_change, set_inventory, set_inventory_no_change, on_inventory, resort_inventory, inventory_exists, SetInventory, InventoryType, Inventory),
-    (named, named_mut, named_mut_no_change, set_named, set_named_no_change, on_named, resort_named, named_exists, SetNamed, NamedType, String),
-    (transform, transform_mut, transform_mut_no_change, set_transform, set_transform_no_change, on_transform, resort_transform, transform_exists, SetTransform, TransformType, Transform),
-    (character, character_mut, character_mut_no_change, set_character, set_character_no_change, on_character, resort_character, character_exists, SetCharacter, CharacterType, Character),
-    (enemy, enemy_mut, enemy_mut_no_change, set_enemy, set_enemy_no_change, on_enemy, resort_enemy, enemy_exists, SetEnemy, EnemyType, Enemy),
-    (player, player_mut, player_mut_no_change, set_player, set_player_no_change, on_player, resort_player, player_exists, SetPlayer, PlayerType, Player),
-    (collider, collider_mut, collider_mut_no_change, set_collider, set_collider_no_change, on_collider, resort_collider, collider_exists, SetCollider, ColliderType, Collider),
-    (physical, physical_mut, physical_mut_no_change, set_physical, set_physical_no_change, on_physical, resort_physical, physical_exists, SetPhysical, PhysicalType, Physical),
-    (anatomy, anatomy_mut, anatomy_mut_no_change, set_anatomy, set_anatomy_no_change, on_anatomy, resort_anatomy, anatomy_exists, SetAnatomy, AnatomyType, Anatomy),
-    (door, door_mut, door_mut_no_change, set_door, set_door_no_change, on_door, resort_door, door_exists, SetDoor, DoorType, Door),
-    (joint, joint_mut, joint_mut_no_change, set_joint, set_joint_no_change, on_joint, resort_joint, joint_exists, SetJoint, JointType, Joint),
-    (saveable, saveable_mut, saveable_mut_no_change, set_saveable, set_saveable_no_change, on_saveable, resort_saveable, saveable_exists, SetNone, SaveableType, Saveable)
+        (render, render_mut, render_mut_no_change, set_render, set_render_no_change, on_render, render_exists, SetRender, RenderType, RenderInfo, ClientRenderInfo),
+        (light, light_mut, light_mut_no_change, set_light, set_light_no_change, on_light, light_exists, SetLight, LightType, Light, ClientLight),
+        (occluder, occluder_mut, occluder_mut_no_change, set_occluder, set_occluder_no_change, on_occluder_mut, occluder_exists, SetOccluder, OccluderType, Occluder, ClientOccluder)),
+    (parent, parent_mut, parent_mut_no_change, set_parent, set_parent_no_change, on_parent, parent_exists, SetParent, ParentType, Parent),
+    (sibling, sibling_mut, sibling_mut_no_change, set_sibling, set_sibling_no_change, on_sibling, sibling_exists, SetSibling, SiblingType, Entity),
+    (furniture, furniture_mut, furniture_mut_no_change, set_furniture, set_furniture_no_change, on_furniture, furniture_exists, SetFurniture, FurnitureType, FurnitureId),
+    (item, item_mut, item_mut_no_change, set_item, set_item_no_change, on_item, item_exists, SetItem, ItemType, Item),
+    (health, health_mut, health_mut_no_change, set_health, set_health_no_change, on_health, health_exists, SetHealth, HealthType, f32),
+    (lazy_mix, lazy_mix_mut, lazy_mix_mut_no_change, set_lazy_mix, set_lazy_mix_no_change, on_lazy_mix, lazy_mix_exists, SetLazyMix, LazyMixType, LazyMix),
+    (lazy_transform, lazy_transform_mut, lazy_transform_mut_no_change, set_lazy_transform, set_lazy_transform_no_change, on_lazy_transform, lazy_transform_exists, SetLazyTransform, LazyTransformType, LazyTransform),
+    (follow_rotation, follow_rotation_mut, follow_rotation_mut_no_change, set_follow_rotation, set_follow_rotation_no_change, on_follow_rotation, follow_rotation_exists, SetFollowRotation, FollowRotationType, FollowRotation),
+    (follow_position, follow_position_mut, follow_position_mut_no_change, set_follow_position, set_follow_position_no_change, on_follow_position, follow_position_exists, SetFollowPosition, FollowPositionType, FollowPosition),
+    (damaging, damaging_mut, damaging_mut_no_change, set_damaging, set_damaging_no_change, on_damaging, damaging_exists, SetDamaging, DamagingType, Damaging),
+    (inventory, inventory_mut, inventory_mut_no_change, set_inventory, set_inventory_no_change, on_inventory, inventory_exists, SetInventory, InventoryType, Inventory),
+    (named, named_mut, named_mut_no_change, set_named, set_named_no_change, on_named, named_exists, SetNamed, NamedType, String),
+    (transform, transform_mut, transform_mut_no_change, set_transform, set_transform_no_change, on_transform, transform_exists, SetTransform, TransformType, Transform),
+    (character, character_mut, character_mut_no_change, set_character, set_character_no_change, on_character, character_exists, SetCharacter, CharacterType, Character),
+    (enemy, enemy_mut, enemy_mut_no_change, set_enemy, set_enemy_no_change, on_enemy, enemy_exists, SetEnemy, EnemyType, Enemy),
+    (player, player_mut, player_mut_no_change, set_player, set_player_no_change, on_player, player_exists, SetPlayer, PlayerType, Player),
+    (collider, collider_mut, collider_mut_no_change, set_collider, set_collider_no_change, on_collider, collider_exists, SetCollider, ColliderType, Collider),
+    (physical, physical_mut, physical_mut_no_change, set_physical, set_physical_no_change, on_physical, physical_exists, SetPhysical, PhysicalType, Physical),
+    (anatomy, anatomy_mut, anatomy_mut_no_change, set_anatomy, set_anatomy_no_change, on_anatomy, anatomy_exists, SetAnatomy, AnatomyType, Anatomy),
+    (door, door_mut, door_mut_no_change, set_door, set_door_no_change, on_door, door_exists, SetDoor, DoorType, Door),
+    (joint, joint_mut, joint_mut_no_change, set_joint, set_joint_no_change, on_joint, joint_exists, SetJoint, JointType, Joint),
+    (saveable, saveable_mut, saveable_mut_no_change, set_saveable, set_saveable_no_change, on_saveable, saveable_exists, SetNone, SaveableType, Saveable)
 }

@@ -122,6 +122,15 @@ fn base_hair_z(state: SpriteState, is_player: bool) -> ZLevel
     }
 }
 
+fn accessory_hair_z(state: SpriteState, is_player: bool) -> ZLevel
+{
+    match state
+    {
+        SpriteState::Normal => if is_player { ZLevel::PlayerHairAccessory } else { ZLevel::HairAccessory },
+        SpriteState::Crawling | SpriteState::Lying => if is_player { ZLevel::PlayerHairAccessoryLying } else { ZLevel::HairAccessoryLying }
+    }
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct Stateful<T>
 {
@@ -597,7 +606,7 @@ impl Character
                     object: Some(RenderObjectKind::TextureId{
                         id: texture.id
                     }.into()),
-                    z_level: if is_player { ZLevel::PlayerHairAccessory } else { ZLevel::HairAccessory },
+                    z_level: accessory_hair_z(*self.sprite_state.value(), is_player),
                     ..Default::default()
                 }),
                 ..Default::default()
@@ -2349,6 +2358,8 @@ impl Character
 
         self.info.as_ref().unwrap().hair.other.iter().for_each(|(positions, accessory)|
         {
+            entities.set_z_level(*accessory, accessory_hair_z(*self.sprite_state.value(), is_player));
+
             if let Some(mut target) = entities.target(*accessory)
             {
                 target.position = with_z(*self.hair_select(positions), 0.0);
