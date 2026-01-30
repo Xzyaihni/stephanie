@@ -1178,12 +1178,12 @@ impl<'a> PlayerContainer<'a>
 
         let entity_position = some_or_value!(entities.transform(self.game_state.entities.follow_target()), false).position;
 
-        let follow_position = if mouse_position.magnitude() > CHUNK_VISUAL_SIZE * 2.0
+        let follow_position = if mouse_position.magnitude() > (CHUNK_VISUAL_SIZE * 2.0)
         {
             entity_position
         } else
         {
-            entity_position + mouse_position / 5.0
+            entity_position + mouse_position * 0.13
         };
 
         some_or_value!(entities.target(self.info.camera), false).position = follow_position;

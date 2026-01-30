@@ -433,11 +433,11 @@ impl Character
         }
     }
 
-    fn default_lazy_rotation() -> Rotation
+    fn default_lazy_rotation(is_player: bool) -> Rotation
     {
         Rotation::EaseOut(
             EaseOutRotation{
-                decay: 7.0,
+                decay: if is_player { 32.0 } else { 7.0 },
                 speed_significant: 10.0,
                 momentum: 0.5
             }.into()
@@ -509,7 +509,7 @@ impl Character
                 follow_rotation,
                 lazy_transform: Some(LazyTransformInfo{
                     connection: if held { Connection::Ignore } else { Self::default_connection() },
-                    rotation: if held { Rotation::Ignore } else { Self::default_lazy_rotation() },
+                    rotation: if held { Rotation::Ignore } else { Self::default_lazy_rotation(is_player) },
                     scaling: if held { Scaling::EaseOut{decay: 16.0} } else { Scaling::Instant },
                     deformation: Deformation::Stretch(
                         StretchDeformation{
@@ -1428,6 +1428,8 @@ impl Character
     {
         let info = some_or_return!(self.info.as_ref());
 
+        let is_player = combined_info.entities.player_exists(info.this);
+
         let start_rotation = some_or_return!(self.default_held_rotation(combined_info));
 
         let holding = if self.holding.is_some()
@@ -1456,11 +1458,11 @@ impl Character
 
         combined_info.entities.add_watcher(holding, Watcher{
             kind: WatcherType::Lifetime(0.2.into()),
-            action: Box::new(|entities, entity|
+            action: Box::new(move |entities, entity|
             {
                 if let Some(mut lazy) = entities.lazy_transform_mut(entity)
                 {
-                    lazy.rotation = Self::default_lazy_rotation();
+                    lazy.rotation = Self::default_lazy_rotation(is_player);
                 }
             }),
             ..Default::default()
@@ -1655,6 +1657,8 @@ impl Character
 
         let entities = &combined_info.entities;
 
+        let is_player = entities.player_exists(info.this);
+
         let mut lazy = some_or_false!(entities.lazy_transform_mut_no_change(info.hand_left));
 
         let lifetime = self.attack_cooldown.min(0.5);
@@ -1698,7 +1702,7 @@ impl Character
 
                 if let Some(mut lazy) = entities.lazy_transform_mut(entity)
                 {
-                    lazy.rotation = Self::default_lazy_rotation();
+                    lazy.rotation = Self::default_lazy_rotation(is_player);
                 }
 
                 if let Some(mut target) = entities.target(entity)
