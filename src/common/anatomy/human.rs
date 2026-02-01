@@ -307,6 +307,7 @@ pub struct HumanAnatomyValues
     body: HumanBody,
     wounds: Vec<Wound>,
     broken: Vec<AnatomyId>,
+    fell: bool,
     killed: Option<bool>
 }
 
@@ -503,6 +504,7 @@ impl HumanAnatomyValues
             body,
             wounds: Vec::new(),
             broken: Vec::new(),
+            fell: false,
             killed: None
         }
     }
@@ -874,6 +876,8 @@ impl HumanAnatomy
         if self.this.conscious != is_conscious
         {
             self.this.conscious = is_conscious;
+            self.this.fell = true;
+
             changed = true;
         }
 
@@ -938,6 +942,14 @@ impl HumanAnatomy
         }
 
         false
+    }
+
+    pub fn take_fell(&mut self) -> bool
+    {
+        let fell = self.this.fell;
+        self.this.fell = false;
+
+        fell
     }
 
     pub fn speed(&self) -> f32

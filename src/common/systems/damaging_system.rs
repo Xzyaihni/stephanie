@@ -32,6 +32,7 @@ use crate::{
         item::*,
         systems::{raycast_system, collider_system, player_system},
         ENTITY_SCALE,
+        SCREENSHAKE_DISTANCE,
         Loot,
         LootState,
         SpatialGrid,
@@ -44,13 +45,12 @@ use crate::{
         player::{WEAK_SCREENSHAKE, MEDIUM_SCREENSHAKE, MEDIUM_KICK, StatId},
         enemy_creator::ENEMY_MASS,
         entity::{iterate_components_with, ClientEntities},
-        world::{TILE_SIZE, CHUNK_VISUAL_SIZE, TilePos}
+        world::{TILE_SIZE, TilePos}
     }
 };
 
 
 const HIGHLIGHT_DURATION: f32 = 0.2;
-const SCREENSHAKE_DISTANCE: f32 = CHUNK_VISUAL_SIZE;
 
 pub fn fall_damage(
     entities: &ClientEntities,

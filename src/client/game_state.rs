@@ -44,6 +44,7 @@ use crate::{
         some_or_return,
         receiver_loop,
         ENTITY_SCALE,
+        SCREENSHAKE_DISTANCE,
         render_info::*,
         lazy_transform::*,
         particle_creator::*,
@@ -69,6 +70,7 @@ use crate::{
         character::PartialCombinedInfo,
         inventory::anatomy_weight_limit,
         clothing::EquipSlot,
+        player::MEDIUM_SCREENSHAKE,
         systems::{
             render_system,
             physical_system,
@@ -1045,6 +1047,17 @@ impl GameState
                             {
                                 player.kills += 1;
                             }
+                        }
+                    }
+
+                    if anatomy.take_fell()
+                    {
+                        if let Some(transform) = entities.transform(entity)
+                        {
+                            player_system::players_near(entities, transform.position, SCREENSHAKE_DISTANCE).for_each(|(_, player)|
+                            {
+                                player.borrow_mut().screenshake.set(MEDIUM_SCREENSHAKE);
+                            });
                         }
                     }
 

@@ -325,6 +325,14 @@ impl Anatomy
         }
     }
 
+    pub fn take_fell(&mut self) -> bool
+    {
+        match self
+        {
+            Self::Human(x) => x.take_fell()
+        }
+    }
+
     pub fn for_accessed_parts(&mut self, f: impl FnMut(ChangedPart))
     {
         match self

@@ -531,6 +531,8 @@ macro_rules! frame_time_this
     }
 }
 
+pub const SCREENSHAKE_DISTANCE: f32 = world::CHUNK_VISUAL_SIZE;
+
 pub const ENTITY_SCALE: f32 = TILE_SIZE * (ENTITY_PIXEL_SCALE as f32 / TEXTURE_TILE_SIZE as f32);
 pub const ENTITY_PIXEL_SCALE: u32 = 32;
 
