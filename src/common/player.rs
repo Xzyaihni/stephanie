@@ -9,11 +9,15 @@ use strum::{EnumIter, EnumCount};
 use crate::common::{Entity, Pos3};
 
 
+pub const WEAKER_SCREENSHAKE: f32 = 0.02;
 pub const WEAK_SCREENSHAKE: f32 = 0.05;
 pub const MEDIUM_SCREENSHAKE: f32 = 0.1;
 pub const STRONG_SCREENSHAKE: f32 = 0.2;
 
+pub const WEAK_KICK: f32 = 0.04;
 pub const MEDIUM_KICK: f32 = 0.1;
+
+const OFFSET_MAX: f32 = 0.2;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OnConnectInfo
@@ -107,27 +111,32 @@ impl StatId
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Screenshake
+#[derive(EnumCount)]
+pub enum ScreenshakeName
+{
+    Normal = 0,
+    Shot
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+struct ScreenshakeLayer
 {
     duration: f32,
     amount: f32,
-    offset: Vector2<f32>
 }
 
-impl Default for Screenshake
+impl Default for ScreenshakeLayer
 {
     fn default() -> Self
     {
         Self{
             duration: 0.0,
-            amount: 0.0,
-            offset: Vector2::zeros()
+            amount: 0.0
         }
     }
 }
 
-impl Screenshake
+impl ScreenshakeLayer
 {
     pub fn effective_shake(&self) -> f32
     {
@@ -145,9 +154,58 @@ impl Screenshake
         }
     }
 
-    pub fn set_offset(&mut self, offset: Vector2<f32>)
+    pub fn update(&mut self, dt: f32)
     {
-        self.offset = offset;
+        self.duration = (self.duration - dt).max(0.0);
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Screenshake
+{
+    layers: [ScreenshakeLayer; ScreenshakeName::COUNT],
+    offset: Vector2<f32>
+}
+
+impl Default for Screenshake
+{
+    fn default() -> Self
+    {
+        Self{
+            layers: [ScreenshakeLayer::default(); ScreenshakeName::COUNT],
+            offset: Vector2::zeros()
+        }
+    }
+}
+
+impl Screenshake
+{
+    pub fn effective_shake(&self) -> f32
+    {
+        self.layers.iter().map(ScreenshakeLayer::effective_shake).sum()
+    }
+
+    pub fn set(&mut self, amount: f32)
+    {
+        self.set_layer(ScreenshakeName::Normal, amount);
+    }
+
+    pub fn set_layer(&mut self, layer: ScreenshakeName, amount: f32)
+    {
+        self.layers[layer as usize].set(amount);
+    }
+
+    pub fn add_offset(&mut self, offset: Vector2<f32>)
+    {
+        let new_offset = self.offset + offset;
+
+        if new_offset.magnitude() <= OFFSET_MAX
+        {
+            self.offset = new_offset;
+        } else
+        {
+            self.offset = new_offset.normalize() * OFFSET_MAX;
+        }
     }
 
     pub fn offset(&self) -> Vector2<f32>
@@ -157,7 +215,7 @@ impl Screenshake
 
     pub fn update(&mut self, dt: f32)
     {
-        self.duration = (self.duration - dt).max(0.0);
+        self.layers.iter_mut().for_each(|layer| layer.update(dt));
 
         self.offset *= 0.01_f32.powf(dt);
     }

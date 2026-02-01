@@ -269,7 +269,7 @@ pub fn damager<'a, 'b, 'c>(
                 {
                     if let Some((stat_id, amount)) = result.on_hit_gain
                     {
-                        if let Some(mut player) = entities.player_mut(result.other_entity)
+                        if let Some(mut player) = entities.player_mut_no_change(result.other_entity)
                         {
                             player.add_experience(stat_id, amount);
 
@@ -308,7 +308,7 @@ pub fn damager<'a, 'b, 'c>(
                     ..Default::default()
                 };
 
-                if let Some(mut player) = entities.player_mut(result.other_entity)
+                if let Some(mut player) = entities.player_mut_no_change(result.other_entity)
                 {
                     player.screenshake.set(WEAK_SCREENSHAKE);
                 }
@@ -896,20 +896,20 @@ pub fn damage_entity(
     damage: Damage
 )
 {
-    if let Some(mut player) = entities.player_mut(entity)
+    if let Some(mut player) = entities.player_mut_no_change(entity)
     {
         player.screenshake.set(MEDIUM_SCREENSHAKE);
 
-        if let Some(direction) = entities.transform(other_entity).zip(entities.transform(entity)).map(|(other, this)|
+        if let Some(direction) = entities.transform(other_entity).zip(entities.transform(entity)).and_then(|(other, this)|
         {
-            (this.position - other.position).xy().normalize()
+            (this.position - other.position).xy().try_normalize(0.0001)
         })
         {
-            player.screenshake.set_offset(direction * MEDIUM_KICK);
+            player.screenshake.add_offset(direction * MEDIUM_KICK);
         }
     }
 
-    if let Some(mut player) = entities.player_mut(other_entity)
+    if let Some(mut player) = entities.player_mut_no_change(other_entity)
     {
         player.screenshake.set(WEAK_SCREENSHAKE);
     }
@@ -922,7 +922,7 @@ pub fn damage_entity(
 
         if *health <= 0.0
         {
-            if let Some(mut player) = entities.player_mut(other_entity)
+            if let Some(mut player) = entities.player_mut_no_change(other_entity)
             {
                 player.screenshake.set(MEDIUM_SCREENSHAKE);
             }

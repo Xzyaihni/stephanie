@@ -65,7 +65,7 @@ use crate::{
         Parent,
         World,
         characters_info::*,
-        player::StatId,
+        player::{WEAK_KICK, WEAKER_SCREENSHAKE, ScreenshakeName, StatId},
         entity::ClientEntities
     }
 };
@@ -1759,6 +1759,16 @@ impl Character
 
         let source = Some(info.this);
         let start = combined_info.entities.transform(info.this).unwrap().position;
+
+        if let Some(mut player) = combined_info.entities.player_mut_no_change(info.this)
+        {
+            player.screenshake.set_layer(ScreenshakeName::Shot, WEAKER_SCREENSHAKE);
+
+            if let Some(direction) = (start - target).xy().try_normalize(0.0001)
+            {
+                player.screenshake.add_offset(direction * WEAK_KICK);
+            }
+        }
 
         let damage_buff = item.damage_scale().unwrap_or(1.0);
 

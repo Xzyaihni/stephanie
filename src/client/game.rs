@@ -624,7 +624,7 @@ impl Game
             let game_state = self.game_state.clone();
 
             primitives.add(
-                "set-screenshake-offset",
+                "add-screenshake-offset",
                 PrimitiveProcedureInfo::new_simple(2, Effect::Impure, move |mut args|
                 {
                     with_game_state(&game_state, |game_state|
@@ -641,7 +641,7 @@ impl Game
                             lisp::Error::Custom("entity doesnt have a player component".to_owned())
                         })?;
 
-                        player.screenshake.set_offset(vector![x, y]);
+                        player.screenshake.add_offset(vector![x, y]);
 
                         Ok(().into())
                     })
