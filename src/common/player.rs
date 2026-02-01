@@ -1,11 +1,19 @@
 use std::mem;
 
+use nalgebra::Vector2;
+
 use serde::{Serialize, Deserialize};
 
 use strum::{EnumIter, EnumCount};
 
 use crate::common::{Entity, Pos3};
 
+
+pub const WEAK_SCREENSHAKE: f32 = 0.05;
+pub const MEDIUM_SCREENSHAKE: f32 = 0.1;
+pub const STRONG_SCREENSHAKE: f32 = 0.2;
+
+pub const MEDIUM_KICK: f32 = 0.1;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OnConnectInfo
@@ -100,8 +108,66 @@ impl StatId
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Screenshake
+{
+    duration: f32,
+    amount: f32,
+    offset: Vector2<f32>
+}
+
+impl Default for Screenshake
+{
+    fn default() -> Self
+    {
+        Self{
+            duration: 0.0,
+            amount: 0.0,
+            offset: Vector2::zeros()
+        }
+    }
+}
+
+impl Screenshake
+{
+    pub fn effective_shake(&self) -> f32
+    {
+        let falloff = (self.duration / 0.1).min(1.0);
+
+        falloff * self.amount
+    }
+
+    pub fn set(&mut self, amount: f32)
+    {
+        if self.effective_shake() < amount
+        {
+            self.duration = 0.2;
+            self.amount = amount;
+        }
+    }
+
+    pub fn set_offset(&mut self, offset: Vector2<f32>)
+    {
+        self.offset = offset;
+    }
+
+    pub fn offset(&self) -> Vector2<f32>
+    {
+        self.offset
+    }
+
+    pub fn update(&mut self, dt: f32)
+    {
+        self.duration = (self.duration - dt).max(0.0);
+
+        self.offset *= 0.01_f32.powf(dt);
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Player
 {
+    #[serde(skip, default)]
+    pub screenshake: Screenshake,
     pub kills: u32,
     pub stats: [StatLevel; StatId::COUNT],
     leveled_up: Vec<StatId>
@@ -111,7 +177,12 @@ impl Default for Player
 {
     fn default() -> Self
     {
-        Self{kills: 0, stats: [StatLevel::default(); StatId::COUNT], leveled_up: Vec::new()}
+        Self{
+            screenshake: Screenshake::default(),
+            kills: 0,
+            stats: [StatLevel::default(); StatId::COUNT],
+            leveled_up: Vec::new()
+        }
     }
 }
 

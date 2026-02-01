@@ -4,5 +4,6 @@ pub mod physical_system;
 pub mod collider_system;
 pub mod raycast_system;
 pub mod enemy_system;
+pub mod player_system;
 pub mod anatomy_system;
 pub mod mouse_highlight_system;

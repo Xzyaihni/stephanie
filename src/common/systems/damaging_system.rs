@@ -30,7 +30,7 @@ use crate::{
         raycast::*,
         collider::*,
         item::*,
-        systems::{raycast_system, collider_system},
+        systems::{raycast_system, collider_system, player_system},
         ENTITY_SCALE,
         Loot,
         LootState,
@@ -41,15 +41,16 @@ use crate::{
         AnyEntities,
         Entity,
         World,
-        player::StatId,
+        player::{WEAK_SCREENSHAKE, MEDIUM_SCREENSHAKE, MEDIUM_KICK, StatId},
         enemy_creator::ENEMY_MASS,
         entity::{iterate_components_with, ClientEntities},
-        world::{TILE_SIZE, TilePos}
+        world::{TILE_SIZE, CHUNK_VISUAL_SIZE, TilePos}
     }
 };
 
 
 const HIGHLIGHT_DURATION: f32 = 0.2;
+const SCREENSHAKE_DISTANCE: f32 = CHUNK_VISUAL_SIZE;
 
 pub fn fall_damage(
     entities: &ClientEntities,
@@ -59,6 +60,19 @@ pub fn fall_damage(
     damage: f32
 )
 {
+    let screenshake_near = |amount|
+    {
+        if let Some(transform) = entities.transform(entity)
+        {
+            player_system::players_near(entities, transform.position, SCREENSHAKE_DISTANCE).for_each(|(_, player)|
+            {
+                player.borrow_mut().screenshake.set(amount);
+            });
+        }
+    };
+
+    screenshake_near(WEAK_SCREENSHAKE);
+
     if let Some(mut anatomy) = entities.anatomy_mut(entity)
     {
         anatomy.fall_damage(damage);
@@ -70,6 +84,8 @@ pub fn fall_damage(
 
         if *health <= 0.0
         {
+            screenshake_near(MEDIUM_SCREENSHAKE);
+
             destroy_entity(entities, textures, loot, entity);
         }
     }
@@ -287,13 +303,23 @@ pub fn damager<'a, 'b, 'c>(
                 }).unwrap_or_default();
 
                 let transform = Transform{
-                    position: Vector3::from(tile_pos.position()) + Vector3::repeat(TILE_SIZE / 2.0),
+                    position: tile_pos.entity_position(),
                     scale: Vector3::repeat(TILE_SIZE),
                     ..Default::default()
                 };
 
+                if let Some(mut player) = entities.player_mut(result.other_entity)
+                {
+                    player.screenshake.set(WEAK_SCREENSHAKE);
+                }
+
                 if let Some(name) = destroyed
                 {
+                    player_system::players_near(entities, tile_pos.entity_position(), SCREENSHAKE_DISTANCE).for_each(|(_, player)|
+                    {
+                        player.borrow_mut().screenshake.set(MEDIUM_SCREENSHAKE);
+                    });
+
                     destroy_tile_dependent(entities, textures, space, loot, tile_pos);
                     spawn_items(entities, textures, loot, &transform, &name);
                 }
@@ -870,6 +896,24 @@ pub fn damage_entity(
     damage: Damage
 )
 {
+    if let Some(mut player) = entities.player_mut(entity)
+    {
+        player.screenshake.set(MEDIUM_SCREENSHAKE);
+
+        if let Some(direction) = entities.transform(other_entity).zip(entities.transform(entity)).map(|(other, this)|
+        {
+            (this.position - other.position).xy().normalize()
+        })
+        {
+            player.screenshake.set_offset(direction * MEDIUM_KICK);
+        }
+    }
+
+    if let Some(mut player) = entities.player_mut(other_entity)
+    {
+        player.screenshake.set(WEAK_SCREENSHAKE);
+    }
+
     turn_towards_other(entities, entity, other_entity);
 
     if let Some(mut health) = entities.health_mut(entity)
@@ -878,6 +922,11 @@ pub fn damage_entity(
 
         if *health <= 0.0
         {
+            if let Some(mut player) = entities.player_mut(other_entity)
+            {
+                player.screenshake.set(MEDIUM_SCREENSHAKE);
+            }
+
             destroy_entity(entities, textures, loot, entity);
         }
     }

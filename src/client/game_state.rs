@@ -75,6 +75,7 @@ use crate::{
             enemy_system,
             damaging_system,
             anatomy_system,
+            player_system,
             collider_system::{self, ContactResolver}
         },
         entity::{
@@ -123,7 +124,7 @@ mod anatomy_locations;
 pub mod ui;
 
 
-const DEFAULT_ZOOM: f32 = 3.0;
+pub const DEFAULT_ZOOM: f32 = 3.0;
 
 fn mouse_object_size(screen_size: [f32; 2], texture_size: Vector2<f32>) -> Vector3<f32>
 {
@@ -222,6 +223,11 @@ impl ClientEntitiesContainer
         crate::frame_time_this!{
             [update, update_pre] -> anatomy_system_update,
             anatomy_system::update(&mut self.entities, dt)
+        };
+
+        crate::frame_time_this!{
+            [update, update_pre] -> player_update,
+            player_system::update(&mut self.entities, dt)
         };
 
         let space = crate::frame_time_this!{
@@ -1383,6 +1389,11 @@ impl GameState
         }
 
         self.camera_resized();
+    }
+
+    pub fn camera_scale(&self) -> f32
+    {
+        self.camera_scale
     }
 
     fn camera_resized(&mut self)

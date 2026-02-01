@@ -381,6 +381,7 @@ define_timings!
         update_pre is TimingsUpdatePre -> {
             lazy_transform_update,
             anatomy_system_update,
+            player_update,
             spatial_grid_build,
             sleeping_update,
             enemy_system_update,

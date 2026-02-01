@@ -6,7 +6,7 @@ use std::{
     cell::{RefMut, RefCell}
 };
 
-use nalgebra::{Unit, Vector2, Vector3};
+use nalgebra::{vector, Unit, Vector2, Vector3};
 
 use yanyaengine::{
     Transform,
@@ -21,6 +21,8 @@ use crate::{
         some_or_value,
         some_or_return,
         inventory_remove_item,
+        angle_to_direction_3d,
+        random_rotation,
         ENTITY_SCALE,
         collider::*,
         character::*,
@@ -47,6 +49,7 @@ use crate::{
 };
 
 use super::game_state::{
+    DEFAULT_ZOOM,
     GameState,
     NotificationInfo,
     NotificationKindInfo,
@@ -107,7 +110,7 @@ impl Game
             let entities = game_state.entities_mut();
             let mouse_entity = entities.push_eager(true, EntityInfo{
                 transform: Some(Transform{
-                    scale: Vector3::new(TILE_SIZE * 0.1, TILE_SIZE * 0.1, TILE_SIZE * 5.0),
+                    scale: vector![TILE_SIZE * 0.1, TILE_SIZE * 0.1, TILE_SIZE * 5.0],
                     ..Default::default()
                 }),
                 collider: Some(ColliderInfo{
@@ -277,7 +280,7 @@ impl Game
             value
         };
 
-        Ok(Vector3::new(next_float()?, next_float()?, next_float()?))
+        Ok(vector![next_float()?, next_float()?, next_float()?])
     }
 
     fn pop_entity(entities: &ClientEntities, args: &mut PrimitiveArgs) -> Result<Entity, lisp::Error>
@@ -611,6 +614,34 @@ impl Game
                     {
                         let speed = args.next().unwrap().as_float()?;
                         game_state.world.set_time_speed(speed as f64);
+
+                        Ok(().into())
+                    })
+                }));
+        }
+
+        {
+            let game_state = self.game_state.clone();
+
+            primitives.add(
+                "set-screenshake-offset",
+                PrimitiveProcedureInfo::new_simple(2, Effect::Impure, move |mut args|
+                {
+                    with_game_state(&game_state, |game_state|
+                    {
+                        let entity = Self::pop_entity(game_state.entities(), &mut args)?;
+
+                        let list = args.next().unwrap().as_list(args.memory)?;
+
+                        let x = list.car.as_float()?;
+                        let y = list.cdr.as_list(args.memory)?.car.as_float()?;
+
+                        let mut player = game_state.entities().player_mut(entity).ok_or_else(||
+                        {
+                            lisp::Error::Custom("entity doesnt have a player component".to_owned())
+                        })?;
+
+                        player.screenshake.set_offset(vector![x, y]);
 
                         Ok(().into())
                     })
@@ -1171,8 +1202,7 @@ impl<'a> PlayerContainer<'a>
 
     fn update_camera_follow(&self) -> bool
     {
-        let mouse_position = self.game_state.world_mouse_position();
-        let mouse_position = Vector3::new(mouse_position.x, mouse_position.y, 0.0);
+        let mouse_position = with_z(self.game_state.world_mouse_position(), 0.0);
 
         let entities = self.game_state.entities();
 
@@ -1185,6 +1215,19 @@ impl<'a> PlayerContainer<'a>
         {
             entity_position + mouse_position * 0.13
         };
+
+        let player = entities.player(self.info.entity);
+        let screenshake = player.as_ref().map(|x| &x.screenshake);
+
+        let camera_zoom = self.game_state.camera_scale() / DEFAULT_ZOOM;
+
+        let shake_strength = screenshake.map(|screenshake| screenshake.effective_shake()).unwrap_or(0.0) * camera_zoom;
+
+        let shake_offset = with_z(angle_to_direction_3d(random_rotation()).xy() * shake_strength, 0.0);
+
+        let kick_offset = with_z(screenshake.map(|screenshake| screenshake.offset() * camera_zoom).unwrap_or_default(), 0.0);
+
+        let follow_position = follow_position + shake_offset + kick_offset;
 
         some_or_value!(entities.target(self.info.camera), false).position = follow_position;
 
@@ -1659,8 +1702,7 @@ impl<'a> PlayerContainer<'a>
             return false;
         }
 
-        let mouse_position = self.game_state.world_mouse_position();
-        let mouse_position = Vector3::new(mouse_position.x, mouse_position.y, 0.0);
+        let mouse_position = with_z(self.game_state.world_mouse_position(), 0.0);
 
         let camera_position = self.game_state.camera.read().position().coords;
 
