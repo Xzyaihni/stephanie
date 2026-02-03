@@ -13,7 +13,7 @@
         (make-area
             (make-point 5 4)
             (make-point (- size-x 9) (- size-y 7)))
-        (tile 'concrete)))
+        (tile 'concrete-path)))
 
 (define (generate-ground)
     (define this-chunk (filled-chunk (tile 'grassie)))
@@ -22,7 +22,7 @@
         (make-area
             (make-point 6 8)
             (make-point 6 6))
-        (tile 'concrete))
+        (tile 'concrete-path))
     (put-tile
         this-chunk
         (make-point (/ size-x 2) (- size-y 5))

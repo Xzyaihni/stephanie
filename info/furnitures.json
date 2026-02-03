@@ -36,5 +36,11 @@
         "container": true,
         "attached": true,
         "health": 30.0
+    },
+    {
+        "name": "safe",
+        "symmetry": "Horizontal",
+        "container": true,
+        "health": 200.0
     }
 ]

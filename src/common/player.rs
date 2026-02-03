@@ -10,9 +10,9 @@ use crate::common::{Entity, Pos3};
 
 
 pub const WEAKER_SCREENSHAKE: f32 = 0.02;
-pub const WEAK_SCREENSHAKE: f32 = 0.05;
-pub const MEDIUM_SCREENSHAKE: f32 = 0.1;
-pub const STRONG_SCREENSHAKE: f32 = 0.2;
+pub const WEAK_SCREENSHAKE: f32 = 0.035;
+pub const MEDIUM_SCREENSHAKE: f32 = 0.07;
+pub const STRONG_SCREENSHAKE: f32 = 0.12;
 
 pub const WEAK_KICK: f32 = 0.04;
 pub const MEDIUM_KICK: f32 = 0.1;

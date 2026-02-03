@@ -176,6 +176,7 @@
                         (place-furniture (make-point (x-of 5) 8) 'wood_chair side-up)
                         (place-furniture (make-point (x-of 5) 11) 'wood_chair side-down)
                         (place-furniture (make-point (x-of 2) 13) 'bed side-down)
+                        (place-furniture (make-point (x-of 5) 13) 'safe side-down)
                         (place-sink (make-point (x-of 2) 2) side-up)
                         (place-enemy (make-point (x-of 3) 10)))
                     (lambda ()
