@@ -269,7 +269,7 @@ pub fn damager<'a, 'b, 'c>(
                 {
                     if let Some((stat_id, amount)) = result.on_hit_gain
                     {
-                        if let Some(mut player) = entities.player_mut_no_change(result.other_entity)
+                        if let Some(mut player) = entities.player_mut(result.other_entity)
                         {
                             player.add_experience(stat_id, amount);
 
