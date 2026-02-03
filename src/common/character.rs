@@ -746,13 +746,26 @@ impl Character
         self.actions.push(action);
     }
 
-    pub fn damage_held_durability(&mut self, entities: &ClientEntities)
+    pub fn damage_held_durability(&mut self, entities: &ClientEntities, textures: &CommonTextures)
     {
         let info = some_or_return!(self.info.as_ref());
         let held = some_or_return!(self.holding);
 
+        let holding = info.holding;
+
         damage_durability_with(entities, info.this, held, ||
         {
+            let disappear_action = item_disappear_watcher(textures).action;
+
+            if let Some(holding) = holding
+            {
+                entities.add_watcher(holding, Watcher{
+                    kind: WatcherType::Instant,
+                    action: disappear_action,
+                    ..Default::default()
+                });
+            }
+
             self.on_removed_item(held)
         });
     }
@@ -1803,7 +1816,7 @@ impl Character
             ..Default::default()
         });
 
-        self.damage_held_durability(combined_info.entities);
+        self.damage_held_durability(combined_info.entities, combined_info.common_textures);
 
         true
     }

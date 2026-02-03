@@ -853,7 +853,7 @@ fn reduce_durability(
 
     if let Some(mut character) = entities.character_mut(entity)
     {
-        character.damage_held_durability(entities);
+        character.damage_held_durability(entities, textures);
         return true;
     }
 
