@@ -106,6 +106,11 @@
         ((eq? state 'create) '(heal_pills))
         ((eq? state 'destroy) (standard-drops '(metal_shard glass_shard)))))
 
+(define (safe)
+    (cond
+        ((eq? state 'create) '(glock))
+        ((eq? state 'destroy) (standard-drops '(metal_shard)))))
+
 (define (wood_chair) (points-drops '((short_stick 1) (stick 2) (plank 3)) 3))
 (define (wood_table) (points-drops '((stick 2) (plank 3)) 6))
 (define (bed) (points-drops '((cloth 2) (stick 2) (plank 3)) 8))
