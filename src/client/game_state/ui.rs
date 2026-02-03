@@ -3087,6 +3087,7 @@ impl Ui
 
             let enemy = entities.enemy(entity);
             let enemy = enemy.as_ref();
+
             let fraction = enemy.map(|x| x.seen_fraction()).unwrap_or(None);
             let is_attacking = enemy.map(|x| x.is_attacking()).unwrap_or(false);
 

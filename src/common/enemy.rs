@@ -584,6 +584,7 @@ impl Enemy
 
         if anatomy.speed() == 0.0
         {
+            self.seen_timer = 0.0;
             return false;
         }
 
