@@ -2008,8 +2008,21 @@ impl Character
         };
 
         let damage_scale = strength_scale * mass_damage * damage_buff * crit.unwrap_or(1.0) * level_buff;
+
+        let damage_amount = {
+            let bash_damage = if hands_attack
+            {
+                item_info.bash_damage()
+            } else
+            {
+                (*item_info).clone().with_changed(|x| x.mass += hand_mass).bash_damage()
+            };
+
+            bash_damage * damage_scale
+        };
+
         let damage = DamagePartial{
-            data: (*item_info).clone().with_changed(|x| x.mass += hand_mass).bash_damage() * damage_scale,
+            data: damage_amount,
             height: self.melee_height(),
             poke: false
         };
