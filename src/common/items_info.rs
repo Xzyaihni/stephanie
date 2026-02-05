@@ -95,6 +95,14 @@ impl Ranged
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
+pub struct AmmoInfoRaw
+{
+    items: Vec<String>,
+    max: i32
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ItemInfoRaw
 {
     name: String,
@@ -103,6 +111,7 @@ pub struct ItemInfoRaw
     clothing: Option<ClothingInfoRaw>,
     rarity_rolls: Option<bool>,
     damage_scale: Option<f32>,
+    ammo: Option<AmmoInfoRaw>,
     comfort: Option<f32>,
     sharpness: Option<f32>,
     side_sharpness: Option<f32>,
@@ -116,6 +125,13 @@ pub struct ItemInfoRaw
 pub type ItemsInfoRaw = Vec<ItemInfoRaw>;
 
 #[derive(Debug, Clone)]
+pub struct AmmoInfo
+{
+    pub items: Vec<ItemId>,
+    pub max: i32
+}
+
+#[derive(Debug, Clone)]
 pub struct ItemInfo
 {
     pub name: String,
@@ -124,6 +140,7 @@ pub struct ItemInfo
     pub clothing: Option<ClothingInfo>,
     pub rarity_rolls: bool,
     pub damage_scale: f32,
+    pub ammo: Option<AmmoInfo>,
     pub comfort: f32,
     pub sharpness: f32,
     pub side_sharpness: f32,
@@ -146,6 +163,7 @@ impl ItemInfo
 {
     fn from_raw(
         assets: Option<&Assets>,
+        item_names: &HashMap<String, ItemId>,
         tags: &mut ItemTags,
         textures_root: &Path,
         raw: ItemInfoRaw
@@ -169,6 +187,24 @@ impl ItemInfo
             ClothingInfo::from_raw(assets, &textures_root.join("clothing").join(&texture_name), raw)
         });
 
+        let ammo = raw.ammo.map(|ammo|
+        {
+            AmmoInfo{
+                items: ammo.items.into_iter().filter_map(|x|
+                {
+                    let item = item_names.get(&x).copied();
+
+                    if item.is_none()
+                    {
+                        eprintln!("cant find item named `{x}`, skipping");
+                    }
+
+                    item
+                }).collect(),
+                max: ammo.max
+            }
+        });
+
         Self{
             name: raw.name,
             ranged: raw.ranged,
@@ -176,6 +212,7 @@ impl ItemInfo
             clothing,
             rarity_rolls: raw.rarity_rolls.unwrap_or(true),
             damage_scale: raw.damage_scale.unwrap_or(1.0),
+            ammo,
             comfort: raw.comfort.unwrap_or(1.0),
             sharpness: raw.sharpness.unwrap_or(0.0),
             side_sharpness: raw.side_sharpness.unwrap_or(0.0),
@@ -196,7 +233,11 @@ impl ItemInfo
 
     fn damage_base(&self) -> f32
     {
-        self.mass * self.damage_scale
+        let scale: f32 = 0.3;
+
+        let mass_damage = (self.mass * scale.recip()).powi(2) * scale;
+
+        mass_damage * self.damage_scale
     }
 
     pub fn bash_damage(&self) -> DamageType
@@ -316,11 +357,13 @@ impl ItemsInfo
             Vec::new()
         });
 
+        let item_names: HashMap<String, ItemId> = items.iter().enumerate().map(|(index, item)| (item.name.clone(), ItemId(index))).collect();
+
         let mut tags = ItemTags::new();
 
         let items: Vec<_> = items.into_iter().map(|info_raw|
         {
-            ItemInfo::from_raw(assets, &mut tags, &textures_root, info_raw)
+            ItemInfo::from_raw(assets, &item_names, &mut tags, &textures_root, info_raw)
         }).collect();
 
         let generic_info = GenericInfo::new(items);

@@ -206,6 +206,7 @@ impl Faction
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum CharacterAction
 {
+    Reload{item: Option<InventoryItem>},
     Throw{state: bool, target: Vector3<f32>},
     Poke{state: bool},
     Bash,
@@ -822,6 +823,77 @@ impl Character
     pub fn update_holding(&mut self)
     {
         self.held_update = true;
+    }
+
+    pub fn reload_cooldown(&self, entities: &ClientEntities) -> Option<f32>
+    {
+        let info = self.info.as_ref()?;
+
+        Some(3.0 / (1.0 + entities.player(info.this).map(|x| x.get_stat(StatId::Ranged).level() as f32 * 0.08).unwrap_or(0.0)))
+    }
+
+    fn reload_item(&mut self, combined_info: CombinedInfo, item: InventoryItem)
+    {
+        let info = some_or_return!(self.info.as_ref());
+        let this_entity = info.this;
+
+        let reload_cooldown = some_or_return!(self.reload_cooldown(combined_info.entities));
+
+        let entities = combined_info.entities;
+
+        let items_info = combined_info.items_info;
+
+        let ammo = {
+            let inventory = some_or_return!(entities.inventory(info.this));
+
+            let item = some_or_return!(inventory.get(item));
+            let item_info = items_info.get(item.id);
+
+            let ammo = some_or_return!(item_info.ammo.as_ref());
+
+            if item.ammo.len() >= ammo.max as usize
+            {
+                return;
+            }
+
+            ammo
+        };
+
+        ammo.items.iter().for_each(|search_ammo|
+        {
+            let find_ammo = || -> Option<(InventoryItem, ItemId)>
+            {
+                let inventory = entities.inventory(this_entity)?;
+                let x = inventory.items_ids().find_map(|(inventory_id, item)|
+                {
+                    let item_id = item.id;
+                    (item_id == *search_ammo).then_some((inventory_id, item_id))
+                });
+
+                x
+            };
+
+            while let Some((id, found_ammo)) = find_ammo()
+            {
+                inventory_remove_item_with(entities, this_entity, id, ||
+                {
+                    self.on_removed_item(id);
+                });
+
+                let mut inventory = some_or_return!(entities.inventory_mut(this_entity));
+
+                let mut item = some_or_unexpected_return!(inventory.get_mut(items_info, item));
+
+                item.ammo.push(found_ammo);
+
+                self.attack_cooldown = reload_cooldown;
+
+                if item.ammo.len() >= ammo.max as usize
+                {
+                    return;
+                }
+            }
+        });
     }
 
     pub fn on_removed_item(&mut self, item: InventoryItem)
@@ -1756,11 +1828,27 @@ impl Character
         let item = some_or_false!(self.held_item(combined_info.entities));
 
         let items_info = combined_info.items_info;
-        let ranged = some_or_false!(&items_info.get(item.id).ranged);
 
-        self.attack_cooldown = ranged.cooldown();
+        let item_info = items_info.get(item.id);
 
         let info = some_or_false!(self.info.as_ref());
+
+        if item_info.ammo.is_some()
+        {
+            let held = some_or_false!(self.holding);
+
+            let mut inventory = some_or_false!(combined_info.entities.inventory_mut(info.this));
+            let mut item = some_or_false!(inventory.get_mut(items_info, held));
+
+            if item.ammo.pop().is_none()
+            {
+                return false;
+            }
+        }
+
+        let ranged = some_or_false!(&item_info.ranged);
+
+        self.attack_cooldown = ranged.cooldown();
 
         let level_buff = if let Some(player) = combined_info.entities.player(info.this)
         {
@@ -1771,7 +1859,7 @@ impl Character
         };
 
         let source = Some(info.this);
-        let start = combined_info.entities.transform(info.this).unwrap().position;
+        let start = some_or_unexpected_return!(combined_info.entities.transform(info.this)).position;
 
         if let Some(mut player) = combined_info.entities.player_mut_no_change(info.this)
         {
@@ -2083,6 +2171,13 @@ impl Character
 
             match action
             {
+                CharacterAction::Reload{item} =>
+                {
+                    if let Some(item) = item.or(self.holding)
+                    {
+                        self.reload_item(combined_info, item)
+                    }
+                },
                 CharacterAction::Throw{state: false, ..} => self.throw_start(combined_info),
                 CharacterAction::Throw{state: true, target} => with_clear!(self.throw_held(combined_info, target)),
                 CharacterAction::Poke{state: false} => self.poke_attack_start(combined_info),

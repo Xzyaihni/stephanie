@@ -60,7 +60,7 @@ use crate::{
         MessagePasser,
         ConnectionId,
         OnConnectInfo,
-        inventory::anatomy_weight_limit,
+        inventory::BASE_INVENTORY_LIMIT,
         character::SpriteState,
         world::{TILE_SIZE, CHUNK_VISUAL_SIZE, Pos3},
         chunk_saver::{with_temp_save, load_world_file, json_loader, json_saver},
@@ -432,7 +432,7 @@ impl GameServer
                 ..Default::default()
             }.into()),
             collider: Some(Character::collider_with_state(SpriteState::Normal, true).into()),
-            inventory: Some(Inventory::new(anatomy_weight_limit(&anatomy))),
+            inventory: Some(Inventory::new(BASE_INVENTORY_LIMIT)),
             character: Some(Character::new(self.data_infos.player_character, Faction::Player)),
             anatomy: Some(anatomy),
             ..Default::default()

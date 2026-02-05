@@ -1,4 +1,7 @@
-use std::ops::{Index, Deref, DerefMut};
+use std::{
+    iter,
+    ops::{Index, Deref, DerefMut}
+};
 
 use serde::{Serialize, Deserialize};
 
@@ -9,7 +12,6 @@ use crate::common::{
     ObjectsStore,
     Item,
     ItemsInfo,
-    Anatomy,
     Entity,
     AnyEntities,
     entity::ClientEntities
@@ -20,14 +22,7 @@ pub use sorter::InventorySorter;
 mod sorter;
 
 
-pub fn anatomy_weight_limit(anatomy: &Anatomy) -> f32
-{
-    let strength = anatomy.strength();
-
-    if strength <= 0.0 { return 0.0; }
-
-    strength
-}
+pub const BASE_INVENTORY_LIMIT: f32 = 2.0;
 
 pub fn inventory_remove_item(entities: &ClientEntities, entity: Entity, item: InventoryItem) -> Option<Item>
 {
@@ -173,7 +168,10 @@ impl Inventory
 
     fn inventory_updated(&mut self, info: &ItemsInfo)
     {
-        self.weight_total = self.items.iter().map(|(_, x)| info.get(x.id).mass).sum::<f32>().into();
+        self.weight_total = self.items.iter().map(|(_, x)|
+        {
+            x.ammo.iter().copied().chain(iter::once(x.id)).map(|id| info.get(id).mass).sum::<f32>()
+        }).sum::<f32>().into();
     }
 
     pub fn set_weight_limit(&mut self, value: f32)

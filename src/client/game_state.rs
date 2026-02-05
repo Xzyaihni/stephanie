@@ -68,7 +68,6 @@ use crate::{
         sender_loop::BufferSender,
         message::Message,
         character::PartialCombinedInfo,
-        inventory::anatomy_weight_limit,
         clothing::EquipSlot,
         player::MEDIUM_SCREENSHAKE,
         systems::{
@@ -603,6 +602,7 @@ pub enum InventoryWhich
 #[derive(Debug, Clone, PartialEq)]
 pub enum GameUiEvent
 {
+    Reload{item: InventoryItem},
     Info{which: InventoryWhich, item: InventoryItem},
     Use{usage: ItemUsage, which: InventoryWhich, item: InventoryItem},
     Drop{which: InventoryWhich, item: InventoryItem},
@@ -610,7 +610,8 @@ pub enum GameUiEvent
     Unwield,
     Equip(InventoryItem),
     Unequip(EquipSlot),
-    Take(InventoryItem)
+    Take(Vec<InventoryItem>),
+    TakeOne(InventoryItem)
 }
 
 impl GameUiEvent
@@ -619,6 +620,7 @@ impl GameUiEvent
     {
         match self
         {
+            Self::Reload{..} => "reload",
             Self::Info{..} => "info",
             Self::Use{usage, ..} => usage.name(),
             Self::Drop{..} => "drop",
@@ -626,7 +628,8 @@ impl GameUiEvent
             Self::Unwield => "unwield",
             Self::Equip(..) => "equip",
             Self::Unequip(..) => "unequip",
-            Self::Take(..) => "take"
+            Self::Take(..) => "take",
+            Self::TakeOne(..) => "take one"
         }
     }
 }
@@ -1018,17 +1021,6 @@ impl GameState
             {
                 if let Some(mut anatomy) = entities.anatomy_mut_no_change(entity)
                 {
-                    {
-                        let weight_limit = anatomy_weight_limit(&anatomy);
-                        if entities.inventory(entity).map(|x| x.weight_limit() != weight_limit).unwrap_or(false)
-                        {
-                            if let Some(mut inventory) = entities.inventory_mut(entity)
-                            {
-                                inventory.set_weight_limit(weight_limit);
-                            }
-                        }
-                    }
-
                     if anatomy.take_killed()
                     {
                         if entity == player_entity

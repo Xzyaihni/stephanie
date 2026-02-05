@@ -219,6 +219,13 @@
         "tags": ["sticklike"]
     },
     {
+        "name": "sharp stick",
+        "comfort": 1.5,
+        "sharpness": 0.2,
+        "mass": 0.29,
+        "tags": ["sticklike"]
+    },
+    {
         "name": "plank",
         "comfort": 0.5,
         "mass": 1.0,
@@ -267,8 +274,18 @@
                 "damage": 1
             }
         },
+        "ammo": {
+            "items": ["bullet"],
+            "max": 5
+        },
         "comfort": 0.7,
         "mass": 0.5
+    },
+    {
+        "name": "bullet",
+        "comfort": 0.5,
+        "mass": 0.01,
+        "durability": 0.1
     },
     {
         "name": "heal pills",

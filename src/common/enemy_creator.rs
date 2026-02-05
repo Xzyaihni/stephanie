@@ -23,7 +23,7 @@ use crate::common::{
     CharactersInfo,
     ItemsInfo,
     EntityInfo,
-    inventory::anatomy_weight_limit,
+    inventory::BASE_INVENTORY_LIMIT,
     lazy_transform::*
 };
 
@@ -45,7 +45,7 @@ pub fn create(
 
     let anatomy = Anatomy::Human(HumanAnatomy::new(info.anatomy.clone()));
 
-    let mut inventory = Inventory::new(anatomy_weight_limit(&anatomy));
+    let mut inventory = Inventory::new(BASE_INVENTORY_LIMIT);
     loot.create(LootState::Create, &name).into_iter().for_each(|item| { inventory.push(items_info, item); });
 
     let mut character = Character::new(info.character, Faction::Zob);

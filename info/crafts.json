@@ -72,6 +72,13 @@
         ]
     },
     {
+        "produces": ["sharp stick"],
+        "requires": [
+            {"item": {"WithTag": "slicey"}, "consume": false},
+            {"item": {"Item": "stick"}}
+        ]
+    },
+    {
         "name": "disassemble axe",
         "produces": ["axe head", "stick"],
         "requires": [

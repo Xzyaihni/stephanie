@@ -1,4 +1,5 @@
 use std::{
+    mem,
     f32,
     fmt::{self, Display},
     collections::HashMap,
@@ -365,6 +366,7 @@ enum ItemPart
     Indicator,
     Body,
     Icon(IconPart),
+    Count,
     Name,
     EquipIcon
 }
@@ -472,7 +474,7 @@ pub struct InventoryOpenInfo<'a>
     pub item: &'a Item,
     pub item_info: &'a ItemInfo,
     pub equip: Option<EquipState>,
-    pub id: InventoryItem
+    pub ids: Vec<InventoryItem>
 }
 
 pub type InventoryOnClick = Box<dyn FnMut(InventoryOpenInfo) -> Vec<GameUiEvent>>;
@@ -507,24 +509,36 @@ fn draw_item_image(
     parent: UiParentElement,
     sprite: Sprite,
     id: impl Fn(IconPart) -> UiId,
-    size: UiElementSize<UiId>
+    size: UiElementSize<UiId>,
+    tight: Option<f32>
 ) -> TreeInserter<UiId>
 {
     let aspect = sprite.aspect();
 
-    let image = parent.update(id(IconPart::Body), UiElement{
-        width: size.clone(),
-        height: size,
-        children_layout: if aspect.x == 1.0 { UiLayout::Horizontal } else { UiLayout::Vertical },
-        ..Default::default()
-    });
+    if let Some(tight_size) = tight
+    {
+        parent.update(id(IconPart::Picture), UiElement{
+            texture: UiTexture::CustomId(sprite.id),
+            width: UiSize::Absolute(tight_size * aspect.x).into(),
+            height: UiSize::Absolute(tight_size * aspect.y).into(),
+            ..Default::default()
+        })
+    } else
+    {
+        let body = parent.update(id(IconPart::Body), UiElement{
+            width: size.clone(),
+            height: size,
+            children_layout: if aspect.x == 1.0 { UiLayout::Horizontal } else { UiLayout::Vertical },
+            ..Default::default()
+        });
 
-    image.update(id(IconPart::Picture), UiElement{
-        texture: UiTexture::CustomId(sprite.id),
-        width: UiSize::CopyElement(UiDirection::Horizontal, aspect.x, id(IconPart::Body)).into(),
-        height: UiSize::CopyElement(UiDirection::Vertical, aspect.y, id(IconPart::Body)).into(),
-        ..Default::default()
-    })
+        body.update(id(IconPart::Picture), UiElement{
+            texture: UiTexture::CustomId(sprite.id),
+            width: UiSize::CopyElement(UiDirection::Horizontal, aspect.x, id(IconPart::Body)).into(),
+            height: UiSize::CopyElement(UiDirection::Vertical, aspect.y, id(IconPart::Body)).into(),
+            ..Default::default()
+        })
+    }
 }
 
 fn single_health_color(fraction: Option<f32>) -> Lcha
@@ -550,7 +564,7 @@ fn health_color(anatomy: &Anatomy, id: ChangedPart) -> Lcha
 
 struct UiInventoryItem
 {
-    item: InventoryItem,
+    items: Vec<InventoryItem>,
     name: String,
     durability_fraction: f32,
     rarity: ItemRarity,
@@ -589,24 +603,59 @@ impl UiInventory
             self.sorter.order(info.items_info, a.1, b.1)
         });
 
-        items.into_iter().map(|(index, x)|
+        let mut inventory_items = Vec::new();
+
+        let mut state = Vec::new();
+        let mut i = 0;
+        loop
         {
-            let item = info.items_info.get(x.id);
+            let current_item = items.get(i);
+            let is_last = current_item.is_none();
 
-            let equip = character.and_then(|x|
+            if let Some((index, x)) = current_item
             {
-                x.get_equip_state(index)
-            });
+                let equip = character.and_then(|x|
+                {
+                    x.get_equip_state(*index)
+                });
 
-            UiInventoryItem{
-                item: index,
-                name: item.name.clone(),
-                durability_fraction: *x.durability / item.durability,
-                rarity: x.rarity,
-                equip,
-                texture: item.texture
+                if state.is_empty() || (equip.is_none() && state.get(0).map(|first_item| inventory.get(*first_item) == Some(x)).unwrap_or(true))
+                {
+                    state.push(*index);
+
+                    i += 1;
+
+                    continue;
+                }
             }
-        }).collect()
+
+            if !state.is_empty()
+            {
+                let (index, x) = items[i - 1];
+
+                let equip = character.and_then(|x|
+                {
+                    x.get_equip_state(index)
+                });
+
+                let items = mem::take(&mut state);
+
+                let item = info.items_info.get(x.id);
+
+                inventory_items.push(UiInventoryItem{
+                    items,
+                    name: item.name.clone(),
+                    durability_fraction: *x.durability / item.durability,
+                    rarity: x.rarity,
+                    equip,
+                    texture: item.texture
+                });
+            }
+
+            if is_last { break; }
+        }
+
+        inventory_items
     }
 
     fn update_items(&mut self, info: &UpdateInfo)
@@ -931,11 +980,11 @@ impl WindowKind
                     id(InventoryPart::List(list_part))
                 }, list_info, |_info, parent, item, is_selected|
                 {
-                    let is_picked = picked_item == Some(item.item);
+                    let is_picked = picked_item.as_ref().map(|x| item.items.contains(x)).unwrap_or(false);
 
                     let id = |part|
                     {
-                        id(InventoryPart::Item(item.item, part))
+                        id(InventoryPart::Item(item.items[0], part))
                     };
 
                     let rarity_color = item.rarity.color();
@@ -996,16 +1045,34 @@ impl WindowKind
 
                     add_padding_horizontal(body, UiSize::Pixels(half_padding).into());
 
+                    if item.items.len() > 1
+                    {
+                        body.update(id(ItemPart::Count), UiElement{
+                            texture: UiTexture::Text(TextInfo::new_simple(SMALL_TEXT_SIZE, item.items.len().to_string())),
+                            mix: Some(MixColorLch::color(color_primary)),
+                            animation: Animation{
+                                mix: Some(MixAnimation::default()),
+                                ..Default::default()
+                            },
+                            ..UiElement::fit_content()
+                        });
+                    }
+
+                    add_padding_horizontal(body, UiSize::Pixels(ITEM_PADDING / 2.0).into());
+
                     let icon_size = item_height * 0.9;
 
                     draw_item_image(
                         body,
                         item.texture,
                         |part| id(ItemPart::Icon(part)),
-                        icon_size.into()
+                        icon_size.into(),
+                        Some(icon_size)
                     );
 
-                    add_padding_horizontal(body, UiSize::Pixels(ITEM_PADDING / 2.0).into());
+                    add_padding_horizontal(body, (icon_size * (1.0 - item.texture.aspect().x)).into());
+
+                    add_padding_horizontal(body, UiSize::Pixels(ITEM_PADDING * 0.25).into());
 
                     body.update(id(ItemPart::Name), UiElement{
                         texture: UiTexture::Text(TextInfo::new_simple(font_size, item.name.clone())),
@@ -1083,7 +1150,8 @@ impl WindowKind
                     {
                         if info.controls.take_click_down()
                         {
-                            let item_id = inventory.list.items[index].item;
+                            let item_ids = inventory.list.items[index].items.clone();
+                            let item_id = item_ids[0];
 
                             if let Some(item) = items_inventory.get(item_id)
                             {
@@ -1091,7 +1159,7 @@ impl WindowKind
                                     item,
                                     item_info: info.items_info.get(item.id),
                                     equip: info.entities.character(entity).and_then(|character| character.get_equip_state(item_id)),
-                                    id: item_id
+                                    ids: item_ids
                                 };
 
                                 let events = (inventory.on_click)(open_info);
@@ -1127,6 +1195,15 @@ impl WindowKind
                     blocks.push(TextInfoBlock{color: color.into(), text: (name.to_owned() + "\n").into()});
                 }
 
+                if let Some(ammo) = item_info.ammo.as_ref()
+                {
+                    let ammo_amount = item.ammo.len();
+                    let ammo_max = ammo.max;
+
+                    blocks.push(TextInfoBlock{color: ACCENT_COLOR.into(), text: "ammo: ".into()});
+                    blocks.push(TextInfoBlock{color: YELLOW_COLOR.into(), text: format!("{ammo_amount}/{ammo_max}\n").into()});
+                }
+
                 blocks.push(TextInfoBlock{color: ACCENT_COLOR.into(), text: "weight: ".into()});
                 blocks.push(TextInfoBlock{color: YELLOW_COLOR.into(), text: float_format(2, item_info.mass).into()});
                 blocks.push(TextInfoBlock{color: ACCENT_COLOR.into(), text: " kg\n".into()});
@@ -1152,7 +1229,8 @@ impl WindowKind
                     body,
                     item_info.texture,
                     |part| id(ItemInfoPart::Icon(part)),
-                    size
+                    size,
+                    None
                 );
 
                 add_padding_horizontal(body, UiSize::Pixels(BODY_PADDING).into());
@@ -1368,7 +1446,8 @@ impl WindowKind
                                 panel,
                                 texture,
                                 |part| ui_craft_id(CraftItemPart::Icon(part), index),
-                                craft_item_height.into()
+                                craft_item_height.into(),
+                                None
                             );
 
                             add_padding_horizontal(panel, UiSize::Pixels(SMALL_PADDING).into());
@@ -1625,7 +1704,8 @@ impl WindowKind
                             panel,
                             info.items_info.get(*item).texture,
                             |part| id(CraftsCraftPart::Icon(index as u32, part)),
-                            item_height.into()
+                            item_height.into(),
+                            None
                         );
                     });
 

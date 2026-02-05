@@ -89,7 +89,7 @@ pub fn item_lazy_transform(
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, EnumCount, EnumIter, FromRepr, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, EnumCount, EnumIter, FromRepr, Serialize, Deserialize)]
 pub enum ItemRarity
 {
     Broken = 0,
@@ -229,6 +229,7 @@ pub struct Item
 {
     pub rarity: ItemRarity,
     pub buffs: Vec<ItemBuff>,
+    pub ammo: Vec<ItemId>,
     pub durability: SimpleF32,
     pub id: ItemId
 }
@@ -241,6 +242,7 @@ impl Default for Item
             id: ItemId::from(0),
             durability: DEFAULT_ITEM_DURABILITY.into(),
             buffs: Vec::new(),
+            ammo: Vec::new(),
             rarity: ItemRarity::Normal
         }
     }
@@ -253,7 +255,7 @@ impl Item
         let info = info.get(id);
         let rarity = if info.rarity_rolls { ItemRarity::random() } else { ItemRarity::Normal };
 
-        Item{rarity, buffs: rarity.random_buffs(), durability: info.durability.into(), id}
+        Item{rarity, buffs: rarity.random_buffs(), ammo: Vec::new(), durability: info.durability.into(), id}
     }
 
     pub fn damage_durability(&mut self) -> bool

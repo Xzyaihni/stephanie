@@ -1374,14 +1374,23 @@ impl<'a> PlayerContainer<'a>
 
                         self.game_state.ui.borrow_mut().open_inventory(mouse_touched, Box::new(move |InventoryOpenInfo{
                             item_info: info,
-                            id,
+                            ids,
                             ..
                         }|
                         {
-                            let mut actions = vec![
-                                GameUiEvent::Take(id),
-                                GameUiEvent::Info{which: InventoryWhich::Other, item: id}
-                            ];
+                            let mut actions = Vec::new();
+
+                            let id = ids[0].clone();
+                            let items_amount = ids.len();
+
+                            actions.push(GameUiEvent::Take(ids));
+
+                            if items_amount > 1
+                            {
+                                actions.push(GameUiEvent::TakeOne(id));
+                            }
+
+                            actions.push(GameUiEvent::Info{which: InventoryWhich::Other, item: id});
 
                             if let Some(usage) = info.usage().cloned()
                             {
@@ -1396,6 +1405,15 @@ impl<'a> PlayerContainer<'a>
                 }
 
                 self.character_action(CharacterAction::Bash);
+            },
+            Control::Reload =>
+            {
+                if is_animating
+                {
+                    return;
+                }
+
+                self.character_action(CharacterAction::Reload{item: None});
             },
             Control::Inventory =>
             {
@@ -1590,18 +1608,33 @@ impl<'a> PlayerContainer<'a>
                     character.set_equip(slot, None);
                 }
             },
-            GameUiEvent::Take(item) =>
+            GameUiEvent::Reload{item} =>
             {
-                if let Some(taken) = self.get_inventory_entity(InventoryWhich::Other)
-                    .and_then(|entity| inventory_remove_item(self.game_state.entities(), entity, item))
+                self.character_action(CharacterAction::Reload{item: Some(item)});
+            },
+            GameUiEvent::Take(_) | GameUiEvent::TakeOne(_) =>
+            {
+                let inventory_entity = some_or_return!(self.get_inventory_entity(InventoryWhich::Other));
+
+                let take_item = |item|
                 {
-                    if let Some(mut inventory) = self.game_state.entities().inventory_mut(self.info.entity)
+                    if let Some(taken) = inventory_remove_item(self.game_state.entities(), inventory_entity, item)
                     {
-                        inventory.push(&self.game_state.data_infos.items_info, taken);
+                        if let Some(mut inventory) = self.game_state.entities().inventory_mut(self.info.entity)
+                        {
+                            inventory.push(&self.game_state.data_infos.items_info, taken);
+                        }
+                    } else
+                    {
+                        eprintln!("tried to take item that doesnt exist");
                     }
-                } else
+                };
+
+                match event
                 {
-                    eprintln!("tried to take item that doesnt exist");
+                    GameUiEvent::Take(items) => items.into_iter().for_each(take_item),
+                    GameUiEvent::TakeOne(item) => take_item(item),
+                    _ => ()
                 }
             }
         }
@@ -1646,8 +1679,10 @@ impl<'a> PlayerContainer<'a>
 
         if !ui.close_inventory(this)
         {
-            ui.open_inventory(this, Box::new(move |InventoryOpenInfo{item_info: info, id, equip, ..}|
+            ui.open_inventory(this, Box::new(move |InventoryOpenInfo{item_info: info, ids, equip, ..}|
             {
+                let id = ids[0];
+
                 let mut actions = Vec::new();
 
                 if equip == Some(EquipState::Held)
@@ -1670,6 +1705,11 @@ impl<'a> PlayerContainer<'a>
                     {
                         actions.push(GameUiEvent::Equip(id));
                     }
+                }
+
+                if info.ammo.is_some()
+                {
+                    actions.push(GameUiEvent::Reload{item: id});
                 }
 
                 actions.push(GameUiEvent::Info{which: InventoryWhich::Player, item: id});

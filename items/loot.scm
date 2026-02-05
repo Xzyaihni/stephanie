@@ -6,7 +6,7 @@
 
 (define (drop-between-less f start end rate)
     (cond
-        ((= start 0) (if (rate) (drop-between-less 1 end rate) '()))
+        ((= start 0) (if (rate) (drop-between-less f 1 end rate) '()))
         ((= start 1) (maybe-multiple f rate (+ (- end start) 1)))
         (else (cons (f) (drop-between-less f (- start 1) (- end 1) rate)))))
 
@@ -78,17 +78,14 @@
 (define (bigy)
     (cond
         ((eq? state 'create) (and-maybe
-                (standard-drops '(boulder pipe sledgehammer axe))
+                (standard-drops '(boulder pipe sledgehammer axe meat_cleaver))
                 (drop-rate 1 2)
                 'heal_pills))
         ((eq? state 'equip) '())))
 
 (define (me)
     (cond
-        ((eq? state 'create) (and-maybe
-                (list (any-of '(meat_cleaver glock lamp)))
-                (drop-rate 1 5)
-                'heal_pills))
+        ((eq? state 'create) '(heal_pills))
         ((eq? state 'equip) '())))
 
 (define (crate)
@@ -108,7 +105,7 @@
 
 (define (safe)
     (cond
-        ((eq? state 'create) '(glock))
+        ((eq? state 'create) (and-always (append '(bullet bullet) (maybe-multiple (lambda () 'bullet) (drop-rate 1 3) 3)) 'glock))
         ((eq? state 'destroy) (standard-drops '(metal_shard)))))
 
 (define (wood_chair) (points-drops '((short_stick 1) (stick 2) (plank 3)) 3))

@@ -30,10 +30,23 @@ impl Order
         {
             Self::Alphabetical =>
             {
-                let this = &info.get(this.id).name;
-                let other = &info.get(other.id).name;
+                let ord = info.get(this.id).name.cmp(&info.get(other.id).name);
 
-                this.cmp(other)
+                if let Ordering::Equal = ord
+                {
+                    let rarity_ord = this.rarity.cmp(&other.rarity);
+
+                    if let Ordering::Equal = rarity_ord
+                    {
+                        this.durability.cmp(&other.durability)
+                    } else
+                    {
+                        rarity_ord
+                    }
+                } else
+                {
+                    ord
+                }
             }
         }
     }

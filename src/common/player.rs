@@ -1,4 +1,4 @@
-use std::mem;
+use std::{mem, cmp::Ordering};
 
 use nalgebra::Vector2;
 
@@ -9,7 +9,7 @@ use strum::{EnumIter, EnumCount};
 use crate::common::{Entity, Pos3};
 
 
-pub const WEAKER_SCREENSHAKE: f32 = 0.02;
+pub const WEAKER_SCREENSHAKE: f32 = 0.04;
 pub const WEAK_SCREENSHAKE: f32 = 0.05;
 pub const MEDIUM_SCREENSHAKE: f32 = 0.06;
 pub const STRONG_SCREENSHAKE: f32 = 0.08;
@@ -182,7 +182,9 @@ impl Screenshake
 {
     pub fn effective_shake(&self) -> f32
     {
-        self.layers.iter().map(ScreenshakeLayer::effective_shake).sum()
+        self.layers.iter().map(ScreenshakeLayer::effective_shake)
+            .max_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal))
+            .unwrap_or(0.0)
     }
 
     pub fn set(&mut self, amount: f32)

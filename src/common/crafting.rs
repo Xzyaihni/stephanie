@@ -108,6 +108,7 @@ pub fn craft_item(entities: &ClientEntities, entity: Entity, items: Vec<CraftCom
             let item = Item{
                 rarity,
                 buffs,
+                ammo: Vec::new(),
                 durability: (item_info.durability * average_durability).into(),
                 id
             };
