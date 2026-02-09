@@ -8,7 +8,7 @@ use nalgebra::{Vector2, Vector3};
 
 use serde::Deserialize;
 
-use yanyaengine::Assets;
+use yanyaengine::{Assets, game_object::*};
 
 use crate::common::{
     with_error,
@@ -101,12 +101,20 @@ pub struct AmmoInfoRaw
     max: i32
 }
 
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub enum SpecialPart<T>
+{
+    GunTop{speed: f32, amount: f32, texture: T}
+}
+
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ItemInfoRaw
 {
     name: String,
     ranged: Option<Ranged>,
+    special_part: Option<SpecialPart<String>>,
     usage: Option<ItemUsage>,
     clothing: Option<ClothingInfoRaw>,
     rarity_rolls: Option<bool>,
@@ -136,6 +144,7 @@ pub struct ItemInfo
 {
     pub name: String,
     pub ranged: Option<Ranged>,
+    pub special_part: Option<SpecialPart<Sprite>>,
     pub usage: Option<ItemUsage>,
     pub clothing: Option<ClothingInfo>,
     pub rarity_rolls: bool,
@@ -148,6 +157,7 @@ pub struct ItemInfo
     pub durability: f32,
     pub lighting: Light,
     pub tags: Vec<ItemTag>,
+    pub item_texture: Option<Sprite>,
     pub texture: Sprite
 }
 
@@ -159,10 +169,49 @@ impl GenericItem for ItemInfo
     }
 }
 
+pub struct TextureCreator<'a, 'b, 'c>
+{
+    pub builder_wrapper: &'a mut BuilderWrapper<'c>,
+    pub assets: &'b mut Assets
+}
+
+pub trait TextureCreatable
+{
+    fn combine(&mut self, a: &Sprite, b: &Sprite) -> Sprite;
+
+    fn load_texture(&self, textures_root: &Path, texture_name: &str) -> Sprite;
+}
+
+impl TextureCreatable for ()
+{
+    fn combine(&mut self, _a: &Sprite, _b: &Sprite) -> Sprite
+    {
+        Sprite{id: 0.into(), scale: Vector2::repeat(ENTITY_SCALE)}
+    }
+
+    fn load_texture(&self, _textures_root: &Path, _texture_name: &str) -> Sprite
+    {
+        Sprite{id: 0.into(), scale: Vector2::repeat(ENTITY_SCALE)}
+    }
+}
+
+impl<'a, 'b, 'c> TextureCreatable for TextureCreator<'a, 'b, 'c>
+{
+    fn combine(&mut self, a: &Sprite, b: &Sprite) -> Sprite
+    {
+        a.combine(self.builder_wrapper, self.assets, b)
+    }
+
+    fn load_texture(&self, textures_root: &Path, texture_name: &str) -> Sprite
+    {
+        load_texture(self.assets, textures_root, texture_name)
+    }
+}
+
 impl ItemInfo
 {
     fn from_raw(
-        assets: Option<&Assets>,
+        texture_creator: &mut impl TextureCreatable,
         item_names: &HashMap<String, ItemId>,
         tags: &mut ItemTags,
         textures_root: &Path,
@@ -174,17 +223,11 @@ impl ItemInfo
             raw.name.replace(' ', "_")
         });
 
-        let texture = assets.map(|assets|
-        {
-            load_texture(assets, textures_root, &texture_name)
-        }).unwrap_or_else(||
-        {
-            Sprite{id: 0.into(), scale: Vector2::repeat(ENTITY_SCALE)}
-        });
+        let texture = texture_creator.load_texture(textures_root, &texture_name);
 
-        let clothing = raw.clothing.zip(assets).map(|(raw, assets)|
+        let clothing = raw.clothing.map(|raw|
         {
-            ClothingInfo::from_raw(assets, &textures_root.join("clothing").join(&texture_name), raw)
+            ClothingInfo::from_raw(texture_creator, &textures_root.join("clothing").join(&texture_name), raw)
         });
 
         let ammo = raw.ammo.map(|ammo|
@@ -196,7 +239,7 @@ impl ItemInfo
 
                     if item.is_none()
                     {
-                        eprintln!("cant find item named `{x}`, skipping");
+                        eprintln!("[{}] cant find item named `{x}`, skipping", raw.name);
                     }
 
                     item
@@ -205,9 +248,38 @@ impl ItemInfo
             }
         });
 
+        let special_part = raw.special_part.map(|special_part|
+        {
+            match special_part
+            {
+                SpecialPart::GunTop{speed, amount, texture: x} =>
+                {
+                    SpecialPart::GunTop{speed, amount, texture: texture_creator.load_texture(textures_root, &x)}
+                }
+            }
+        });
+
+        let item_texture = special_part.as_ref().map(|special_part|
+        {
+            match special_part
+            {
+                SpecialPart::GunTop{texture: x, ..} =>
+                {
+                    if x.scale != texture.scale
+                    {
+                        eprintln!("[{}] gun top sprite size doesnt match gun sprite size", raw.name);
+                        return texture;
+                    }
+
+                    texture_creator.combine(&texture, x)
+                }
+            }
+        });
+
         Self{
             name: raw.name,
             ranged: raw.ranged,
+            special_part,
             usage: raw.usage,
             clothing,
             rarity_rolls: raw.rarity_rolls.unwrap_or(true),
@@ -220,6 +292,7 @@ impl ItemInfo
             durability: raw.durability.unwrap_or(1.0) * DEFAULT_ITEM_DURABILITY,
             lighting: raw.lighting.map(|strength| Light{strength, ..Default::default()}).unwrap_or_default(),
             tags: raw.tags.map(|x| x.into_iter().map(|x| tags.insert(x)).collect()).unwrap_or_default(),
+            item_texture,
             texture
         }
     }
@@ -343,7 +416,7 @@ impl ItemsInfo
     }
 
     pub fn parse(
-        assets: Option<&Assets>,
+        mut texture_creator: impl TextureCreatable,
         textures_root: PathBuf,
         info: PathBuf
     ) -> Self
@@ -363,7 +436,7 @@ impl ItemsInfo
 
         let items: Vec<_> = items.into_iter().map(|info_raw|
         {
-            ItemInfo::from_raw(assets, &item_names, &mut tags, &textures_root, info_raw)
+            ItemInfo::from_raw(&mut texture_creator, &item_names, &mut tags, &textures_root, info_raw)
         }).collect();
 
         let generic_info = GenericInfo::new(items);

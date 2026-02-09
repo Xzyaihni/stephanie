@@ -7,9 +7,10 @@ use serde::Deserialize;
 
 use nalgebra::Vector2;
 
-use yanyaengine::{Assets, TextureId};
+use yanyaengine::{Assets, TextureId, object::texture::SimpleImage, game_object::*};
 
 pub use crate::{
+    some_or_value,
     define_info_id,
     common::{texture_scale, normalize_path}
 };
@@ -61,6 +62,65 @@ impl Sprite
     pub fn aspect(&self) -> Vector2<f32>
     {
         self.scale / self.scale.max()
+    }
+
+    pub fn combine(&self, builder_wrapper: &mut BuilderWrapper, assets: &mut Assets, other: &Self) -> Self
+    {
+        let load_image_of = |id| -> Option<_>
+        {
+            let parent_path = if let Some(x) = assets.textures_path()
+            {
+                x
+            } else
+            {
+                eprintln!("empty assets, cant find {id:?}");
+
+                return None;
+            };
+
+            let name = if let Some(x) = assets.texture_name(id)
+            {
+                x
+            } else
+            {
+                eprintln!("cant find name of {id:?}");
+
+                return None;
+            };
+
+            let path = parent_path.join(name);
+
+            match SimpleImage::load(&path)
+            {
+                Ok(x) => Some(x),
+                Err(err) =>
+                {
+                    eprintln!("error loading image at {} ({err})", path.display());
+
+                    None
+                }
+            }
+        };
+
+        let mut a = some_or_value!(load_image_of(self.id), *self);
+        let b = some_or_value!(load_image_of(other.id), *self);
+
+        if (a.width != b.width) || (a.height != b.height)
+        {
+            eprintln!("cant combine sprites of different sizes");
+            return *self;
+        }
+
+        a.blit_blend(&b, 0, 0);
+
+        let combined_texture = builder_wrapper.create_texture(a.into());
+
+        let new_id = assets.push_texture(combined_texture);
+
+        Self{
+            id: new_id,
+            scale: self.scale
+        }
     }
 }
 

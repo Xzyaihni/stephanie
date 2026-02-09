@@ -57,6 +57,7 @@ use crate::{
         FurnituresInfo,
         CharactersInfo,
         Crafts,
+        items_info::TextureCreator,
         door::{door_scale, door_texture, DoorMaterial},
         sender_loop::{waiting_loop, DELTA_TIME}
     }
@@ -351,11 +352,19 @@ impl YanyaApp for App
     {
         let app_info = app_info.unwrap();
 
-        let items_info = Arc::new(ItemsInfo::parse(
-            Some(&partial_info.object_info.assets.lock()),
-            "items".into(),
-            "items/items.json".into()
-        ));
+        let items_info = {
+            let mut assets = partial_info.object_info.assets.lock();
+            let builder_wrapper = &mut partial_info.object_info.builder_wrapper;
+
+            Arc::new(ItemsInfo::parse(
+                TextureCreator{
+                    builder_wrapper,
+                    assets: &mut assets
+                },
+                "items".into(),
+                "items/items.json".into()
+            ))
+        };
 
         let mut characters_info = CharactersInfo::new();
 

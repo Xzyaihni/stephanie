@@ -171,7 +171,7 @@ fn main()
         return;
     }
 
-    let mut infos = ItemsInfo::parse(None, "".into(), "items/items.json".into()).items().iter().map(|info: &ItemInfo| -> ItemStats
+    let mut infos = ItemsInfo::parse((), "".into(), "items/items.json".into()).items().iter().map(|info: &ItemInfo| -> ItemStats
     {
         let name = info.name.clone();
 

@@ -4,7 +4,7 @@ use std::{
     cell::RefCell
 };
 
-use nalgebra::Vector3;
+use nalgebra::{vector, Vector3};
 
 use serde::{Serialize, Deserialize};
 
@@ -373,36 +373,21 @@ pub fn damager<'a, 'b, 'c>(
 
 fn damaging_raycasting(
     entities: &ClientEntities,
+    textures: &CommonTextures,
     space: &SpatialGrid,
     world: &World,
-    damaging: &mut Damaging,
+    damaging: &Damaging,
+    RaycastDamagingInfo{
+        info,
+        damage,
+        start,
+        target,
+        scale_pierce,
+        trail
+    }: &RaycastDamagingInfo,
     entity: Entity
 ) -> Vec<DamagingResult>
 {
-    let info;
-    let damage;
-    let start;
-    let target;
-    let scale_pierce;
-
-    if let DamagingType::Raycast{
-        info: this_info,
-        damage: this_damage,
-        start: this_start,
-        target: this_target,
-        scale_pierce: this_scale_pierce
-    } = &damaging.damage
-    {
-        info = this_info;
-        damage = this_damage;
-        start = this_start;
-        target = this_target;
-        scale_pierce = this_scale_pierce;
-    } else
-    {
-        unreachable!()
-    }
-
     let hits = raycast_system::raycast(
         entities,
         space,
@@ -413,6 +398,14 @@ fn damaging_raycasting(
     );
 
     let hits_len = hits.hits.len();
+
+    if hits_len > 0
+    {
+        entities.remove_deferred(entity);
+    }
+
+    let mut previous_exit = None;
+
     hits.hits.iter().enumerate().map(|(index, hit)|
     {
         let angle = hits.direction.y.atan2(-hits.direction.x);
@@ -422,8 +415,6 @@ fn damaging_raycasting(
             RaycastHitId::Entity(entity) => DamagingKind::Entity(entity, damaging.faction, 1.0),
             RaycastHitId::Tile(tile) => DamagingKind::Tile(tile)
         };
-
-        entities.remove_deferred(entity);
 
         let other_entity = if let Some(source) = damaging.source
         {
@@ -443,6 +434,14 @@ fn damaging_raycasting(
         let is_last_hit = (index + 1) == hits_len;
 
         let (damage_entry, damage_exit) = hit.result.hit_points(hits.start, hits.direction);
+
+        if let Some(trail_color) = trail
+        {
+            let trail_start = previous_exit.unwrap_or(*start);
+
+            bullet_trail_between(entities, textures, trail_start, damage_entry, *trail_color);
+            previous_exit = damage_exit;
+        }
 
         let damage_exit = if is_last_hit { None } else { damage_exit };
 
@@ -632,9 +631,9 @@ pub fn update(
 
             match &damaging.damage
             {
-                DamagingType::Raycast{..} =>
+                DamagingType::Raycast(info) =>
                 {
-                    damaging_raycasting(entities, space, world, &mut damaging, entity)
+                    damaging_raycasting(entities, textures, space, world, &damaging, info, entity)
                 },
                 _ => damaging_colliding(entities, &mut damaging, entity)
             }
@@ -642,6 +641,42 @@ pub fn update(
     };
 
     damage_entities.into_iter().for_each(damager(world, space, entities, loot, passer, textures));
+}
+
+fn bullet_trail_between(
+    entities: &ClientEntities,
+    textures: &CommonTextures,
+    start: Vector3<f32>,
+    target: Vector3<f32>,
+    color: [f32; 4]
+)
+{
+    let width = 0.05 * ENTITY_SCALE;
+
+    let difference = (target - start).xy();
+
+    let length = difference.magnitude();
+    let rotation = -angle_between(start, target);
+
+    let trail = entities.push(true, EntityInfo{
+        render: Some(RenderInfo{
+            object: Some(RenderObjectKind::TextureId{
+                id: textures.solid
+            }.into()),
+            mix: Some(MixColor::color(color)),
+            above_world: true,
+            ..Default::default()
+        }),
+        transform: Some(Transform{
+            position: with_z((start.xy() + target.xy()) * 0.5, start.z),
+            scale: vector![length, width, ENTITY_SCALE * 0.1],
+            rotation,
+            ..Default::default()
+        }),
+        ..Default::default()
+    });
+
+    entities.add_watcher(trail, Watcher::simple_disappearing(0.2));
 }
 
 fn flash_white_single(entities: &ClientEntities, entity: Entity)

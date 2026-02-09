@@ -75,6 +75,7 @@ use stephanie::{
         CharactersInfo,
         EnemiesInfo,
         furniture_creator,
+        items_info::TextureCreator,
         colors::Lcha,
         world::{TILE_SIZE, CHUNK_VISUAL_SIZE, Tile, TileRotation}
     }
@@ -469,7 +470,7 @@ struct AssetsDependent
 
 impl AssetsDependent
 {
-    fn new(info: &ObjectCreatePartialInfo) -> Self
+    fn new(info: &mut ObjectCreatePartialInfo) -> Self
     {
         let tilemap = {
             let tilemap = with_error(TileMap::parse("info/tiles.json", "textures/tiles/"));
@@ -485,7 +486,17 @@ impl AssetsDependent
         };
 
         let furniture = FurnituresInfo::parse(&info.assets.lock(), "normal/furniture".into(), "info/furnitures.json".into());
-        let items = ItemsInfo::parse(Some(&info.assets.lock()), "normal/items".into(), "items/items.json".into());
+        let items = {
+            let mut assets = info.assets.lock();
+            let builder_wrapper = &mut info.builder_wrapper;
+
+            let creator = TextureCreator{
+                builder_wrapper,
+                assets: &mut assets
+            };
+
+            ItemsInfo::parse(creator, "normal/items".into(), "items/items.json".into())
+        };
 
         let enemies = {
             let mut characters = CharactersInfo::new();
@@ -506,7 +517,7 @@ impl AssetsDependent
         let assets = info.partial.assets.clone();
         assets.lock().reload(info);
 
-        *self = Self::new(&info.partial);
+        *self = Self::new(&mut info.partial);
     }
 }
 
@@ -590,7 +601,7 @@ impl YanyaApp for ChunkPreviewer
     type SetupInfo = ();
     type AppInfo = Option<DrawShaders>;
 
-    fn init(info: InitPartialInfo<Self::SetupInfo>, app_info: Self::AppInfo) -> Self
+    fn init(mut info: InitPartialInfo<Self::SetupInfo>, app_info: Self::AppInfo) -> Self
     {
         let rules = ChunkRulesGroup::load(PathBuf::from("world_generation/")).unwrap_or_else(|err|
         {
@@ -622,7 +633,7 @@ impl YanyaApp for ChunkPreviewer
 
         let assets_dependent = ModifiedWatcher::new_many(
             vec!["textures".into(), "info".into(), "lisp".into()],
-            AssetsDependent::new(&info.object_info)
+            AssetsDependent::new(&mut info.object_info)
         );
 
         Self{

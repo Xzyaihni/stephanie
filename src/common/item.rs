@@ -1,4 +1,7 @@
-use std::fmt::{self, Display};
+use std::{
+    iter,
+    fmt::{self, Display}
+};
 
 use nalgebra::Vector3;
 
@@ -152,7 +155,7 @@ impl ItemRarity
             Self::Mythical => 3
         };
 
-        (0..amount).scan(vec![durability_boost, damage_boost, crit_boost], |possible_boosts, _|
+        (0..amount).scan(vec![durability_boost, crit_boost], |possible_boosts, _|
         {
             if possible_boosts.is_empty()
             {
@@ -162,7 +165,7 @@ impl ItemRarity
             let i = fastrand::usize(0..possible_boosts.len());
 
             Some(possible_boosts.swap_remove(i))
-        }).collect()
+        }).chain(iter::once(damage_boost)).collect()
     }
 
     pub fn name(&self) -> Option<&'static str>

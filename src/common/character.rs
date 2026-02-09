@@ -20,7 +20,8 @@ use yanyaengine::{Assets, Transform};
 use crate::{
     client::{
         CommonTextures,
-        ConnectionsHandler
+        ConnectionsHandler,
+        ui_common::YELLOW_COLOR
     },
     common::{
         with_z,
@@ -64,6 +65,7 @@ use crate::{
         ItemsInfo,
         Parent,
         World,
+        items_info::SpecialPart,
         characters_info::*,
         player::{WEAK_KICK, WEAKER_SCREENSHAKE, ScreenshakeName, StatId},
         entity::ClientEntities
@@ -129,6 +131,107 @@ fn accessory_hair_z(state: SpriteState, is_player: bool) -> ZLevel
         SpriteState::Normal => if is_player { ZLevel::PlayerHairAccessory } else { ZLevel::HairAccessory },
         SpriteState::Crawling | SpriteState::Lying => if is_player { ZLevel::PlayerHairAccessoryLying } else { ZLevel::HairAccessoryLying }
     }
+}
+
+fn default_connection() -> Connection
+{
+    Connection::EaseOut{
+        decay: 30.0,
+        limit: Some(LimitMode::Normal(ENTITY_SCALE * 0.5))
+    }
+}
+
+fn default_lazy_rotation(is_player: bool) -> Rotation
+{
+    Rotation::EaseOut(
+        EaseOutRotation{
+            decay: if is_player { 32.0 } else { 7.0 },
+            speed_significant: 10.0,
+            momentum: 0.5
+        }.into()
+    )
+}
+
+fn fast_lazy_rotation() -> Rotation
+{
+    Rotation::EaseOut(EaseOutRotation{
+        decay: 15.0,
+        speed_significant: 10.0,
+        momentum: 0.5
+    }.into())
+}
+
+fn heldlike_item_entity(
+    character: Entity,
+    hand_item: &ItemInfo,
+    is_player: bool,
+    parent: Option<Entity>,
+    flip: bool
+) -> EntityInfo
+{
+    let mut scale = hand_item.scale3();
+
+    if flip
+    {
+        scale.x = -scale.x;
+    }
+
+    let held = parent.is_some();
+    let follow_rotation = parent.map(|parent|
+    {
+        FollowRotation{
+            parent,
+            rotation: Rotation::Instant
+        }
+    });
+
+    EntityInfo{
+        render: Some(RenderInfo{
+            object: Some(RenderObject{
+                kind: RenderObjectKind::TextureId{
+                    id: hand_item.texture.id
+                }
+            }),
+            z_level: if held { ZLevel::Held } else { if flip { ZLevel::HandHigh } else { ZLevel::HandLow } },
+            visible: !held,
+            ..Default::default()
+        }),
+        parent: Some(Parent::new(character)),
+        follow_rotation,
+        lazy_transform: Some(LazyTransformInfo{
+            connection: if held { Connection::Ignore } else { default_connection() },
+            rotation: if held { Rotation::Ignore } else { default_lazy_rotation(is_player) },
+            scaling: if held { Scaling::EaseOut{decay: 16.0} } else { Scaling::Instant },
+            deformation: Deformation::Stretch(
+                StretchDeformation{
+                    animation: ValueAnimation::EaseOut(1.1),
+                    limit: 1.3,
+                    onset: 0.5,
+                    strength: 0.5
+                }
+            ),
+            origin_rotation: -f32::consts::FRAC_PI_2,
+            transform: Transform{
+                rotation: f32::consts::FRAC_PI_2,
+                scale,
+                ..Default::default()
+            },
+            unscaled_position: true,
+            inherit_scale: false,
+            ..Default::default()
+        }.into()),
+        ..Default::default()
+    }
+}
+
+fn held_item_entity(
+    character: Entity,
+    hand_item: &ItemInfo,
+    is_player: bool,
+    parent: Entity
+) -> EntityInfo
+{
+    heldlike_item_entity(character, hand_item, is_player, Some(parent), false)
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -315,13 +418,27 @@ struct HairInfo
     other: Vec<(BaseHair<Vector2<f32>>, Entity)>
 }
 
+#[derive(Debug, Clone, Copy)]
+struct SpecialPartInfo
+{
+    offset: f32,
+    entity: Entity
+}
+
+#[derive(Debug, Clone, Copy)]
+struct HoldingInfo
+{
+    entity: Entity,
+    special: Option<SpecialPartInfo>
+}
+
 #[derive(Debug, Clone)]
 struct AfterInfo
 {
     this: Entity,
     hand_left: Entity,
     hand_right: Entity,
-    holding: Option<Entity>,
+    holding: Option<HoldingInfo>,
     hair: HairInfo,
     clothing: CharacterEquips<Option<Entity>>,
     rotation: f32,
@@ -426,34 +543,6 @@ impl Character
         }
     }
 
-    fn default_connection() -> Connection
-    {
-        Connection::EaseOut{
-            decay: 30.0,
-            limit: Some(LimitMode::Normal(ENTITY_SCALE * 0.5))
-        }
-    }
-
-    fn default_lazy_rotation(is_player: bool) -> Rotation
-    {
-        Rotation::EaseOut(
-            EaseOutRotation{
-                decay: if is_player { 32.0 } else { 7.0 },
-                speed_significant: 10.0,
-                momentum: 0.5
-            }.into()
-        )
-    }
-
-    fn fast_lazy_rotation() -> Rotation
-    {
-        Rotation::EaseOut(EaseOutRotation{
-            decay: 15.0,
-            speed_significant: 10.0,
-            momentum: 0.5
-        }.into())
-    }
-
     pub fn initialize(
         &mut self,
         entities: &ClientEntities,
@@ -473,65 +562,11 @@ impl Character
 
         let character_info = data_infos.characters_info.get(self.id);
 
-        let needs_holding = is_player;
-
         let hand_item = data_infos.items_info.get(character_info.hand);
 
-        let held_item = |parent: Option<Entity>, flip: bool|
+        let held_item = |flip: bool|
         {
-            let mut scale = hand_item.scale3();
-
-            if flip
-            {
-                scale.x = -scale.x;
-            }
-
-            let held = parent.is_some();
-            let follow_rotation = parent.map(|parent|
-            {
-                FollowRotation{
-                    parent,
-                    rotation: Rotation::Instant
-                }
-            });
-
-            EntityInfo{
-                render: Some(RenderInfo{
-                    object: Some(RenderObject{
-                        kind: RenderObjectKind::TextureId{
-                            id: hand_item.texture.id
-                        }
-                    }),
-                    z_level: if held { ZLevel::Held } else { if flip { ZLevel::HandLow } else { ZLevel::HandHigh } },
-                    visible: !held,
-                    ..Default::default()
-                }),
-                parent: Some(Parent::new(entity)),
-                follow_rotation,
-                lazy_transform: Some(LazyTransformInfo{
-                    connection: if held { Connection::Ignore } else { Self::default_connection() },
-                    rotation: if held { Rotation::Ignore } else { Self::default_lazy_rotation(is_player) },
-                    scaling: if held { Scaling::EaseOut{decay: 16.0} } else { Scaling::Instant },
-                    deformation: Deformation::Stretch(
-                        StretchDeformation{
-                            animation: ValueAnimation::EaseOut(1.1),
-                            limit: 1.3,
-                            onset: 0.5,
-                            strength: 0.5
-                        }
-                    ),
-                    origin_rotation: -f32::consts::FRAC_PI_2,
-                    transform: Transform{
-                        rotation: f32::consts::FRAC_PI_2,
-                        scale,
-                        ..Default::default()
-                    },
-                    unscaled_position: true,
-                    inherit_scale: false,
-                    ..Default::default()
-                }.into()),
-                ..Default::default()
-            }
+            heldlike_item_entity(entity, hand_item, is_player, None, flip)
         };
 
         let base_hair = |(hair_sprite, pixel_offset): (HairSprite<Sprite>, Vector2<f32>)|
@@ -672,12 +707,12 @@ impl Character
             }
         };
 
-        let hand_left = inserter(held_item(None, true));
+        let hand_left = inserter(held_item(true));
         let info = AfterInfo{
             this: entity,
             hand_left,
-            hand_right: inserter(held_item(None, false)),
-            holding: needs_holding.then(|| inserter(held_item(Some(hand_left), false))),
+            hand_right: inserter(held_item(false)),
+            holding: is_player.then(|| HoldingInfo{entity: inserter(held_item_entity(entity, hand_item, is_player, hand_left)), special: None}),
             hair,
             clothing: CharacterEquips::default(),
             rotation,
@@ -696,7 +731,7 @@ impl Character
         {
             if !entities.light_exists(entity)
             {
-                entities.set_light_no_change(entity, Some(Light{source: Some(holding), ..Default::default()}));
+                entities.set_light_no_change(entity, Some(Light{source: Some(holding.entity), ..Default::default()}));
             }
         }
 
@@ -760,7 +795,7 @@ impl Character
 
             if let Some(holding) = holding
             {
-                entities.add_watcher(holding, Watcher{
+                entities.add_watcher(holding.entity, Watcher{
                     kind: WatcherType::Instant,
                     action: disappear_action,
                     ..Default::default()
@@ -886,7 +921,7 @@ impl Character
 
                 item.ammo.push(found_ammo);
 
-                self.attack_cooldown = reload_cooldown;
+                self.attack_cooldown = self.attack_cooldown.max(reload_cooldown);
 
                 if item.ammo.len() >= ammo.max as usize
                 {
@@ -1017,10 +1052,47 @@ impl Character
             return;
         }
 
-        let held_item_id = self.held_item(combined_info.entities).map(|x| x.id);
+        let held_item_id = self.held_item_id(combined_info.entities);
 
         {
             let info = some_or_return!(self.info.as_mut());
+
+            if info.holding.is_none() && held_item_id.is_some()
+            {
+                let is_player = combined_info.entities.player_exists(info.this);
+
+                let character_info = combined_info.characters_info.get(self.id);
+                let hand_item = combined_info.items_info.get(character_info.hand);
+
+                let holding_info = HoldingInfo{
+                    entity: combined_info.entities.push(true, held_item_entity(info.this, hand_item, is_player, info.hand_left)),
+                    special: None
+                };
+
+                info.holding = Some(holding_info);
+            }
+
+            if held_item_id.map(|held_id| combined_info.items_info.get(held_id).special_part.is_some()).unwrap_or(false)
+            {
+                if let Some(holding) = info.holding.as_mut()
+                {
+                    if holding.special.is_none()
+                    {
+                        let special_entity = EntityInfo{
+                            lazy_transform: Some(LazyTransformInfo::default().into()),
+                            parent: Some(Parent::new(holding.entity)),
+                            ..Default::default()
+                        };
+
+                        let holding_info = SpecialPartInfo{
+                            offset: 0.0,
+                            entity: combined_info.entities.push(true, special_entity)
+                        };
+
+                        holding.special = Some(holding_info);
+                    }
+                }
+            }
 
             if let Some(last_held_item) = info.last_held_item.as_mut()
             {
@@ -1033,7 +1105,7 @@ impl Character
             }
         }
 
-        self.attack_cooldown = 0.5;
+        self.attack_cooldown = self.attack_cooldown.max(0.5);
 
         let info = some_or_return!(self.info.as_ref());
 
@@ -1056,7 +1128,19 @@ impl Character
 
         if let Some(holding_entity) = holding_entity
         {
-            some_or_return!(entities.render_mut_no_change(holding_entity)).visible = self.held_visible(combined_info);
+            let set_visible = |entity, value|
+            {
+                some_or_return!(entities.render_mut_no_change(entity)).visible = value;
+            };
+
+            let visible = self.held_visible(combined_info);
+
+            set_visible(holding_entity.entity, visible);
+
+            if let Some(special) = holding_entity.special
+            {
+                set_visible(special.entity, visible);
+            }
         }
 
         entities.lazy_setter.borrow_mut().set_follow_position_no_change(hand_right, holding_item.map(|_|
@@ -1075,7 +1159,7 @@ impl Character
             let mut light = some_or_return!(entities.light_mut_no_change(this_entity));
             light.modify_light(|light| *light = item.lighting);
 
-            let mut lazy_transform = some_or_return!(entities.lazy_transform_mut_no_change(holding_entity));
+            let mut lazy_transform = some_or_return!(entities.lazy_transform_mut_no_change(holding_entity.entity));
 
             let texture = get_texture(item.texture.id);
 
@@ -1085,17 +1169,49 @@ impl Character
 
             drop(lazy_transform);
 
-            let height = entities.lazy_target_end(holding_entity).unwrap().scale.y;
-            entities.lazy_setter.borrow_mut().set_follow_position_no_change(holding_entity, Some(FollowPosition{
+            let height = entities.lazy_target_end(holding_entity.entity).unwrap().scale.y;
+            entities.lazy_setter.borrow_mut().set_follow_position_no_change(holding_entity.entity, Some(FollowPosition{
                 parent: hand_left,
                 connection: Connection::Rigid,
                 offset: Vector3::new(0.0, -height / 2.0, 0.0)
             }));
 
-            let mut render = entities.render_mut(holding_entity).unwrap();
+            let mut render = some_or_unexpected_return!(entities.render_mut(holding_entity.entity));
             render.set_texture(texture);
 
             self.update_hands_rotation(combined_info);
+
+            if let Some(special_part) = item.special_part.as_ref()
+            {
+                match special_part
+                {
+                    SpecialPart::GunTop{texture: sprite, ..} =>
+                    {
+                        let special_part_entity = some_or_unexpected_return!(holding_entity.special).entity;
+
+                        let z_level = ZLevel::HeldHighPart;
+
+                        let render_object = RenderObject{
+                            kind: RenderObjectKind::TextureId{id: sprite.id}
+                        };
+
+                        if let Some(mut render) = entities.render_mut(special_part_entity)
+                        {
+                            render.set_z_level(z_level);
+                            entities.set_deferred_render_object(special_part_entity, render_object);
+                        } else
+                        {
+                            let render = RenderInfo{
+                                object: Some(render_object),
+                                z_level,
+                                ..Default::default()
+                            };
+
+                            entities.set_render(special_part_entity, Some(render));
+                        }
+                    }
+                }
+            }
         } else
         {
             if let Some(mut light) = entities.light_mut_no_change(this_entity)
@@ -1109,7 +1225,7 @@ impl Character
             Connection::Ignore
         } else
         {
-            Self::default_connection()
+            default_connection()
         };
 
         let set_for = |entity, y|
@@ -1145,7 +1261,7 @@ impl Character
 
         if let Some(holding_entity) = holding_entity
         {
-            lazy_for(holding_entity);
+            lazy_for(holding_entity.entity);
         }
 
         lazy_for(hand_left);
@@ -1237,23 +1353,25 @@ impl Character
                             if is_player { ZLevel::PlayerHatLying } else { ZLevel::HatLying }
                         };
 
-                        let render_object = RenderObject{
-                            kind: RenderObjectKind::TextureId{id: sprite.id}
-                        };
-
-                        if let Some(mut render) = entities.render_mut(entity)
                         {
-                            render.set_z_level(z_level);
-                            entities.set_deferred_render_object(entity, render_object);
-                        } else
-                        {
-                            let render = RenderInfo{
-                                object: Some(render_object),
-                                z_level,
-                                ..Default::default()
+                            let render_object = RenderObject{
+                                kind: RenderObjectKind::TextureId{id: sprite.id}
                             };
 
-                            entities.set_render(entity, Some(render));
+                            if let Some(mut render) = entities.render_mut(entity)
+                            {
+                                render.set_z_level(z_level);
+                                entities.set_deferred_render_object(entity, render_object);
+                            } else
+                            {
+                                let render = RenderInfo{
+                                    object: Some(render_object),
+                                    z_level,
+                                    ..Default::default()
+                                };
+
+                                entities.set_render(entity, Some(render));
+                            }
                         }
 
                         let lazy = LazyTransformInfo{
@@ -1301,7 +1419,7 @@ impl Character
 
         let entities = combined_info.entities;
 
-        some_or_return!(entities.lazy_transform_mut_no_change(hand_left)).rotation = Self::fast_lazy_rotation();
+        some_or_return!(entities.lazy_transform_mut_no_change(hand_left)).rotation = fast_lazy_rotation();
 
         self.forward_point(combined_info);
 
@@ -1353,7 +1471,7 @@ impl Character
             let collider = item_collider();
 
             let entity_info = {
-                let holding_transform = entities.transform(holding_entity).unwrap();
+                let holding_transform = entities.transform(holding_entity.entity).unwrap();
 
                 let direction = {
                     let rotation = angle_between(
@@ -1378,7 +1496,7 @@ impl Character
                     lazy_transform: Some(item_lazy_transform(item_info, holding_transform.position, holding_transform.rotation).into()),
                     render: Some(RenderInfo{
                         object: Some(RenderObjectKind::TextureId{
-                            id: item_info.texture.id
+                            id: item_info.item_texture.unwrap_or(item_info.texture).id
                         }.into()),
                         z_level: ZLevel::Elbow,
                         ..Default::default()
@@ -1547,7 +1665,7 @@ impl Character
             {
                 if let Some(mut lazy) = entities.lazy_transform_mut(entity)
                 {
-                    lazy.rotation = Self::default_lazy_rotation(is_player);
+                    lazy.rotation = default_lazy_rotation(is_player);
                 }
             }),
             ..Default::default()
@@ -1556,7 +1674,7 @@ impl Character
         if self.holding.is_some()
         {
             let holding_entity = some_or_unexpected_return!(info.holding);
-            let mut target = some_or_return!(combined_info.entities.target(holding_entity));
+            let mut target = some_or_return!(combined_info.entities.target(holding_entity.entity));
             target.scale.x = match self.bash_side
             {
                 Side1d::Left => target.scale.x.abs(),
@@ -1594,7 +1712,7 @@ impl Character
 
         self.stop_buffered(BufferedAction::Bash);
 
-        self.attack_cooldown = some_or_return!(self.bash_attack_cooldown(combined_info.entities));
+        self.attack_cooldown = self.attack_cooldown.max(some_or_return!(self.bash_attack_cooldown(combined_info.entities)));
 
         self.bash_side = self.bash_side.opposite();
 
@@ -1608,7 +1726,7 @@ impl Character
     fn default_held_rotation(&self, combined_info: CombinedInfo) -> Option<f32>
     {
         let origin_rotation = combined_info.entities
-            .lazy_transform(self.info.as_ref()?.holding?)?
+            .lazy_transform(self.info.as_ref()?.holding?.entity)?
             .origin_rotation();
 
         Some(-origin_rotation)
@@ -1657,7 +1775,7 @@ impl Character
 
         let entities = combined_info.entities;
 
-        some_or_return!(entities.lazy_transform_mut_no_change(hand_left)).rotation = Self::fast_lazy_rotation();
+        some_or_return!(entities.lazy_transform_mut_no_change(hand_left)).rotation = fast_lazy_rotation();
 
         self.forward_point(combined_info);
 
@@ -1704,7 +1822,7 @@ impl Character
 
         let entities = combined_info.entities;
 
-        some_or_return!(entities.lazy_transform_mut_no_change(hand_left)).rotation = Self::fast_lazy_rotation();
+        some_or_return!(entities.lazy_transform_mut_no_change(hand_left)).rotation = fast_lazy_rotation();
 
         self.forward_point(combined_info);
 
@@ -1732,7 +1850,7 @@ impl Character
 
         let item = some_or_false!(self.held_item(combined_info.entities));
 
-        self.attack_cooldown = some_or_false!(self.held_attack_cooldown(combined_info.entities));
+        self.attack_cooldown = self.attack_cooldown.max(some_or_false!(self.held_attack_cooldown(combined_info.entities)));
 
         self.consume_attack_oxygen(combined_info);
 
@@ -1787,7 +1905,7 @@ impl Character
 
                 if let Some(mut lazy) = entities.lazy_transform_mut(entity)
                 {
-                    lazy.rotation = Self::default_lazy_rotation(is_player);
+                    lazy.rotation = default_lazy_rotation(is_player);
                 }
 
                 if let Some(mut target) = entities.target(entity)
@@ -1831,13 +1949,13 @@ impl Character
 
         let item_info = items_info.get(item.id);
 
-        let info = some_or_false!(self.info.as_ref());
+        let this_entity = some_or_false!(self.info.as_ref()).this;
 
         if item_info.ammo.is_some()
         {
             let held = some_or_false!(self.holding);
 
-            let mut inventory = some_or_false!(combined_info.entities.inventory_mut(info.this));
+            let mut inventory = some_or_false!(combined_info.entities.inventory_mut(this_entity));
             let mut item = some_or_false!(inventory.get_mut(items_info, held));
 
             if item.ammo.pop().is_none()
@@ -1848,9 +1966,21 @@ impl Character
 
         let ranged = some_or_false!(&item_info.ranged);
 
-        self.attack_cooldown = ranged.cooldown();
+        {
+            let info = some_or_unexpected_return!(self.info.as_mut());
 
-        let level_buff = if let Some(player) = combined_info.entities.player(info.this)
+            if let Some(holding) = info.holding.as_mut()
+            {
+                if let Some(special) = holding.special.as_mut()
+                {
+                    special.offset = 1.0;
+                }
+            }
+        }
+
+        self.attack_cooldown = self.attack_cooldown.max(ranged.cooldown());
+
+        let level_buff = if let Some(player) = combined_info.entities.player(this_entity)
         {
             1.0 + player.get_stat(StatId::Ranged).level() as f32 * 0.1
         } else
@@ -1858,10 +1988,10 @@ impl Character
             1.0
         };
 
-        let source = Some(info.this);
-        let start = some_or_unexpected_return!(combined_info.entities.transform(info.this)).position;
+        let source = Some(this_entity);
+        let start = some_or_unexpected_return!(combined_info.entities.transform(this_entity)).position;
 
-        if let Some(mut player) = combined_info.entities.player_mut_no_change(info.this)
+        if let Some(mut player) = combined_info.entities.player_mut_no_change(this_entity)
         {
             player.screenshake.set_layer(ScreenshakeName::Shot, WEAKER_SCREENSHAKE);
 
@@ -1880,7 +2010,7 @@ impl Character
             pierce_scale: RaycastPierce::Density{ignore_anatomy: true},
             scale: 0.0,
             layer: ColliderLayer::Damage,
-            ignore_entity: Some(info.this),
+            ignore_entity: Some(this_entity),
             ignore_end: true
         };
 
@@ -1892,9 +2022,18 @@ impl Character
             poke: true
         };
 
+        let damaging_info = RaycastDamagingInfo{
+            info,
+            damage,
+            start,
+            target,
+            scale_pierce: Some(ENTITY_SCALE.recip()),
+            trail: Some(YELLOW_COLOR.into())
+        };
+
         combined_info.entities.push(true, EntityInfo{
             damaging: Some(DamagingInfo{
-                damage: DamagingType::Raycast{info, damage, start, target, scale_pierce: Some(ENTITY_SCALE.recip())},
+                damage: DamagingType::Raycast(damaging_info),
                 faction: Some(self.faction),
                 source,
                 ranged: true,
@@ -2118,7 +2257,7 @@ impl Character
             true,
             EntityInfo{
                 follow_rotation: Some(FollowRotation::new(
-                    holding_entity,
+                    holding_entity.entity,
                     Rotation::Instant
                 )),
                 lazy_transform: Some(LazyTransformInfo{
@@ -2129,7 +2268,7 @@ impl Character
                     },
                     ..Default::default()
                 }.into()),
-                parent: Some(Parent::new(holding_entity)),
+                parent: Some(Parent::new(holding_entity.entity)),
                 collider: Some(ColliderInfo{
                     kind: ColliderType::Rectangle,
                     layer: ColliderLayer::Damage,
@@ -2208,11 +2347,11 @@ impl Character
     }
 
     fn held_item_info<'a>(
-        &'a self,
+        &self,
         combined_info: CombinedInfo<'a>
     ) -> Option<&'a ItemInfo>
     {
-        self.held_item(combined_info.entities).map(|x| combined_info.items_info.get(x.id))
+        self.held_item_id(combined_info.entities).map(|x| combined_info.items_info.get(x))
     }
 
     fn hand_item_info<'a>(&self, combined_info: CombinedInfo<'a>) -> &'a ItemInfo
@@ -2222,7 +2361,7 @@ impl Character
         combined_info.items_info.get(info.hand)
     }
 
-    fn held_info<'a>(&'a self, combined_info: CombinedInfo<'a>) -> &'a ItemInfo
+    fn held_info<'a>(&self, combined_info: CombinedInfo<'a>) -> &'a ItemInfo
     {
         self.held_item_info(combined_info).unwrap_or_else(move ||
         {
@@ -2235,6 +2374,14 @@ impl Character
         self.holding
     }
 
+    fn held_item_id(&self, entities: &ClientEntities) -> Option<ItemId>
+    {
+        let info = self.info.as_ref()?;
+        let held = self.holding?;
+
+        entities.inventory(info.this).and_then(|x| x.get(held).map(|x| x.id))
+    }
+
     fn held_item(&self, entities: &ClientEntities) -> Option<Item>
     {
         let info = self.info.as_ref()?;
@@ -2245,7 +2392,7 @@ impl Character
 
     fn held_visible(&self, combined_info: CombinedInfo) -> bool
     {
-        *self.sprite_state.value() != SpriteState::Lying && self.held_item(combined_info.entities).is_some()
+        *self.sprite_state.value() != SpriteState::Lying && self.held_item_id(combined_info.entities).is_some()
     }
 
     fn held_distance(&self) -> f32
@@ -2431,6 +2578,7 @@ impl Character
             self.update_clothing_inner(combined_info);
         }
 
+        self.update_special_part(combined_info, dt);
         self.update_jiggle(combined_info, dt);
 
         let knockback_drain = self.update_knockback(dt);
@@ -2545,7 +2693,13 @@ impl Character
             if let Some(holding) = info.holding
             {
                 let visible = self.held_visible(combined_info);
-                set_visible(&mut self.sprite_state, holding, visible);
+
+                set_visible(&mut self.sprite_state, holding.entity, visible);
+
+                if let Some(special) = holding.special
+                {
+                    set_visible(&mut self.sprite_state, special.entity, visible);
+                }
             }
         }
 
@@ -2686,6 +2840,33 @@ impl Character
         }
 
         self.sprinting
+    }
+
+    fn update_special_part(&mut self, combined_info: CombinedInfo, dt: f32)
+    {
+        let held_id = some_or_return!(self.held_item_id(combined_info.entities));
+
+        let info = some_or_return!(self.info.as_mut());
+
+        let holding = some_or_unexpected_return!(&mut info.holding);
+        let special = some_or_return!(&mut holding.special);
+
+        let held_info = combined_info.items_info.get(held_id);
+        let special_info = some_or_unexpected_return!(held_info.special_part.as_ref());
+
+        let mut lazy = some_or_return!(combined_info.entities.lazy_transform_mut(special.entity));
+
+        match special_info
+        {
+            SpecialPart::GunTop{speed, amount, ..} =>
+            {
+                let max_offset = *amount / ENTITY_PIXEL_SCALE as f32;
+
+                lazy.target_local.position.y = ValueAnimation::EaseOut(2.0).apply(special.offset) * max_offset;
+
+                special.offset = (special.offset - dt * *speed).max(0.0);
+            }
+        }
     }
 
     fn update_jiggle(&mut self, combined_info: CombinedInfo, dt: f32)

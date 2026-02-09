@@ -274,6 +274,13 @@
                 "damage": 1
             }
         },
+        "special_part": {
+            "GunTop": {
+                "speed": 10.0,
+                "amount": 5.0,
+                "texture": "glock_top"
+            }
+        },
         "ammo": {
             "items": ["bullet"],
             "max": 5
@@ -283,6 +290,7 @@
     },
     {
         "name": "bullet",
+        "rarity_rolls": false,
         "comfort": 0.5,
         "mass": 0.01,
         "durability": 0.1

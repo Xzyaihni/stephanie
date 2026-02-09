@@ -2,11 +2,9 @@ use std::path::Path;
 
 use serde::Deserialize;
 
-use yanyaengine::Assets;
-
 use crate::common::{
     Sprite,
-    generic_info::load_texture,
+    items_info::TextureCreatable,
     characters_info::CharacterSprites
 };
 
@@ -38,14 +36,14 @@ pub struct ClothingInfo
 impl ClothingInfo
 {
     pub fn from_raw(
-        assets: &Assets,
+        texture_creator: &mut impl TextureCreatable,
         textures_root: &Path,
         raw: ClothingInfoRaw
     ) -> Self
     {
         let sprites = CharacterSprites::<&'static str>::default().map(|state|
         {
-            load_texture(assets, textures_root, state)
+            texture_creator.load_texture(textures_root, state)
         });
 
         Self{

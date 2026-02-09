@@ -1380,7 +1380,7 @@ impl<'a> PlayerContainer<'a>
                         {
                             let mut actions = Vec::new();
 
-                            let id = ids[0].clone();
+                            let id = ids[0];
                             let items_amount = ids.len();
 
                             actions.push(GameUiEvent::Take(ids));
@@ -1688,7 +1688,7 @@ impl<'a> PlayerContainer<'a>
                 if equip == Some(EquipState::Held)
                 {
                     actions.push(GameUiEvent::Unwield);
-                } else if equip == None
+                } else if equip.is_none()
                 {
                     actions.push(GameUiEvent::Wield(id));
                 }

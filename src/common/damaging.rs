@@ -33,12 +33,23 @@ pub enum DamageTimes
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RaycastDamagingInfo
+{
+    pub info: RaycastInfo,
+    pub damage: DamagePartial,
+    pub start: Vector3<f32>,
+    pub target: Vector3<f32>,
+    pub scale_pierce: Option<f32>,
+    pub trail: Option<[f32; 4]>
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum DamagingType
 {
     None,
     Mass(DamageType),
     Collision{angle: f32, damage: DamagePartial},
-    Raycast{info: RaycastInfo, damage: DamagePartial, start: Vector3<f32>, target: Vector3<f32>, scale_pierce: Option<f32>}
+    Raycast(RaycastDamagingInfo)
 }
 
 pub struct CollisionInfo

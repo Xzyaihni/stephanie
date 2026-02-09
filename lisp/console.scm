@@ -170,4 +170,12 @@
 
 (define (zob) (set-faction (player-entity) 'zob))
 
-(define (givehp) (repeat (lambda () (for-each (lambda (x) (add-item (player-entity) x)) '(splint heal_pills))) 5))
+(define (give-x-item item amount) (repeat (lambda () (add-item (player-entity) item)) amount))
+
+(define (givehp)
+    (give-x-item 'heal_pills 5)
+    (give-x-item 'splint 2))
+
+(define (givegun)
+    (give-x-item 'glock 1)
+    (give-x-item 'bullet 20))

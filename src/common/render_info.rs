@@ -669,6 +669,7 @@ pub enum ZLevel
     Waist,
     HandLow,
     Held,
+    HeldHighPart,
     HandHigh,
     Elbow,
     Shoulders,

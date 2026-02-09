@@ -619,7 +619,7 @@ impl UiInventory
                     x.get_equip_state(*index)
                 });
 
-                if state.is_empty() || (equip.is_none() && state.get(0).map(|first_item| inventory.get(*first_item) == Some(x)).unwrap_or(true))
+                if state.is_empty() || (equip.is_none() && state.first().map(|first_item| inventory.get(*first_item) == Some(x)).unwrap_or(true))
                 {
                     state.push(*index);
 
@@ -648,7 +648,7 @@ impl UiInventory
                     durability_fraction: *x.durability / item.durability,
                     rarity: x.rarity,
                     equip,
-                    texture: item.texture
+                    texture: item.item_texture.unwrap_or(item.texture)
                 });
             }
 
