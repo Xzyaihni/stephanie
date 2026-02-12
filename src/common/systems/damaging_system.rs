@@ -435,11 +435,11 @@ fn damaging_raycasting(
 
         let (damage_entry, damage_exit) = hit.result.hit_points(hits.start, hits.direction);
 
-        if let Some(trail_color) = trail
+        if let Some(trail_info) = trail
         {
-            let trail_start = previous_exit.unwrap_or(*start);
+            let trail_start = previous_exit.unwrap_or(trail_info.override_start.unwrap_or(*start));
 
-            bullet_trail_between(entities, textures, trail_start, damage_entry, *trail_color);
+            bullet_trail_between(entities, textures, trail_start, damage_entry, trail_info.color);
             previous_exit = damage_exit;
         }
 
@@ -664,7 +664,9 @@ fn bullet_trail_between(
                 id: textures.solid
             }.into()),
             mix: Some(MixColor::color(color)),
-            above_world: true,
+            z_level: ZLevel::Held,
+            shadow_visible: true,
+            full_lit: true,
             ..Default::default()
         }),
         transform: Some(Transform{

@@ -154,6 +154,7 @@ pub struct ClientEntitiesContainer
     occluders: Vec<Entity>,
     light_renders: Vec<Entity>,
     shaded_renders: Vec<Vec<Entity>>,
+    full_lit_renders: Vec<Vec<Entity>>,
     animation: f32
 }
 
@@ -181,6 +182,7 @@ impl ClientEntitiesContainer
             occluders: Vec::new(),
             light_renders: Vec::new(),
             shaded_renders: Vec::new(),
+            full_lit_renders: Vec::new(),
             animation: 0.0
         }
     }
@@ -351,6 +353,7 @@ impl ClientEntitiesContainer
         self.occluders.clear();
 
         let mut shaded_renders = BTreeMap::new();
+        let mut full_lit_renders = BTreeMap::new();
         let mut visible_renders = BTreeMap::new();
 
         iterate_components_many_with!(
@@ -447,7 +450,13 @@ impl ClientEntitiesContainer
 
                     if is_render_shadow
                     {
-                        insert_render(&mut shaded_renders, entity, z, real_z);
+                        if render.full_lit
+                        {
+                            insert_render(&mut full_lit_renders, entity, z, real_z);
+                        } else
+                        {
+                            insert_render(&mut shaded_renders, entity, z, real_z);
+                        }
                     }
 
                     if is_render_visible || is_render_shadow
@@ -471,6 +480,7 @@ impl ClientEntitiesContainer
             });
 
         self.shaded_renders = shaded_renders.into_values().map(|(x, _)| x).collect();
+        self.full_lit_renders = full_lit_renders.into_values().map(|(x, _)| x).collect();
         self.visible_renders = visible_renders.into_values().map(|(x, _)| x).collect();
     }
 
@@ -1517,6 +1527,7 @@ impl GameState
             above_world: &self.entities.above_world_renders,
             occluders: &self.entities.occluders,
             shaded_renders: &self.entities.shaded_renders,
+            full_lit_renders: &self.entities.full_lit_renders,
             light_renders: &self.entities.light_renders,
             world: &self.world
         };

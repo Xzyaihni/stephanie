@@ -268,7 +268,7 @@ pub fn create() -> ShadersCreated
         compare_op: CompareOp::Less
     };
 
-    let default_shader = shaders.push(Shader{
+    let default_shader_info = Shader{
         shader: ShadersGroup::new(
             default_vertex,
             default_fragment::load
@@ -277,6 +277,18 @@ pub fn create() -> ShadersCreated
         per_vertex: Some(vec![Object::per_vertex()]),
         subpass: 0,
         cull: CullMode::None,
+        ..Default::default()
+    };
+
+    let default_shader = shaders.push(Shader{
+        shader: ShadersGroup::new(
+            default_vertex,
+            default_fragment::load
+        ),
+        depth: default_shader_info.depth,
+        per_vertex: default_shader_info.per_vertex.clone(),
+        subpass: default_shader_info.subpass,
+        cull: default_shader_info.cull,
         ..Default::default()
     });
 
@@ -329,6 +341,11 @@ pub fn create() -> ShadersCreated
         per_vertex: Some(vec![Object::per_vertex()]),
         subpass: 1,
         ..Default::default()
+    });
+
+    let default_full_lit_shader = shaders.push(Shader{
+        subpass: 1,
+        ..default_shader_info
     });
 
     let default_shaded_shader = shaders.push(Shader{
@@ -547,6 +564,7 @@ pub fn create() -> ShadersCreated
             default: default_shader,
             character: character_shader,
             above_world: above_world_shader,
+            default_full_lit: default_full_lit_shader,
             default_shaded: default_shaded_shader,
             world: world_shader,
             world_shaded: world_shaded_shader,

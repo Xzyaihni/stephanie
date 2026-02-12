@@ -49,6 +49,7 @@ pub struct DrawEntities<'a>
     pub above_world: &'a [Entity],
     pub occluders: &'a [Entity],
     pub shaded_renders: &'a [Vec<Entity>],
+    pub full_lit_renders: &'a [Vec<Entity>],
     pub light_renders: &'a [Entity],
     pub world: &'a World
 }
@@ -77,6 +78,7 @@ pub struct SkyColors
             above_world,
             occluders,
             shaded_renders,
+            full_lit_renders,
             light_renders,
             world
         }: DrawEntities,
@@ -299,18 +301,37 @@ pub struct SkyColors
         world.draw_tiles(info, true);
     }
 
-    info.bind_pipeline(shaders.default_shaded);
-
-    shaded_renders.iter().flatten().copied().for_each(|entity|
+    if !full_lit_renders.is_empty()
     {
-        let render = entities.render(entity).unwrap();
+        info.bind_pipeline(shaders.default_full_lit);
 
-        render.draw(info, OutlinedInfo::new(
-            render.mix,
-            Default::default(),
-            animation
-        ));
-    });
+        full_lit_renders.iter().flatten().copied().for_each(|entity|
+        {
+            let render = entities.render(entity).unwrap();
+
+            render.draw(info, OutlinedInfo::new(
+                render.mix,
+                Default::default(),
+                animation
+            ));
+        });
+    }
+
+    if !shaded_renders.is_empty()
+    {
+        info.bind_pipeline(shaders.default_shaded);
+
+        shaded_renders.iter().flatten().copied().for_each(|entity|
+        {
+            let render = entities.render(entity).unwrap();
+
+            render.draw(info, OutlinedInfo::new(
+                render.mix,
+                Default::default(),
+                animation
+            ));
+        });
+    }
 
     info.next_subpass();
 

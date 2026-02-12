@@ -33,6 +33,13 @@ pub enum DamageTimes
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RaycastTrailInfo
+{
+    pub override_start: Option<Vector3<f32>>,
+    pub color: [f32; 4]
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RaycastDamagingInfo
 {
     pub info: RaycastInfo,
@@ -40,7 +47,7 @@ pub struct RaycastDamagingInfo
     pub start: Vector3<f32>,
     pub target: Vector3<f32>,
     pub scale_pierce: Option<f32>,
-    pub trail: Option<[f32; 4]>
+    pub trail: Option<RaycastTrailInfo>
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

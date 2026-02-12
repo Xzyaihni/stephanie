@@ -13,7 +13,7 @@ use serde::{Serialize, Deserialize};
 
 use strum::{IntoEnumIterator, EnumIter, EnumCount};
 
-use nalgebra::{Unit, Vector2, Vector3};
+use nalgebra::{vector, Unit, Vector2, Vector3};
 
 use yanyaengine::{Assets, Transform};
 
@@ -33,6 +33,7 @@ use crate::{
         angle_between,
         opposite_angle,
         short_rotation,
+        rotate_point_z_3d,
         angle_to_direction_3d,
         ease_out,
         random_f32,
@@ -1139,7 +1140,7 @@ impl Character
 
             if let Some(special) = holding_entity.special
             {
-                set_visible(special.entity, visible);
+                set_visible(special.entity, visible && holding_item.map(|item| item.special_part.is_some()).unwrap_or(false));
             }
         }
 
@@ -1978,6 +1979,16 @@ impl Character
             }
         }
 
+        let trail_start = {
+            let info = some_or_unexpected_return!(self.info.as_ref());
+
+            let holding = some_or_unexpected_return!(info.holding.as_ref());
+
+            let holding_transform = some_or_false!(combined_info.entities.transform(holding.entity));
+
+            holding_transform.position + rotate_point_z_3d(vector![0.0, holding_transform.scale.y * -0.5, 0.0], holding_transform.rotation)
+        };
+
         self.attack_cooldown = self.attack_cooldown.max(ranged.cooldown());
 
         let level_buff = if let Some(player) = combined_info.entities.player(this_entity)
@@ -2028,7 +2039,7 @@ impl Character
             start,
             target,
             scale_pierce: Some(ENTITY_SCALE.recip()),
-            trail: Some(YELLOW_COLOR.into())
+            trail: Some(RaycastTrailInfo{override_start: Some(trail_start), color: YELLOW_COLOR.into()})
         };
 
         combined_info.entities.push(true, EntityInfo{
@@ -2852,7 +2863,7 @@ impl Character
         let special = some_or_return!(&mut holding.special);
 
         let held_info = combined_info.items_info.get(held_id);
-        let special_info = some_or_unexpected_return!(held_info.special_part.as_ref());
+        let special_info = some_or_return!(held_info.special_part.as_ref());
 
         let mut lazy = some_or_return!(combined_info.entities.lazy_transform_mut(special.entity));
 

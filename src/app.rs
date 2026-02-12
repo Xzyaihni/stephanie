@@ -193,6 +193,7 @@ pub struct ProgramShaders
     pub default: ShaderId,
     pub character: ShaderId,
     pub above_world: ShaderId,
+    pub default_full_lit: ShaderId,
     pub default_shaded: ShaderId,
     pub world: ShaderId,
     pub world_shaded: ShaderId,

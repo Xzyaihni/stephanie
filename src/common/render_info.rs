@@ -714,6 +714,7 @@ pub struct RenderInfo
     pub above_world: bool,
     pub mix: Option<MixColor>,
     pub aspect: Aspect,
+    pub full_lit: bool,
     pub outlined: bool,
     pub z_level: ZLevel
 }
@@ -731,6 +732,7 @@ impl Default for RenderInfo
             above_world: false,
             mix: None,
             aspect: Aspect::Fill,
+            full_lit: false,
             outlined: false,
             z_level: ZLevel::Shoulders
         }
@@ -862,6 +864,7 @@ pub struct ClientRenderInfo
     pub above_world: bool,
     pub mix: Option<MixColor>,
     pub aspect: Aspect,
+    pub full_lit: bool,
     pub outlined: bool,
     z_level: ZLevel
 }
@@ -894,6 +897,7 @@ impl ServerToClient<ClientRenderInfo> for RenderInfo
             above_world: self.above_world,
             mix: self.mix,
             aspect: self.aspect,
+            full_lit: self.full_lit,
             outlined: self.outlined,
             z_level: self.z_level
         };
