@@ -74,6 +74,8 @@ use crate::{
 };
 
 
+const HAND_LEFT_Y: f32 = -0.3;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum EquipState
 {
@@ -1240,8 +1242,8 @@ impl Character
             target.position.y = y * info.normal.scale.max();
         };
 
-        set_for(hand_left, -0.3);
-        set_for(hand_right, 0.3);
+        set_for(hand_left, HAND_LEFT_Y);
+        set_for(hand_right, -HAND_LEFT_Y);
 
         let lazy_for = |entity|
         {
@@ -1265,12 +1267,9 @@ impl Character
             lazy_for(holding_entity.entity);
         }
 
-        lazy_for(hand_left);
-        lazy_for(hand_right);
-
         if !holding_state
         {
-            self.forward_point(combined_info);
+            self.unhanded_point(combined_info);
         }
 
         some_or_return!(self.info.as_mut()).last_held_item = Some(held_item_id);
@@ -1634,19 +1633,19 @@ impl Character
 
         let is_player = combined_info.entities.player_exists(info.this);
 
-        let start_rotation = some_or_return!(self.default_held_rotation(combined_info));
-
-        let holding = if self.holding.is_some()
+        let (holding, holding_is_left) = if self.holding.is_some()
         {
-            info.hand_left
+            (info.hand_left, true)
         } else
         {
             match self.bash_side
             {
-                Side1d::Left => info.hand_right,
-                Side1d::Right => info.hand_left
+                Side1d::Left => (info.hand_right, false),
+                Side1d::Right => (info.hand_left, true)
             }
         };
+
+        let start_rotation_holding = some_or_return!(self.default_held_rotation(combined_info, holding_is_left));
 
         let mut lazy = some_or_return!(combined_info.entities.lazy_transform_mut_no_change(holding));
         let swing_time = some_or_return!(self.bash_attack_cooldown(combined_info.entities));
@@ -1658,7 +1657,7 @@ impl Character
             x.set_decay(70.0);
         }
 
-        lazy.target().rotation = start_rotation - new_rotation;
+        lazy.target().rotation = start_rotation_holding - new_rotation;
 
         combined_info.entities.add_watcher(holding, Watcher{
             kind: WatcherType::Lifetime(0.2.into()),
@@ -1689,7 +1688,7 @@ impl Character
                 {
                     if let Some(mut target) = entities.target(entity)
                     {
-                        target.rotation = start_rotation;
+                        target.rotation = start_rotation_holding;
                     }
                 }),
                 ..Default::default()
@@ -1724,31 +1723,75 @@ impl Character
         self.update_hands_rotation(combined_info);
     }
 
-    fn default_held_rotation(&self, combined_info: CombinedInfo) -> Option<f32>
+    fn origin_rotation(&self, combined_info: CombinedInfo) -> Option<f32>
     {
-        let origin_rotation = combined_info.entities
+        Some(-combined_info.entities
             .lazy_transform(self.info.as_ref()?.holding?.entity)?
-            .origin_rotation();
+            .origin_rotation())
+    }
 
-        Some(-origin_rotation)
+    fn default_held_rotation(&self, combined_info: CombinedInfo, is_left: bool) -> Option<f32>
+    {
+        let origin_rotation = self.origin_rotation(combined_info)?;
+
+        let hand_offset = if is_left { 0.1 } else { -0.1 };
+
+        Some(origin_rotation + hand_offset)
+    }
+
+    fn hands_reset_rotation(&mut self, combined_info: CombinedInfo)
+    {
+        let info = some_or_return!(self.info.as_ref());
+
+        let f = |entity, is_left|
+        {
+            if let Some(mut lazy) = combined_info.entities.lazy_transform_mut_no_change(entity)
+            {
+                let start_rotation = some_or_return!(self.default_held_rotation(combined_info, is_left));
+
+                lazy.target().rotation = start_rotation;
+            }
+        };
+
+        f(info.hand_left, true);
+        f(info.hand_right, false);
+    }
+
+    fn unhanded_point(&mut self, combined_info: CombinedInfo)
+    {
+        self.hands_reset_rotation(combined_info);
+
+        let info = some_or_return!(self.info.as_ref());
+
+        if let Some(mut lazy) = combined_info.entities.lazy_transform_mut_no_change(info.hand_left)
+        {
+            let info = combined_info.characters_info.get(self.id);
+
+            lazy.target().position.y = HAND_LEFT_Y * info.normal.scale.max();
+        }
     }
 
     fn forward_point(&mut self, combined_info: CombinedInfo)
     {
         let info = some_or_return!(self.info.as_ref());
 
-        let start_rotation = some_or_return!(self.default_held_rotation(combined_info));
-
         let f = |entity|
         {
             if let Some(mut lazy) = combined_info.entities.lazy_transform_mut_no_change(entity)
             {
+                let start_rotation = some_or_return!(self.origin_rotation(combined_info));
+
                 lazy.target().rotation = start_rotation;
             }
         };
 
         f(info.hand_left);
         f(info.hand_right);
+
+        if let Some(mut lazy) = combined_info.entities.lazy_transform_mut_no_change(info.hand_left)
+        {
+            lazy.target().position.y = 0.0;
+        }
     }
 
     fn clear_attack_state(&mut self, combined_info: CombinedInfo, successful: bool)
@@ -1876,18 +1919,12 @@ impl Character
             }.into()
         );
 
-        let start_rotation = some_or_false!(self.default_held_rotation(combined_info));
-        let current_hand_rotation = self.current_hand_rotation();
-
         let target = lazy.target();
 
         let item_position = self.held_position(combined_info.characters_info, target.scale);
         let held_position = Vector3::new(item_position.x, target.position.y, 0.0);
 
         target.position.x = item_position.x + POKE_DISTANCE * ENTITY_SCALE;
-        target.rotation = start_rotation;
-
-        let rotation = start_rotation - current_hand_rotation;
 
         let end = extend_time + extend_time;
 
@@ -1911,7 +1948,6 @@ impl Character
 
                 if let Some(mut target) = entities.target(entity)
                 {
-                    target.rotation = rotation;
                     target.position = held_position;
                 }
             }),

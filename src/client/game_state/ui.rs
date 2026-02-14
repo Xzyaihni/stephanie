@@ -2668,8 +2668,10 @@ impl Ui
                 0
             });
 
+            let player_name = entities.named(self.ui_entities.player).map(|x| x.clone()).unwrap_or_else(|| "stephy".to_owned());
+
             body.update(UiId::DeathScreen(DeathScreenPart::Text), UiElement{
-                texture: UiTexture::Text(TextInfo::new_simple(MEDIUM_TEXT_SIZE, "stephy is dead :(")),
+                texture: UiTexture::Text(TextInfo::new_simple(MEDIUM_TEXT_SIZE, format!("{player_name} is dead :("))),
                 mix: Some(MixColorLch::color(ACCENT_COLOR)),
                 ..UiElement::fit_content()
             });
@@ -3343,8 +3345,10 @@ impl Ui
                 ..Default::default()
             });
 
+            let player_name = entities.named(self.ui_entities.player).map(|x| x.clone()).unwrap_or_else(|| "stephy".to_owned());
+
             self.controller.update(UiId::Paused(PausedPart::Text), UiElement{
-                texture: UiTexture::Text(TextInfo::new_simple(BIG_TEXT_SIZE, "stephy is paused...")),
+                texture: UiTexture::Text(TextInfo::new_simple(BIG_TEXT_SIZE, format!("{player_name} is paused..."))),
                 mix: Some(MixColorLch::color(ACCENT_COLOR)),
                 position: UiPosition::Absolute{position: Vector2::zeros(), align: Default::default()},
                 animation: Animation{
