@@ -600,6 +600,20 @@ impl UiElementCached
 
         self.update_mix(old_element, old_element.mix, parent_fraction.alpha, dt);
 
+        {
+            let this_alpha = if old_element.animation.mix.as_ref().map(|x| x.start_mix.is_some()).unwrap_or(false)
+            {
+                self.mix.map(|x| x.color.a).unwrap_or(1.0)
+            } else
+            {
+                1.0
+            };
+
+            let inherit_alpha = if self.inherit_animation { parent_fraction.alpha } else { 1.0 };
+
+            self.fractions.alpha = inherit_alpha * this_alpha;
+        }
+
         self.last_scissor = scissor;
         self.update_always(
             parent_fraction,

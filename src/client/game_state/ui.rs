@@ -519,6 +519,7 @@ fn draw_item_image(
     {
         parent.update(id(IconPart::Picture), UiElement{
             texture: UiTexture::CustomId(sprite.id),
+            mix: Some(MixColorLch::alpha_only()),
             width: UiSize::Absolute(tight_size * aspect.x).into(),
             height: UiSize::Absolute(tight_size * aspect.y).into(),
             ..Default::default()
@@ -534,6 +535,7 @@ fn draw_item_image(
 
         body.update(id(IconPart::Picture), UiElement{
             texture: UiTexture::CustomId(sprite.id),
+            mix: Some(MixColorLch::alpha_only()),
             width: UiSize::CopyElement(UiDirection::Horizontal, aspect.x, id(IconPart::Body)).into(),
             height: UiSize::CopyElement(UiDirection::Vertical, aspect.y, id(IconPart::Body)).into(),
             ..Default::default()
