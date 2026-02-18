@@ -195,6 +195,19 @@ pub struct Lcha
     pub a: f32
 }
 
+impl Default for Lcha
+{
+    fn default() -> Self
+    {
+        Self{
+            l: 100.0,
+            c: 0.0,
+            h: 0.0,
+            a: 1.0
+        }
+    }
+}
+
 impl Lcha
 {
     pub fn add_lightness(&mut self, l: f32)

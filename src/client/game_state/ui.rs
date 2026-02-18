@@ -1142,6 +1142,7 @@ impl WindowKind
                                 ].into()),
                                 outline: None
                             }),
+                            mix: Some(MixColorLch::alpha_only()),
                             ..UiElement::fit_content()
                         });
                     }
@@ -1241,6 +1242,7 @@ impl WindowKind
                         text: TextBlocks(blocks.into()),
                         ..Default::default()
                     }),
+                    mix: Some(MixColorLch::alpha_only()),
                     ..UiElement::fit_content()
                 });
 
@@ -1285,6 +1287,7 @@ impl WindowKind
                         ].into()),
                         ..Default::default()
                     }),
+                    mix: Some(MixColorLch::alpha_only()),
                     ..UiElement::fit_content()
                 });
 
@@ -1316,6 +1319,7 @@ impl WindowKind
                             amount,
                             horizontal: true
                         }),
+                        mix: Some(MixColorLch::alpha_only()),
                         width: UiSize::Rest(1.0).into(),
                         ..Default::default()
                     });
@@ -1347,6 +1351,7 @@ impl WindowKind
                             amount: text_amount,
                             horizontal: true
                         }),
+                        mix: Some(MixColorLch::alpha_only()),
                         ..UiElement::fit_content()
                     });
 

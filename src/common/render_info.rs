@@ -148,6 +148,13 @@ impl<T> MixColorGeneric<T>
     {
         Self{color, amount: 1.0, only_alpha: false, keep_transparency: true}
     }
+
+    pub fn alpha_only() -> Self
+    where
+        T: Default
+    {
+        Self{only_alpha: true, amount: 1.0, ..Self::default()}
+    }
 }
 
 pub type MixColor = MixColorGeneric<[f32; 4]>;

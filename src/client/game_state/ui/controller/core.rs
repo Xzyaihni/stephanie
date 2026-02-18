@@ -532,8 +532,13 @@ impl UiElementCached
                     }
                 }
 
+                let mut mixed_color = mix_color!(l, c, h, a);
+
+                // just a temp solution, if i need it to be actually correct with animations then i would need another variable
+                mixed_color.a = mixed_color.a.min(alpha_inherit);
+
                 MixColorLch{
-                    color: mix_color!(l, c, h, a),
+                    color: mixed_color,
                     ..target
                 }
             } else
@@ -700,6 +705,8 @@ impl UiElementCached
             element.mix
         };
 
+        self.update_mix(element, target_mix, parent_fraction.alpha, dt);
+
         {
             let this_alpha = if element.animation.mix.as_ref().map(|x| x.close_mix.is_some()).unwrap_or(false)
             {
@@ -713,8 +720,6 @@ impl UiElementCached
 
             self.fractions.alpha = inherit_alpha * this_alpha;
         }
-
-        self.update_mix(element, target_mix, parent_fraction.alpha, dt);
 
         self.update_always(
             parent_fraction,
