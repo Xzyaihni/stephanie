@@ -782,6 +782,11 @@ pub struct ClientRenderObject
 
 impl ClientRenderObject
 {
+    pub fn is_text(&self) -> bool
+    {
+        matches!(self.kind, ClientObjectType::Text(_))
+    }
+
     pub fn set_transform(&mut self, transform: Transform)
     {
         match &mut self.kind

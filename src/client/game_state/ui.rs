@@ -1979,6 +1979,13 @@ impl Window
             info.mouse_position - start
         }).unwrap_or_default();
 
+        let mix_animation = MixAnimation{
+            decay: MixDecay::all(60.0),
+            start_mix: Some(Lcha{a: 0.0, ..BACKGROUND_COLOR}),
+            close_mix: Some(Lcha{a: 0.0, ..BACKGROUND_COLOR}),
+            ..Default::default()
+        };
+
         {
             let body = info.controller.input_of(&id);
             if let (Some(width), Some(height)) = (body.try_width(), body.try_height())
@@ -1996,12 +2003,7 @@ impl Window
                     height: UiSize::CopyElement(UiDirection::Vertical, scale.y, id.clone()).into(),
                     position: UiPosition::Offset(id.clone(), Vector2::zeros()),
                     animation: Animation{
-                        mix: Some(MixAnimation{
-                            decay: MixDecay::all(30.0),
-                            start_mix: Some(Lcha{a: 0.0, ..BACKGROUND_COLOR}),
-                            close_mix: Some(Lcha{a: 0.0, ..BACKGROUND_COLOR}),
-                            ..Default::default()
-                        }),
+                        mix: Some(mix_animation.clone()),
                         ..Animation::normal()
                     },
                     ..Default::default()
@@ -2013,12 +2015,7 @@ impl Window
             texture: UiTexture::Sliced(info.sliced_textures["rounded"]),
             mix: Some(MixColorLch::color(BACKGROUND_COLOR)),
             animation: Animation{
-                mix: Some(MixAnimation{
-                    decay: MixDecay::all(30.0),
-                    start_mix: Some(Lcha{a: 0.0, ..BACKGROUND_COLOR}),
-                    close_mix: Some(Lcha{a: 0.0, ..BACKGROUND_COLOR}),
-                    ..Default::default()
-                }),
+                mix: Some(mix_animation),
                 ..Animation::normal()
             },
             position: UiPosition::Absolute{position, align: Default::default()},
@@ -2833,7 +2830,7 @@ impl Ui
                     start_mix: Some(Lcha{a: 0.0, ..BACKGROUND_COLOR}),
                     ..Default::default()
                 }),
-                ..Animation::normal()
+                ..Default::default()
             };
 
             let vertical_panel_id = UiId::Health(HealthPart::PanelVertical);

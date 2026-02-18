@@ -752,9 +752,9 @@ impl Animation
         Self{
             scaling: Some(ScalingAnimation{
                 start_scaling: vector![2.0, 0.1],
-                start_mode: Scaling::EaseOut{decay: 20.0},
+                start_mode: Scaling::EaseOut{decay: 30.0},
                 close_scaling: vector![1.0, 0.0],
-                close_mode: Scaling::EaseOut{decay: 30.0},
+                close_mode: Scaling::EaseOut{decay: 10.0},
                 ..Default::default()
             }),
             position: Some(PositionAnimation{

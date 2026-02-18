@@ -270,8 +270,10 @@ struct Fractions
     alpha: f32,
     scale: Vector2<f32>,
     scale_inherit: Vector2<f32>,
+    deferred_scale: Vector2<f32>,
     position: Vector2<f32>,
-    position_inherit: Vector2<f32>
+    position_inherit: Vector2<f32>,
+    deferred_position: Vector2<f32>
 }
 
 impl Default for Fractions
@@ -282,8 +284,10 @@ impl Default for Fractions
             alpha: 1.0,
             scale: Vector2::repeat(1.0),
             scale_inherit: Vector2::repeat(1.0),
+            deferred_scale: Vector2::zeros(),
             position: Vector2::zeros(),
-            position_inherit: Vector2::zeros()
+            position_inherit: Vector2::zeros(),
+            deferred_position: Vector2::zeros()
         }
     }
 }
@@ -421,7 +425,26 @@ impl UiElementCached
     )
     {
         self.fractions.scale = if self.inherit_animation { parent_fraction.scale_inherit } else { Vector2::repeat(1.0) };
-        self.fractions.position = parent_fraction.position_inherit;
+
+        let deferred_position = deferred.position.unwrap();
+
+        let scaling_offset = {
+            let parent_scale = parent_fraction.deferred_scale;
+
+            let parent_unscaled_center_offset = parent_fraction.deferred_position - deferred_position;
+            let parent_center_offset = parent_unscaled_center_offset.zip_map(&parent_scale, |a, b|
+            {
+                if b == 0.0 { 1.0 } else { a / b }
+            });
+
+            let scaled_offset = parent_center_offset.component_mul(&(Vector2::repeat(1.0) - parent_fraction.scale_inherit));
+
+            scaled_offset.component_mul(&parent_scale)
+        };
+
+        self.fractions.position = parent_fraction.position_inherit + scaling_offset;
+
+        self.fractions.deferred_position = deferred_position;
 
         {
             let target_scale = Vector2::new(deferred.width.unwrap(), deferred.height.unwrap());
@@ -430,6 +453,8 @@ impl UiElementCached
             let fraction = fraction.zip_map(&target_scale, |a, b| if b == 0.0 { 1.0 } else { a });
 
             self.fractions.scale_inherit = fraction.component_mul(&parent_fraction.scale_inherit);
+
+            self.fractions.deferred_scale = target_scale;
         }
 
         {
@@ -437,7 +462,7 @@ impl UiElementCached
 
             let fraction = self.position - target_position;
 
-            self.fractions.position_inherit = fraction + parent_fraction.position_inherit;
+            self.fractions.position_inherit = fraction + parent_fraction.position_inherit + scaling_offset;
         }
 
         {
@@ -1283,7 +1308,6 @@ impl TextureSizer
 struct Element<Id>
 {
     id: Id,
-    parent_fraction: Fractions,
     close_soon: bool,
     element: UiElement<Id>,
     cached: UiElementCached,
@@ -1617,7 +1641,6 @@ impl<Id: Idable> Controller<Id>
 
                     let mut element = Element{
                         id: this.id.clone(),
-                        parent_fraction: parent_fraction.clone(),
                         close_soon: false,
                         element: this.element.clone(),
                         cached,
@@ -1683,10 +1706,7 @@ impl<Id: Idable> Controller<Id>
                 {
                     if let Some(parent) = parent
                     {
-                        if parent.closing
-                        {
-                            element.parent_fraction = parent.cached.fractions.clone();
-                        } else
+                        if !parent.closing
                         {
                             element.close_soon = true;
                         }
@@ -1704,12 +1724,19 @@ impl<Id: Idable> Controller<Id>
 
             let screen_size = shared.screen_size;
 
-            let closer = |element: &mut Element<Id>|
+            let mut closer = |parent_id: Option<&Id>, id: &Id|
             {
-                if element.closing
+                if shared.elements[id].closing
                 {
+                    let parent_fraction = parent_id.map(|parent_id|
+                    {
+                        shared.elements[parent_id].cached.fractions.clone()
+                    }).unwrap_or_default();
+
+                    let element = shared.elements.get_mut(id).expect("id must be existing");
+
                     element.cached.update_closing(
-                        &element.parent_fraction,
+                        &parent_fraction,
                         &element.deferred,
                         &mut element.element,
                         element.close_soon,
@@ -1722,16 +1749,21 @@ impl<Id: Idable> Controller<Id>
                 }
             };
 
-            shared.elements.retain(|id, element|
+            let mut remove_ids = Vec::new();
+            shared.tree.for_each(|parent_id, id|
             {
-                let keep = closer(element);
+                let discard = !closer(parent_id, &id) || parent_id.map(|parent_id| remove_ids.contains(parent_id)).unwrap_or(false);
 
-                if !keep
+                if discard
                 {
-                    shared.tree.remove(id);
+                    remove_ids.push(id.clone());
                 }
+            });
 
-                keep
+            remove_ids.into_iter().for_each(|id|
+            {
+                shared.elements.remove(&id);
+                shared.tree.remove(&id);
             });
         }
 
