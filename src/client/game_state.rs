@@ -678,6 +678,7 @@ pub struct CommonTextures
     pub blood: Sprite,
     pub health: Sprite,
     pub level_up: Sprite,
+    pub muzzleflash: Sprite,
     pub solid: TextureId
 }
 
@@ -690,6 +691,7 @@ impl CommonTextures
             blood: Sprite::new(assets, assets.texture_id("decals/blood.png")),
             health: Sprite::new(assets, assets.texture_id("decals/health.png")),
             level_up: Sprite::new(assets, assets.texture_id("decals/level_up.png")),
+            muzzleflash: Sprite::new(assets, assets.texture_id("decals/muzzleflash.png")),
             solid: assets.default_texture(DefaultTexture::Solid)
         }
     }

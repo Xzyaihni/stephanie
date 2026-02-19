@@ -30,6 +30,7 @@ use crate::{
         raycast::*,
         collider::*,
         item::*,
+        lazy_transform::*,
         systems::{raycast_system, collider_system, player_system},
         ENTITY_SCALE,
         SCREENSHAKE_DISTANCE,
@@ -363,9 +364,10 @@ pub fn damager<'a, 'b, 'c>(
 
         if !result.ranged
         {
-            if !reduce_durability(entities, textures, result.this_entity)
+            let durability_amount = if matches!(result.kind, DamagingKind::Tile(_)) { 0.5 } else { 1.0 };
+            if !reduce_durability(entities, textures, result.this_entity, durability_amount)
             {
-                reduce_durability(entities, textures, result.other_entity);
+                reduce_durability(entities, textures, result.other_entity, durability_amount);
             }
         }
     }
@@ -651,12 +653,21 @@ fn bullet_trail_between(
     color: [f32; 4]
 )
 {
-    let width = 0.05 * ENTITY_SCALE;
+    let width = 0.08 * ENTITY_SCALE;
 
     let difference = (target - start).xy();
 
     let length = difference.magnitude();
     let rotation = -angle_between(start, target);
+
+    let scale = vector![length, width, ENTITY_SCALE * 0.1];
+
+    let transform = Transform{
+        position: with_z((start.xy() + target.xy()) * 0.5, start.z),
+        scale,
+        rotation,
+        ..Default::default()
+    };
 
     let trail = entities.push(true, EntityInfo{
         render: Some(RenderInfo{
@@ -669,16 +680,23 @@ fn bullet_trail_between(
             full_lit: true,
             ..Default::default()
         }),
-        transform: Some(Transform{
-            position: with_z((start.xy() + target.xy()) * 0.5, start.z),
-            scale: vector![length, width, ENTITY_SCALE * 0.1],
-            rotation,
+        transform: Some(transform.clone()),
+        lazy_transform: Some(LazyTransformInfo{
+            transform: Transform{
+                scale: vector![scale.x, 0.0, scale.z],
+                ..transform
+            },
+            scaling: Scaling::Constant{speed: width * 5.0},
             ..Default::default()
-        }),
+        }.into()),
         ..Default::default()
     });
 
-    entities.add_watcher(trail, Watcher::simple_disappearing(0.2));
+    entities.add_watcher(trail, Watcher{
+        kind: WatcherType::ScaleDistance{from: vector![scale.x, 0.0], near: 0.001},
+        action: Box::new(|entities, entity| entities.remove(entity)),
+        ..Default::default()
+    });
 }
 
 fn flash_white_single(entities: &ClientEntities, entity: Entity)
@@ -869,12 +887,13 @@ fn flash_white(entities: &ClientEntities, entity: Entity)
 fn reduce_durability(
     entities: &ClientEntities,
     textures: &CommonTextures,
-    entity: Entity
+    entity: Entity,
+    amount: f32
 ) -> bool
 {
     if let Some(mut item) = entities.item_mut(entity)
     {
-        if item.damage_durability()
+        if item.damage_durability(amount)
         {
             let disappear_action = item_disappear_watcher(textures).action;
 
@@ -890,7 +909,7 @@ fn reduce_durability(
 
     if let Some(mut character) = entities.character_mut(entity)
     {
-        character.damage_held_durability(entities, textures);
+        character.damage_held_durability(entities, textures, amount);
         return true;
     }
 

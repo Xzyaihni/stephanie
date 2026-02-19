@@ -269,7 +269,8 @@
     {
         "name": "glock",
         "ranged": {
-            "Pistol": {
+            "Gun": {
+                "exit_offset": 1.5,
                 "cooldown": 0.2,
                 "damage": 1
             }

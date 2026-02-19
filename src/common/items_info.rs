@@ -51,16 +51,24 @@ impl ItemUsage
 #[derive(Debug, Clone, Deserialize)]
 pub enum Ranged
 {
-    Pistol{cooldown: f32, damage: f32}
+    Gun{exit_offset: f32, cooldown: f32, damage: f32}
 }
 
 impl Ranged
 {
+    pub fn exit_offset(&self) -> f32
+    {
+        match self
+        {
+            Self::Gun{exit_offset, ..} => *exit_offset
+        }
+    }
+
     pub fn piercing(&self) -> bool
     {
         match self
         {
-            Self::Pistol{..} => true
+            Self::Gun{..} => true
         }
     }
 
@@ -68,7 +76,7 @@ impl Ranged
     {
         match self
         {
-            Self::Pistol{cooldown, ..} => *cooldown
+            Self::Gun{cooldown, ..} => *cooldown
         }
     }
 
@@ -85,7 +93,7 @@ impl Ranged
 
         match self
         {
-            Self::Pistol{damage, ..} =>
+            Self::Gun{damage, ..} =>
             {
                 DamageType::Bullet(with_base(10.0, damage))
             }

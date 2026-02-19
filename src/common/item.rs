@@ -261,9 +261,9 @@ impl Item
         Item{rarity, buffs: rarity.random_buffs(), ammo: Vec::new(), durability: info.durability.into(), id}
     }
 
-    pub fn damage_durability(&mut self) -> bool
+    pub fn damage_durability(&mut self, amount: f32) -> bool
     {
-        let amount = self.durability_scale().unwrap_or(1.0);
+        let amount = amount * self.durability_scale().unwrap_or(1.0);
 
         *self.durability -= amount;
 

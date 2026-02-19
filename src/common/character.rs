@@ -21,7 +21,7 @@ use crate::{
     client::{
         CommonTextures,
         ConnectionsHandler,
-        ui_common::YELLOW_COLOR
+        ui_common::WHITE_COLOR
     },
     common::{
         with_z,
@@ -785,14 +785,14 @@ impl Character
         self.actions.push(action);
     }
 
-    pub fn damage_held_durability(&mut self, entities: &ClientEntities, textures: &CommonTextures)
+    pub fn damage_held_durability(&mut self, entities: &ClientEntities, textures: &CommonTextures, amount: f32)
     {
         let info = some_or_return!(self.info.as_ref());
         let held = some_or_return!(self.holding);
 
         let holding = info.holding;
 
-        damage_durability_with(entities, info.this, held, ||
+        damage_durability_with(entities, info.this, held, amount, ||
         {
             let disappear_action = item_disappear_watcher(textures).action;
 
@@ -1045,6 +1045,25 @@ impl Character
         self.cached.bash_distance = self.bash_distance(combined_info);
     }
 
+    pub fn reset_held_lighting(&self, entities: &ClientEntities)
+    {
+        let info = some_or_return!(self.info.as_ref());
+
+        let this_entity = info.this;
+
+        if let Some(item) = self.held_item_info(entities)
+        {
+            let mut light = some_or_return!(entities.light_mut_no_change(this_entity));
+            light.modify_light(|light| *light = item.lighting);
+        } else
+        {
+            if let Some(mut light) = entities.light_mut_no_change(this_entity)
+            {
+                light.modify_light(|light| *light = Light::default());
+            }
+        }
+    }
+
     fn update_held(
         &mut self,
         combined_info: CombinedInfo
@@ -1114,7 +1133,6 @@ impl Character
 
         let entities = &combined_info.entities;
 
-        let this_entity = info.this;
         let holding_entity = info.holding;
         let hand_left = info.hand_left;
         let hand_right = info.hand_right;
@@ -1126,7 +1144,7 @@ impl Character
             combined_info.assets.lock().texture(texture).clone()
         };
 
-        let holding_item = self.held_item_info(combined_info);
+        let holding_item = self.held_item_info(combined_info.entities);
         let holding_state = holding_item.is_some();
 
         if let Some(holding_entity) = holding_entity
@@ -1158,9 +1176,6 @@ impl Character
         if let Some(item) = holding_item
         {
             let holding_entity = some_or_unexpected_return!(holding_entity);
-
-            let mut light = some_or_return!(entities.light_mut_no_change(this_entity));
-            light.modify_light(|light| *light = item.lighting);
 
             let mut lazy_transform = some_or_return!(entities.lazy_transform_mut_no_change(holding_entity.entity));
 
@@ -1214,12 +1229,6 @@ impl Character
                         }
                     }
                 }
-            }
-        } else
-        {
-            if let Some(mut light) = entities.light_mut_no_change(this_entity)
-            {
-                light.modify_light(|light| *light = Light::default());
             }
         }
 
@@ -2015,14 +2024,19 @@ impl Character
             }
         }
 
+        let muzzleflash_sprite = combined_info.common_textures.muzzleflash;
+
+        let info = some_or_unexpected_return!(self.info.as_ref());
+
+        let holding = some_or_unexpected_return!(info.holding.as_ref());
+        let holding_entity = holding.entity;
+
+        let holding_transform = some_or_false!(combined_info.entities.transform(holding_entity));
+
         let trail_start = {
-            let info = some_or_unexpected_return!(self.info.as_ref());
-
-            let holding = some_or_unexpected_return!(info.holding.as_ref());
-
-            let holding_transform = some_or_false!(combined_info.entities.transform(holding.entity));
-
-            holding_transform.position + rotate_point_z_3d(vector![0.0, holding_transform.scale.y * -0.5, 0.0], holding_transform.rotation)
+            let x_offset = ranged.exit_offset() / ENTITY_PIXEL_SCALE as f32 * ENTITY_SCALE;
+            let start_offset = vector![x_offset * holding_transform.scale.x.signum(), holding_transform.scale.y * -0.5];
+            holding_transform.position + rotate_point_z_3d(with_z(start_offset, 0.0), holding_transform.rotation)
         };
 
         self.attack_cooldown = self.attack_cooldown.max(ranged.cooldown());
@@ -2075,7 +2089,7 @@ impl Character
             start,
             target,
             scale_pierce: Some(ENTITY_SCALE.recip()),
-            trail: Some(RaycastTrailInfo{override_start: Some(trail_start), color: YELLOW_COLOR.into()})
+            trail: Some(RaycastTrailInfo{override_start: Some(trail_start), color: WHITE_COLOR.into()})
         };
 
         combined_info.entities.push(true, EntityInfo{
@@ -2090,7 +2104,29 @@ impl Character
             ..Default::default()
         });
 
-        self.damage_held_durability(combined_info.entities, combined_info.common_textures);
+        self.damage_held_durability(combined_info.entities, combined_info.common_textures, 1.0);
+
+        let muzzleflash_entity = combined_info.entities.push(true, EntityInfo{
+            render: Some(RenderInfo{
+                object: Some(RenderObjectKind::TextureId{
+                    id: muzzleflash_sprite.id
+                }.into()),
+                z_level: ZLevel::Elbow,
+                shadow_visible: true,
+                full_lit: true,
+                ..Default::default()
+            }),
+            transform: Some(Transform{
+                position: trail_start,
+                scale: with_z(muzzleflash_sprite.scale, ENTITY_SCALE * 0.1),
+                rotation: holding_transform.rotation,
+                ..Default::default()
+            }),
+            light: Some(Light{strength: 0.2, ..Default::default()}),
+            ..Default::default()
+        });
+
+        combined_info.entities.add_watcher(muzzleflash_entity, Watcher::simple_disappearing(0.1));
 
         true
     }
@@ -2395,10 +2431,10 @@ impl Character
 
     fn held_item_info<'a>(
         &self,
-        combined_info: CombinedInfo<'a>
+        entities: &'a ClientEntities
     ) -> Option<&'a ItemInfo>
     {
-        self.held_item_id(combined_info.entities).map(|x| combined_info.items_info.get(x))
+        self.held_item_id(entities).map(|x| entities.infos().items_info.get(x))
     }
 
     fn hand_item_info<'a>(&self, combined_info: CombinedInfo<'a>) -> &'a ItemInfo
@@ -2410,7 +2446,7 @@ impl Character
 
     fn held_info<'a>(&self, combined_info: CombinedInfo<'a>) -> &'a ItemInfo
     {
-        self.held_item_info(combined_info).unwrap_or_else(move ||
+        self.held_item_info(combined_info.entities).unwrap_or_else(move ||
         {
             self.hand_item_info(combined_info)
         })

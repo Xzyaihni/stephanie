@@ -65,15 +65,16 @@ pub fn inventory_remove_items(
     inventory.inventory_updated(&entities.infos().items_info);
 }
 
-pub fn damage_durability(entities: &ClientEntities, entity: Entity, id: InventoryItem) -> bool
+pub fn damage_durability(entities: &ClientEntities, entity: Entity, id: InventoryItem, amount: f32) -> bool
 {
-    damage_durability_with(entities, entity, id, || on_removed_item(entities, entity, id))
+    damage_durability_with(entities, entity, id, amount, || on_removed_item(entities, entity, id))
 }
 
 pub fn damage_durability_with(
     entities: &ClientEntities,
     entity: Entity,
     id: InventoryItem,
+    amount: f32,
     on_removed: impl FnOnce()
 ) -> bool
 {
@@ -81,7 +82,7 @@ pub fn damage_durability_with(
 
     if let Some(item) = inventory.items.get_mut(id.0)
     {
-        let destroyed = item.damage_durability();
+        let destroyed = item.damage_durability(amount);
 
         drop(inventory);
 

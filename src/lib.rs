@@ -51,7 +51,7 @@ impl Display for Version
     }
 }
 
-pub const VERSION: Version = Version{major: 0, minor: 4};
+pub const VERSION: Version = Version{major: 0, minor: 5};
 
 pub const LOG_PATH: &str = "log.txt";
 pub const LONGEST_FRAME: f64 = 1.0 / 20.0;
