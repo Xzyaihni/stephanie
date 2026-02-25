@@ -129,6 +129,11 @@ macro_rules! implement_common
                 self.chunks.len()
             }
 
+            pub fn get(&self, value: Pos3<usize>) -> Option<&T>
+            {
+                self.chunks.get(self.indexer.to_index(value))
+            }
+
             pub fn get_two_mut(&mut self, one: LocalPos, two: LocalPos) -> (&mut T, &mut T)
             {
                 let one = self.indexer.to_index(one.pos);

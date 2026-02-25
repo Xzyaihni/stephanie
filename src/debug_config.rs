@@ -28,6 +28,7 @@ pub enum DebugTool
     LispDisableChecks,
     LispMemory,
     RedundantWorldChecks,
+    InstantChunks,
     DisableEnemySystem,
     ClientMessages,
     ClientMessagesFull,

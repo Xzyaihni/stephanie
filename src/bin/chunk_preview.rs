@@ -3,6 +3,8 @@
 use std::{
     f32,
     fs,
+    array,
+    cell::RefCell,
     ops::{Range, Deref, DerefMut},
     time::SystemTime,
     rc::Rc,
@@ -46,6 +48,8 @@ use stephanie::{
     server::world::{
         MarkerKind,
         world_generator::{
+            WorldChunk,
+            WorldChunkId,
             WorldChunkTag,
             ChunkRulesGroup,
             ChunkGenerator,
@@ -67,6 +71,9 @@ use stephanie::{
         some_or_return,
         render_info::*,
         lisp::*,
+        Pos3,
+        ChunksContainer,
+        WorldChunksBlock,
         Sprite,
         TileMap,
         TileMapWithTextures,
@@ -77,7 +84,7 @@ use stephanie::{
         furniture_creator,
         items_info::TextureCreator,
         colors::Lcha,
-        world::{TILE_SIZE, CHUNK_VISUAL_SIZE, Tile, TileRotation}
+        world::{TILE_SIZE, CHUNK_VISUAL_SIZE, LocalPos, Tile, TileRotation}
     }
 };
 
@@ -124,6 +131,7 @@ enum UiId
     Screen,
     ScreenBody,
     Scrollbar(UiScrollbarId, UiScrollbarPart),
+    TextboxLabel(TextboxId),
     Textbox(TextboxId, TextboxPartId),
     Button(ButtonId, ButtonPartId),
     Padding(u32)
@@ -151,7 +159,36 @@ enum TextboxId
 {
     Name,
     Seed,
+    ChunkSide(usize),
     Tag(u32)
+}
+
+impl TextboxId
+{
+    fn name(&self) -> String
+    {
+        match self
+        {
+            Self::Name => "name".to_owned(),
+            Self::Seed => "seed".to_owned(),
+            Self::ChunkSide(side) =>
+            {
+                (match side
+                {
+                    0 => "up left",
+                    1 => "up",
+                    2 => "up right",
+                    3 => "left",
+                    5 => "right",
+                    6 => "down left",
+                    7 => "down",
+                    8 => "down right",
+                    _ => unreachable!()
+                }).to_owned()
+            },
+            Self::Tag(tag) => format!("tag #{tag}")
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -454,6 +491,7 @@ impl PartialEq for TextboxWrapper
 struct Tags
 {
     name: TextboxWrapper,
+    chunks: Vec<(Pos3<usize>, TextboxWrapper)>,
     height: i32,
     difficulty: f32,
     rotation: TileRotation,
@@ -466,18 +504,26 @@ struct AssetsDependent
     tilemap: Option<(LispMemory, TileMapWithTextures)>,
     furniture: FurnituresInfo,
     enemies: (CharactersInfo, EnemiesInfo),
+    rules: Rc<ChunkRulesGroup>,
+    world_chunks: Rc<RefCell<ChunksContainer<Option<WorldChunksBlock>>>>
 }
 
 impl AssetsDependent
 {
-    fn new(info: &mut ObjectCreatePartialInfo) -> Self
+    fn new(
+        info: &mut ObjectCreatePartialInfo,
+        rules: Rc<ChunkRulesGroup>,
+        world_chunks: Rc<RefCell<ChunksContainer<Option<WorldChunksBlock>>>>
+    ) -> Self
     {
         let tilemap = {
             let tilemap = with_error(TileMap::parse("info/tiles.json", "textures/tiles/"));
 
             tilemap.map(|tilemap|
             {
-                let primitives = Rc::new(ChunkGenerator::default_primitives(&tilemap.tilemap));
+                let overmaps = Rc::new(RefCell::new(vec![world_chunks.clone()]));
+
+                let primitives = Rc::new(ChunkGenerator::default_primitives(&tilemap.tilemap, rules.clone(), overmaps));
 
                 let memory = LispMemory::new(primitives, 256, 1 << 13);
 
@@ -508,7 +554,9 @@ impl AssetsDependent
         Self{
             tilemap,
             furniture,
-            enemies
+            enemies,
+            rules,
+            world_chunks
         }
     }
 
@@ -517,7 +565,7 @@ impl AssetsDependent
         let assets = info.partial.assets.clone();
         assets.lock().reload(info);
 
-        *self = Self::new(&mut info.partial);
+        *self = Self::new(&mut info.partial, self.rules.clone(), self.world_chunks.clone());
     }
 }
 
@@ -525,8 +573,9 @@ struct ChunkPreviewer
 {
     shaders: DrawShaders,
     fonts: Rc<FontsContainer>,
+    world_chunks: Rc<RefCell<ChunksContainer<Option<WorldChunksBlock>>>>,
     assets_dependent: ModifiedWatcher<AssetsDependent>,
-    rules: ChunkRulesGroup,
+    rules: Rc<ChunkRulesGroup>,
     controls: ControlsController<UiId>,
     camera_position: Vector2<f32>,
     camera_zoom: f32,
@@ -603,10 +652,10 @@ impl YanyaApp for ChunkPreviewer
 
     fn init(mut info: InitPartialInfo<Self::SetupInfo>, app_info: Self::AppInfo) -> Self
     {
-        let rules = ChunkRulesGroup::load(PathBuf::from("world_generation/")).unwrap_or_else(|err|
+        let rules = Rc::new(ChunkRulesGroup::load(PathBuf::from("world_generation/")).unwrap_or_else(|err|
         {
             panic!("error creating chunk_rules: {err}")
-        });
+        }));
 
         let controls = ControlsController::new(default_bindings());
 
@@ -622,6 +671,7 @@ impl YanyaApp for ChunkPreviewer
 
         let tags = ModifiedWatcher::new(PARENT_DIRECTORY, Tags{
             name: String::new().into(),
+            chunks: (0..9).map(|i| (Pos3::new(i % 3, i / 3, 0), String::new().into())).collect(),
             height: 1,
             difficulty: 0.0,
             rotation: TileRotation::Up,
@@ -631,14 +681,17 @@ impl YanyaApp for ChunkPreviewer
 
         let preview = None;
 
+        let world_chunks = Rc::new(RefCell::new(ChunksContainer::new(Pos3::new(3, 3, 1))));
+
         let assets_dependent = ModifiedWatcher::new_many(
             vec!["textures".into(), "info".into(), "lisp".into()],
-            AssetsDependent::new(&mut info.object_info)
+            AssetsDependent::new(&mut info.object_info, rules.clone(), world_chunks.clone())
         );
 
         Self{
             shaders: app_info.unwrap(),
             fonts: info.object_info.builder_wrapper.fonts().clone(),
+            world_chunks,
             assets_dependent,
             rules,
             controls,
@@ -773,6 +826,8 @@ impl YanyaApp for ChunkPreviewer
 
             update_scrollbar(UiScrollbarId::Difficulty, &mut self.current_tags);
 
+            let font_size = 12;
+
             let update_button = |controls: &mut UiControls<_>, name: &str, id|
             {
                 add_padding_vertical(screen_body, UiSize::Pixels(10.0).into());
@@ -791,16 +846,16 @@ impl YanyaApp for ChunkPreviewer
                 });
 
                 button.update(UiId::Button(id, ButtonPartId::Text), UiElement{
-                    texture: UiTexture::Text(TextInfo::new_simple(20, name.to_owned())),
+                    texture: UiTexture::Text(TextInfo::new_simple(font_size, name.to_owned())),
                     ..UiElement::fit_content()
                 });
 
                 button.is_mouse_inside() && controls.take_click_down()
             };
 
-            let mut update_textbox = |controls: &mut UiControls<_>, id: TextboxId, text: &mut TextboxInfo, centered|
+            let mut update_textbox = |controls: &mut UiControls<_>, textbox_id: TextboxId, text: &mut TextboxInfo, centered|
             {
-                let id = |part| UiId::Textbox(id, part);
+                let id = |part| UiId::Textbox(textbox_id, part);
 
                 let parent = if centered
                 {
@@ -813,11 +868,21 @@ impl YanyaApp for ChunkPreviewer
                     })
                 };
 
+                if !centered
+                {
+                    parent.update(UiId::TextboxLabel(textbox_id), UiElement{
+                        texture: UiTexture::Text(TextInfo::new_simple(font_size, textbox_id.name())),
+                        ..UiElement::fit_content()
+                    });
+
+                    add_padding_horizontal(parent, UiSize::Pixels(10.0).into());
+                }
+
                 let name_body = parent.update(id(TextboxPartId::Body), UiElement{
                     texture: UiTexture::Solid,
                     mix: Some(MixColorLch::color(Lcha{l: 0.0, c: 0.0, h: 0.0, a: 0.3})),
                     width: UiElementSize{minimum_size: Some(UiMinimumSize::Pixels(250.0)), size: UiSize::FitChildren},
-                    height: UiSize::Pixels(50.0).into(),
+                    height: UiSize::Pixels(20.0).into(),
                     ..Default::default()
                 });
 
@@ -832,7 +897,13 @@ impl YanyaApp for ChunkPreviewer
                 {
                     name_body.element().mix = Some(MixColorLch::color(Lcha{l: 0.0, c: 0.0, h: 0.0, a: 0.5}));
 
-                    textbox_update(controls, &self.fonts, id, name_body, 20, text);
+                    textbox_update(controls, &self.fonts, id, name_body, font_size, text);
+                } else
+                {
+                    name_body.update(id(TextboxPartId::Text), UiElement{
+                        texture: UiTexture::Text(TextInfo::new_simple(font_size, text.text.clone())),
+                        ..UiElement::fit_content()
+                    });
                 }
 
                 add_padding_horizontal(name_body, UiSize::Pixels(10.0).into());
@@ -851,6 +922,13 @@ impl YanyaApp for ChunkPreviewer
             add_padding_vertical(screen_body, UiSize::Pixels(10.0).into());
 
             update_textbox(controls, TextboxId::Seed, &mut self.current_tags.seed.0, false);
+
+            (0..9).filter(|i| *i != 4).for_each(|i|
+            {
+                add_padding_vertical(screen_body, UiSize::Pixels(10.0).into());
+
+                update_textbox(controls, TextboxId::ChunkSide(i), &mut self.current_tags.chunks[i].1.0, false);
+            });
 
             add_padding_vertical(screen_body, UiSize::Pixels(20.0).into());
 
@@ -915,6 +993,7 @@ impl YanyaApp for ChunkPreviewer
                 }).collect::<Vec<_>>();
 
                 let chunk_info = ConditionalInfo{
+                    position: LocalPos::new(Pos3::new(1, 1, 0), Pos3::new(3, 3, 1)),
                     height: self.preview_tags.height,
                     difficulty: self.preview_tags.difficulty,
                     rotation: self.preview_tags.rotation,
@@ -928,11 +1007,25 @@ impl YanyaApp for ChunkPreviewer
                     fastrand::seed(seed);
                 }
 
+                self.preview_tags.chunks.iter().for_each(|(pos, x)|
+                {
+                    let name_mappings = self.rules.name_mappings();
+                    let world_chunk = name_mappings.world_chunk.get(&(TileRotation::Up, x.0.text.clone()))
+                        .cloned()
+                        .unwrap_or(WorldChunkId::none());
+
+                    let mut block: [_; 16] = array::from_fn(|_| WorldChunk::default());
+                    block[0] = WorldChunk::new(world_chunk, Vec::new());
+
+                    self.world_chunks.borrow_mut()[*pos] = Some(block);
+                });
+
                 let mut markers = Vec::new();
                 let tiles = ChunkGenerator::generate_chunk_with(
                     &chunk_info,
                     &self.rules,
                     &self.preview_tags.name.0.text,
+                    0,
                     chunk_code,
                     &mut |marker|
                     {

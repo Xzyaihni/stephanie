@@ -5,7 +5,6 @@ use super::{
     world_generator::{
         WORLD_CHUNK_SIZE,
         CHUNK_RATIO,
-        empty_worldchunk,
         chunk_difficulty,
         ConditionalInfo,
         WorldGenerator,
@@ -112,7 +111,7 @@ fn debug_overmap_with<S: fmt::Debug, T: fmt::Display>(
     f: impl Fn(Option<&WorldChunk>) -> T
 ) -> String
 {
-    let size = overmap.world_chunks.size();
+    let size = overmap.world_chunks.borrow().size();
 
     let position_to_string = |pos: Pos3<usize>|
     {
@@ -137,7 +136,7 @@ fn debug_overmap_with<S: fmt::Debug, T: fmt::Display>(
     let size_z = size.z;
     let world_chunks = (0..size_z).fold(String::new(), |mut acc, z|
     {
-        overmap.world_chunks.iter_axis(Axis::Z, z).for_each(|(pos, maybe_block)|
+        overmap.world_chunks.borrow().iter_axis(Axis::Z, z).for_each(|(pos, maybe_block)|
         {
             let line = if let Some(block) = maybe_block
             {
@@ -180,11 +179,20 @@ fn debug_overmap_with<S: fmt::Debug, T: fmt::Display>(
     )
 }
 
+pub struct ServerOvermapRef<'a, 'b, 'c, S>
+{
+    world_generator: &'a mut WorldGenerator<S>,
+    world_chunks: &'b mut ChunksContainer<Option<WorldChunksBlock>>,
+    world_plane: &'c mut WorldPlane,
+    indexer: Indexer
+}
+
 pub struct ServerOvermap<S>
 {
     world_generator: Rc<RefCell<WorldGenerator<S>>>,
-    world_chunks: ChunksContainer<Option<WorldChunksBlock>>,
+    world_chunks: Rc<RefCell<ChunksContainer<Option<WorldChunksBlock>>>>,
     world_plane: WorldPlane,
+    overmap_index: i32,
     indexer: Indexer
 }
 
@@ -218,6 +226,7 @@ impl<S: SaveLoad<WorldChunksBlock>> ServerOvermap<S>
 {
     pub fn new(
         world_generator: Rc<RefCell<WorldGenerator<S>>>,
+        overmap_index: i32,
         size: Pos3<usize>,
         player_position: Pos3<f32>
     ) -> Self
@@ -230,7 +239,9 @@ impl<S: SaveLoad<WorldChunksBlock>> ServerOvermap<S>
 
         let indexer = Indexer::new(size, player_position.rounded());
 
-        let world_chunks = ChunksContainer::new(size);
+        let world_chunks = Rc::new(RefCell::new(ChunksContainer::new(size)));
+
+        world_generator.borrow().push_world_chunks(world_chunks.clone());
 
         let world_plane = WorldPlane(FlatChunksContainer::new(size));
 
@@ -238,12 +249,23 @@ impl<S: SaveLoad<WorldChunksBlock>> ServerOvermap<S>
             world_generator,
             world_chunks,
             world_plane,
+            overmap_index,
             indexer
         };
 
-        this.generate_missing(None);
+        this.with_ref(|mut overmap| overmap.generate_missing(None));
 
         this
+    }
+
+    fn with_ref<T>(&mut self, f: impl for<'a, 'b, 'c> FnOnce(ServerOvermapRef<'a, 'b, 'c, S>) -> T) -> T
+    {
+        f(ServerOvermapRef{
+            world_generator: &mut self.world_generator.borrow_mut(),
+            world_chunks: &mut self.world_chunks.borrow_mut(),
+            world_plane: &mut self.world_plane,
+            indexer: self.indexer.clone()
+        })
     }
 
     #[allow(dead_code)]
@@ -301,7 +323,7 @@ impl<S: SaveLoad<WorldChunksBlock>> ServerOvermap<S>
     {
         self.indexer.player_position += shift_offset;
 
-        self.position_offset(shift_offset);
+        self.with_ref(|mut overmap| overmap.position_offset(shift_offset))
     }
 
     fn generate_existing_chunk(&self, local_pos: LocalPos, mut marker: impl FnMut(MarkerTile)) -> Chunk
@@ -318,46 +340,38 @@ impl<S: SaveLoad<WorldChunksBlock>> ServerOvermap<S>
 
                     let local_pos = local_pos + Pos3{x, y, z: 0};
 
-                    let world_chunk = if let Some(group) = local_pos.always_group()
-                    {
-                        let group = group.map(|position|
-                        {
-                            self.world_chunks[position].as_ref().map(|chunk| chunk[z].clone()).unwrap()
-                        });
+                    let this_chunk = self.world_chunks.borrow()[local_pos].as_ref().map(|chunk| chunk[z].clone()).unwrap();
 
-                        let tags = self.world_plane.world_chunk(
-                            LocalPos::new(Pos3{z: 0, ..local_pos.pos}, Pos3{z: 1, ..local_pos.size})
-                        ).tags();
+                    let tags = self.world_plane.world_chunk(
+                        LocalPos::new(Pos3{z: 0, ..local_pos.pos}, Pos3{z: 1, ..local_pos.size})
+                    ).tags();
 
-                        let mut world_generator = self.world_generator.borrow_mut();
+                    let mut world_generator = self.world_generator.borrow_mut();
 
-                        let info = {
-                            let global_pos = self.to_global(local_pos);
+                    let info = {
+                        let global_pos = self.to_global(local_pos);
 
-                            ConditionalInfo{
-                                height: global_pos.0.z * CHUNK_RATIO.z as i32 + z as i32,
-                                difficulty: chunk_difficulty(global_pos),
-                                rotation: world_generator.rotation_of(group.this.id()),
-                                tags
-                            }
-                        };
-
-                        let mut marker = |mut marker_tile: MarkerTile|
-                        {
-                            marker_tile.pos.pos_mut().z = z;
-                            marker(marker_tile)
-                        };
-
-                        world_generator.generate_chunk(
-                            &info,
-                            group,
-                            &mut marker
-                        )
-                    } else
-                    {
-                        eprintln!("chunk most not be touching edges: {local_pos:?} (player position {:?})", self.player_position());
-                        empty_worldchunk()
+                        ConditionalInfo{
+                            position: local_pos,
+                            height: global_pos.0.z * CHUNK_RATIO.z as i32 + z as i32,
+                            difficulty: chunk_difficulty(global_pos),
+                            rotation: world_generator.rotation_of(this_chunk.id()),
+                            tags
+                        }
                     };
+
+                    let mut marker = |mut marker_tile: MarkerTile|
+                    {
+                        marker_tile.pos.pos_mut().z = z;
+                        marker(marker_tile)
+                    };
+
+                    let world_chunk = world_generator.generate_chunk(
+                        &info,
+                        this_chunk,
+                        self.overmap_index,
+                        &mut marker
+                    );
 
                     Self::partially_fill(&mut chunk, world_chunk, this_pos);
                 }
@@ -382,7 +396,26 @@ impl<S: SaveLoad<WorldChunksBlock>> ServerOvermap<S>
             }
         }
     }
+}
 
+impl<S> CommonIndexing for ServerOvermap<S>
+{
+    fn size(&self) -> Pos3<usize>
+    {
+        self.indexer.size
+    }
+}
+
+impl<S> OvermapIndexing for ServerOvermap<S>
+{
+    fn player_position(&self) -> GlobalPos
+    {
+        self.indexer.player_position
+    }
+}
+
+impl<'a, 'b, 'c, S: SaveLoad<WorldChunksBlock>> ServerOvermapRef<'a, 'b, 'c, S>
+{
     fn generate_missing_inner(&mut self, offset: Option<Pos3<i32>>, surface_override: bool)
     {
         let update_surface = if let Some(offset) = offset
@@ -404,8 +437,7 @@ impl<S: SaveLoad<WorldChunksBlock>> ServerOvermap<S>
                 outside_indexer.player_position.0.z = 0;
                 outside_indexer.size.z = 1;
 
-                self.world_generator.borrow_mut()
-                    .generate_surface(surface_blocks, &mut self.world_plane, &outside_indexer)
+                self.world_generator.generate_surface(surface_blocks, &mut self.world_plane, &outside_indexer)
             };
 
             if let Some(local_z) = local_z
@@ -434,12 +466,11 @@ impl<S: SaveLoad<WorldChunksBlock>> ServerOvermap<S>
             }
         }
 
-        self.world_generator.borrow_mut()
-            .generate_missing(&mut self.world_chunks, &self.world_plane, &self.indexer);
+        self.world_generator.generate_missing(&mut self.world_chunks, &self.world_plane, &self.indexer);
     }
 }
 
-impl<S: SaveLoad<WorldChunksBlock>> Overmap<Option<WorldChunksBlock>> for ServerOvermap<S>
+impl<'a, 'b, 'c, S: SaveLoad<WorldChunksBlock>> Overmap<Option<WorldChunksBlock>> for ServerOvermapRef<'a, 'b, 'c, S>
 {
     fn remove(&mut self, pos: LocalPos)
     {
@@ -477,7 +508,7 @@ impl<S: SaveLoad<WorldChunksBlock>> Overmap<Option<WorldChunksBlock>> for Server
     }
 }
 
-impl<S> CommonIndexing for ServerOvermap<S>
+impl<'a, 'b, 'c, S> CommonIndexing for ServerOvermapRef<'a, 'b, 'c, S>
 {
     fn size(&self) -> Pos3<usize>
     {
@@ -485,7 +516,7 @@ impl<S> CommonIndexing for ServerOvermap<S>
     }
 }
 
-impl<S> OvermapIndexing for ServerOvermap<S>
+impl<'a, 'b, 'c, S> OvermapIndexing for ServerOvermapRef<'a, 'b, 'c, S>
 {
     fn player_position(&self) -> GlobalPos
     {
@@ -573,6 +604,7 @@ mod tests
 
         let mut overmap = ServerOvermap::new(
             world_generator,
+            0,
             size,
             Pos3::repeat(0.0)
         );
@@ -617,6 +649,7 @@ mod tests
 
         let mut overmap = ServerOvermap::new(
             world_generator.clone(),
+            0,
             size,
             Pos3::repeat(0.0)
         );
@@ -664,7 +697,7 @@ mod tests
                         let local_pos = LocalPos::new(Pos3::new(x, y, z), size);
                         let global_pos = overmap.to_global(local_pos);
 
-                        let current = overmap.get(global_pos);
+                        let current = overmap.with_ref(|overmap| overmap.get(global_pos).map(|x| x.clone()));
 
                         if let Some(Some(current)) = current
                         {
@@ -676,7 +709,7 @@ mod tests
                                     {
                                         (a, b) if a.id() == a_id && b.id() == none_id => true,
                                         (a, _b) if a.id() == c_id => true,
-                                        (a, b) if a == b => true,
+                                        (a, b) if *a == b => true,
                                         (a, b) =>
                                         {
                                             eprintln!("({global_pos:?}) got incorrect follow: {a:?} -> {b:?}");

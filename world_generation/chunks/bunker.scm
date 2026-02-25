@@ -42,6 +42,7 @@
                 this-chunk
                 (make-point (/ size-x 2) 10)
                 (single-marker (list 'light 1.3)))
+            (make-park-walls this-chunk)
             (let ((doorway-point (make-point (/ size-x 2) 8)))
                 (begin
                     (fill-area

@@ -2,6 +2,7 @@ use std::{
     fs,
     io,
     convert,
+    cell::RefCell,
     fmt::{self, Display, Debug},
     rc::Rc,
     ops::{Index, IndexMut},
@@ -22,7 +23,6 @@ use crate::common::{
         Pos3,
         LocalPos,
         GlobalPos,
-        AlwaysGroup,
         Chunk,
         overmap::{
             CommonIndexing,
@@ -203,7 +203,8 @@ pub struct ChunkGenerator
 {
     rules: Rc<ChunkRulesGroup>,
     chunks: HashMap<String, Lisp>,
-    tilemap: Rc<TileMap>
+    tilemap: Rc<TileMap>,
+    overmaps_world_chunks: Rc<RefCell<Vec<Rc<RefCell<ChunksContainer<Option<WorldChunksBlock>>>>>>>
 }
 
 impl ChunkGenerator
@@ -216,30 +217,39 @@ impl ChunkGenerator
     {
         let chunks = HashMap::new();
 
-        let primitives = Rc::new(Self::default_primitives(&tilemap));
+        let overmaps_world_chunks = Rc::new(RefCell::new(Vec::new()));
+        let primitives = Rc::new(Self::default_primitives(&tilemap, rules.clone(), overmaps_world_chunks.clone()));
 
         let memory = LispMemory::new(primitives, 256, 1 << 13);
 
         let mut this = Self{
             rules: rules.clone(),
             chunks,
-            tilemap
+            tilemap,
+            overmaps_world_chunks
         };
 
         rules.iter_names().filter(|(rotation, name)|
         {
             let name: &str = name.as_ref();
 
-            name != "none" && *rotation == TileRotation::Up
-        }).try_for_each(|(_, name)|
+            *rotation == TileRotation::Up && name != "none"
+        }).for_each(|(_, name)|
         {
-            this.parse_function(&parent_directory, memory.clone(), name)
-        })?;
+            if let Err(err) = this.parse_function(&parent_directory, memory.clone(), name)
+            {
+                eprintln!("{err}");
+            }
+        });
 
         Ok(this)
     }
 
-    pub fn default_primitives(tilemap: &TileMap) -> Primitives
+    pub fn default_primitives(
+        tilemap: &TileMap,
+        rules: Rc<ChunkRulesGroup>,
+        overmaps_world_chunks: Rc<RefCell<Vec<Rc<RefCell<ChunksContainer<Option<WorldChunksBlock>>>>>>>
+    ) -> Primitives
     {
         let mut primitives = Primitives::default();
 
@@ -284,7 +294,68 @@ impl ChunkGenerator
                 tile.as_lisp_value(args.memory)
             }));
 
+        primitives.add(
+            "chunk-at",
+            PrimitiveProcedureInfo::new_simple(1, Effect::Pure, move |mut args|
+            {
+                let values = args.next().unwrap().as_pairs_list(args.memory)?;
+
+                if values.len() != 4
+                {
+                    return Err(lisp::Error::Custom("chunk position is malformed".to_owned()));
+                }
+
+                let mut values = values.into_iter();
+
+                let overmap_index = values.next().unwrap().as_integer()? as usize;
+                let x = values.next().unwrap().as_integer()? as usize;
+                let y = values.next().unwrap().as_integer()? as usize;
+                let z = values.next().unwrap().as_integer()? as usize;
+
+                let overmaps_world_chunks = overmaps_world_chunks.borrow();
+                let this_overmap = overmaps_world_chunks.get(overmap_index).ok_or_else(||
+                {
+                    lisp::Error::Custom(format!("overmap index {overmap_index} doesnt exist"))
+                })?;
+
+                let this_overmap = this_overmap.borrow();
+
+                let pos = Pos3::new(x, y, z);
+
+                let world_chunk = this_overmap.get(pos).ok_or_else(||
+                {
+                    lisp::Error::Custom(format!("{pos} is out of range"))
+                })?.as_ref().ok_or_else(||
+                {
+                    lisp::Error::Custom("world chunk block isnt generated, this isnt supposed to happen ever".to_owned())
+                })?[0].id();
+
+                let (rotation, name) = rules.name_mappings().world_chunk.get_back(&world_chunk).unwrap();
+
+                let memory = args.memory;
+
+                let restore = memory.with_saved_registers([Register::Value, Register::Temporary]);
+
+                memory.set_register(Register::Value, *rotation as i32);
+
+                let name = memory.new_symbol(name);
+                memory.set_register(Register::Temporary, name);
+
+                memory.cons(Register::Value, Register::Temporary, Register::Value)?;
+
+                let value = memory.get_register(Register::Value);
+
+                restore(memory)?;
+
+                Ok(value)
+            }));
+
         primitives
+    }
+
+    fn push_world_chunks(&self, world_chunks: Rc<RefCell<ChunksContainer<Option<WorldChunksBlock>>>>)
+    {
+        self.overmaps_world_chunks.borrow_mut().push(world_chunks);
     }
 
     fn parse_function(
@@ -330,22 +401,43 @@ impl ChunkGenerator
         info: &ConditionalInfo,
         rules: &ChunkRulesGroup,
         chunk_name: &str,
+        overmap_index: i32,
         this_chunk: &mut Lisp,
         marker: &mut impl FnMut(MarkerTile)
     ) -> Result<ChunksContainer<Tile>, ChunkGenerationError>
     {
         let tiles = {
-            let mut define_symbol = |name, value|
+            let define_symbol_with = |memory: &mut LispMemory, name, value|
             {
-                this_chunk.memory_mut().define(name, value).map_err(|err|
+                memory.define(name, value).map_err(|err|
                 {
                     ChunkGenerationError::SymbolAllocation(name.to_owned(), err)
                 })
             };
 
+            {
+                let memory = this_chunk.memory_mut();
+
+                let pos = info.position.pos;
+
+                let chunk_position = memory.cons_list([overmap_index, pos.x as i32, pos.y as i32, pos.z as i32]).map_err(|err|
+                {
+                    ChunkGenerationError::SymbolAllocation("position".to_owned(), err)
+                })?;
+
+                define_symbol_with(memory, "position", chunk_position)?;
+            }
+
+            let rotation = info.rotation;
+
+            let mut define_symbol = |name, value|
+            {
+                define_symbol_with(this_chunk.memory_mut(), name, value)
+            };
+
             define_symbol("height", info.height.into())?;
             define_symbol("difficulty", info.difficulty.into())?;
-            define_symbol("rotation", (info.rotation as i32).into())?;
+            define_symbol("rotation", (rotation as i32).into())?;
 
             info.tags.iter().try_for_each(|tag|
             {
@@ -423,7 +515,8 @@ impl ChunkGenerator
                     }().unwrap_or_else(|err|
                     {
                         let pos = *Chunk::index_to_pos(index).pos();
-                        eprintln!("tile error at ({}, {}) in ({}): {err}, using fallback", pos.x, pos.y, chunk_name);
+
+                        eprintln!("tile error at ({}, {}) in ({chunk_name}): {err}, using fallback", pos.x, pos.y);
 
                         Tile::none()
                     })
@@ -431,7 +524,6 @@ impl ChunkGenerator
             }
 
             const SPAN: usize = WORLD_CHUNK_SIZE.x;
-            let rotation = info.rotation;
             match rotation
             {
                 TileRotation::Up => process(&memory, marker, chunk_name, rotation, output.iter()),
@@ -463,17 +555,22 @@ impl ChunkGenerator
     pub fn generate_chunk(
         &mut self,
         info: &ConditionalInfo,
-        group: AlwaysGroup<&str>,
+        chunk_name: &str,
+        overmap_index: i32,
         marker: &mut impl FnMut(MarkerTile)
     ) -> ChunksContainer<Tile>
     {
-        let chunk_name = group.this;
-        let this_chunk = self.chunks.get_mut(chunk_name).unwrap_or_else(||
+        let this_chunk = if let Some(x) = self.chunks.get_mut(chunk_name)
         {
-            panic!("worldchunk named `{chunk_name}` doesnt exist")
-        });
+            x
+        } else
+        {
+            eprintln!("worldchunk named `{chunk_name}` doesnt exist");
 
-        match Self::generate_chunk_with(info, &self.rules, chunk_name, this_chunk, marker)
+            return empty_worldchunk();
+        };
+
+        match Self::generate_chunk_with(info, &self.rules, chunk_name, overmap_index, this_chunk, marker)
         {
             Ok(x) => x,
             Err(err) =>
@@ -518,6 +615,11 @@ impl<S: SaveLoad<WorldChunksBlock>> WorldGenerator<S>
         let generator = ChunkGenerator::new(tilemap, rules.clone(), path)?;
 
         Ok(Self{generator, saver, rules})
+    }
+
+    pub fn push_world_chunks(&self, world_chunks: Rc<RefCell<ChunksContainer<Option<WorldChunksBlock>>>>)
+    {
+        self.generator.push_world_chunks(world_chunks)
     }
 
     pub fn generate_surface<M: OvermapIndexing + Debug>(
@@ -668,6 +770,7 @@ impl<S: SaveLoad<WorldChunksBlock>> WorldGenerator<S>
                             let rotation = self.rotation_of(this_surface.id());
 
                             let info = ConditionalInfo{
+                                position: local_pos,
                                 height: global_z,
                                 difficulty,
                                 rotation,
@@ -683,6 +786,7 @@ impl<S: SaveLoad<WorldChunksBlock>> WorldGenerator<S>
                             let rotation = self.rotation_of(this_surface.id());
 
                             let info = ConditionalInfo{
+                                position: local_pos,
                                 height: global_z,
                                 difficulty,
                                 rotation,
@@ -773,19 +877,17 @@ impl<S: SaveLoad<WorldChunksBlock>> WorldGenerator<S>
     pub fn generate_chunk(
         &mut self,
         info: &ConditionalInfo,
-        group: AlwaysGroup<WorldChunk>,
+        this_chunk: WorldChunk,
+        overmap_index: i32,
         marker: &mut impl FnMut(MarkerTile)
     ) -> ChunksContainer<Tile>
     {
-        if group.this.id() == WorldChunkId::none()
+        if this_chunk.id() == WorldChunkId::none()
         {
             return empty_worldchunk();
         }
 
-        self.generator.generate_chunk(info, group.map(|world_chunk|
-        {
-            self.rules.name(world_chunk.id())
-        }), marker)
+        self.generator.generate_chunk(info, self.rules.name(this_chunk.id()), overmap_index, marker)
     }
 }
 
@@ -1190,7 +1292,7 @@ impl<'a> WaveCollapser<'a>
 #[cfg(test)]
 mod tests
 {
-    use crate::common::world::{DirectionsGroup, TileRotation};
+    use crate::common::world::TileRotation;
 
     use super::*;
 
@@ -1220,21 +1322,14 @@ mod tests
 
         let empty = [];
         let info = ConditionalInfo{
+            position: LocalPos::new(Pos3::repeat(0), Pos3::repeat(0)),
             height: 0,
             difficulty: 0.0,
             rotation: TileRotation::Up,
             tags: &empty
         };
 
-        let tiles = generator.generate_chunk(&info, AlwaysGroup{
-            this: "test_chunk",
-            other: DirectionsGroup{
-                right: "none",
-                left: "none",
-                down: "none",
-                up: "none"
-            }
-        }, &mut |_| {});
+        let tiles = generator.generate_chunk(&info, "test_chunk", 0, &mut |_| {});
 
         let check_tiles = ChunksContainer::from_raw(Pos3::new(16, 16, 1), Box::new([
             a,a,a,a,b,b,b,b,c,c,d,d,d,d,d,d,

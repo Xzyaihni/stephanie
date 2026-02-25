@@ -226,6 +226,7 @@ impl World
         let size = Pos3::new(SERVER_OVERMAP_SIZE, SERVER_OVERMAP_SIZE, SERVER_OVERMAP_SIZE_Z);
         let overmap = ServerOvermap::new(
             self.world_generator.clone(),
+            id.0 as i32,
             size,
             position
         );

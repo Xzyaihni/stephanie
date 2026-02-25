@@ -6,7 +6,7 @@ use std::{
     cell::{RefMut, RefCell}
 };
 
-use nalgebra::{vector, Unit, Vector2, Vector3};
+use nalgebra::{vector, Unit, Vector3};
 
 use yanyaengine::{
     Transform,
@@ -26,7 +26,6 @@ use crate::{
         ENTITY_SCALE,
         collider::*,
         character::*,
-        watcher::*,
         particle_creator::*,
         World,
         Damageable,
@@ -41,7 +40,6 @@ use crate::{
         ItemUsage,
         clothing::ClothingInfo,
         entity::ClientEntities,
-        lazy_transform::{Scaling, EaseInInfo},
         lisp::{self, *},
         systems::{collider_system, mouse_highlight_system, damaging_system::spawn_item},
         world::{CHUNK_VISUAL_SIZE, TILE_SIZE, Pos3, TilePos}
@@ -1335,34 +1333,9 @@ impl<'a> PlayerContainer<'a>
             {
                 if let Some(mouse_touched) = self.info.mouse_highlighted
                 {
-                    if let Some(item) = self.game_state.entities().item(mouse_touched).map(|x| x.clone())
+                    if self.game_state.entities().item_exists(mouse_touched)
                     {
-                        let entities = self.game_state.entities();
-
-                        if let Some(mut inventory) = entities.inventory_mut(self.info.entity)
-                        {
-                            inventory.push(&self.game_state.data_infos.items_info, item);
-
-                            if let Some(mut lazy) = entities.lazy_transform_mut(mouse_touched)
-                            {
-                                lazy.scaling = Scaling::EaseIn(EaseInInfo::new(0.015));
-
-                                if let Some(transform) = entities.transform(self.info.entity)
-                                {
-                                    lazy.target_local.position = transform.position;
-                                    lazy.target_local.scale = with_z(Vector2::zeros(), lazy.target_local.scale.z);
-
-                                    entities.add_watcher(mouse_touched, Watcher{
-                                        kind: WatcherType::Lifetime(1.0.into()),
-                                        action: Box::new(|entities: &mut ClientEntities, entity|
-                                        {
-                                            entities.remove_deferred(entity);
-                                        }),
-                                        ..Default::default()
-                                    });
-                                }
-                            }
-                        }
+                        self.character_action(CharacterAction::PickupItem{item: mouse_touched});
                     } else
                     {
                         if let Some(other) = self.info.other_entity
@@ -1776,6 +1749,11 @@ impl<'a> PlayerContainer<'a>
 
         self.update_camera_follow();
 
+        {
+            let falloff_speed = 4.0;
+            self.game_state.mouse_fraction.alpha = (self.game_state.mouse_fraction.alpha - falloff_speed * dt).max(0.0);
+        }
+
         let entities = &mut self.game_state.entities.entities;
         if let Some((current_oxygen, current_cooldown)) = entities.character(self.info.entity).map(|x|
         {
@@ -1815,7 +1793,12 @@ impl<'a> PlayerContainer<'a>
                     0.0
                 };
 
-                self.game_state.cooldown_fraction = fraction;
+                self.game_state.mouse_fraction.amount = fraction;
+
+                if fraction != 0.0
+                {
+                    self.game_state.mouse_fraction.alpha = 1.0;
+                }
             }
         }
 

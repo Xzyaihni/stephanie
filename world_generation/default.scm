@@ -60,6 +60,32 @@
 (define (side-horizontal? x) (or (= x side-left) (= x side-right)))
 (define (side-vertical? x) (not (side-horizontal? x)))
 
+(define (side-opposite x)
+    (cond
+        ((= x side-up) side-down)
+        ((= x side-right) side-left)
+        ((= x side-left) side-right)
+        (else side-up)))
+
+(define (position-at-side position side)
+    (let
+        ((absolute-side (side-combine rotation side)))
+        (let
+            ((offset (cond
+                ((= absolute-side side-up) (cons 0 -1))
+                ((= absolute-side side-down) (cons 0 1))
+                ((= absolute-side side-left) (cons -1 0))
+                ((= absolute-side side-right) (cons 1 0)))))
+            (let
+                ((i (car position)) (tail (cdr position)))
+                (let
+                    ((x (car tail)) (tail (cdr tail)))
+                    (cons
+                        i
+                        (cons
+                            (+ (car offset) x)
+                            (cons (+ (cdr offset) (car tail)) (cdr tail)))))))))
+
 (define (put-tile chunk pos this-tile)
     (vector-set!
         chunk
@@ -207,3 +233,51 @@
             #f
             (let ((fraction (/ (- difficulty start) (- end start))))
                 (> (random-float) fraction)))))
+
+(define (make-park-walls this-chunk)
+    (define wall-tile (tile 'concrete))
+
+    (define (wall-hole wall-x wall-y)
+        (if (random-bool)
+            (put-tile this-chunk (make-point wall-x (random-integer-between 1 (- size-y 1))) (tile 'air))
+            (put-tile this-chunk (make-point (random-integer-between 1 (- size-x 1)) wall-y) (tile 'air))))
+
+    (define (isnt-park position)
+        (let
+            ((chunk (car (chunk-at position))))
+            (not (or (eq? chunk 'park) (eq? chunk 'bunker)))))
+
+    (define (isnt-park-side chunk-side)
+        (isnt-park (position-at-side position chunk-side)))
+
+    (let
+        (
+            (isnt-up-park (isnt-park-side side-up))
+            (isnt-left-park (isnt-park-side side-left))
+            (isnt-right-park (isnt-park-side side-right))
+            (isnt-down-park (isnt-park-side side-down)))
+        (begin
+            (if isnt-up-park (horizontal-line this-chunk 0 wall-tile))
+            (if isnt-down-park (horizontal-line this-chunk (- size-y 1) wall-tile))
+            (if isnt-left-park (vertical-line this-chunk 0 wall-tile))
+            (if isnt-right-park (vertical-line this-chunk (- size-x 1) wall-tile))
+
+            (if (isnt-park (position-at-side (position-at-side position side-up) side-left))
+                (put-tile this-chunk (make-point 0 0) wall-tile))
+
+            (if (isnt-park (position-at-side (position-at-side position side-up) side-right))
+                (put-tile this-chunk (make-point (- size-x 1) 0) wall-tile))
+
+            (if (isnt-park (position-at-side (position-at-side position side-down) side-left))
+                (put-tile this-chunk (make-point 0 (- size-y 1)) wall-tile))
+
+            (if (isnt-park (position-at-side (position-at-side position side-down) side-right))
+                (put-tile this-chunk (make-point (- size-x 1) (- size-y 1)) wall-tile))
+
+            (if (and isnt-left-park isnt-up-park)
+                (wall-hole 0 0)
+                (if (and isnt-right-park isnt-up-park)
+                    (wall-hole (- size-x 1) 0)
+                    (if (and isnt-left-park isnt-down-park)
+                        (wall-hole 0 (- size-y 1))
+                        (if (and isnt-right-park isnt-down-park) (wall-hole (- size-x 1) (- size-y 1)))))))))

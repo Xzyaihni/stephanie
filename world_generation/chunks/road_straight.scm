@@ -1,21 +1,35 @@
 (if (= height 0)
-    (fill-area
-        (fill-area
-            (filled-chunk
-                (tile
-                    (let ((r (random-integer-between 0 10)))
-                        (cond
-                            ((= r 0) 'concrete-path-tiled)
-                            ((= r 1) 'brick-path)
-                            (else 'concrete-path)))))
-            (make-area
-                (make-point 0 2)
-                (make-point size-x (- size-y 4)))
-            (tile 'asphalt))
-        (make-area
-            (make-point 0 (- (/ size-y 2) 1))
-            (make-point size-x 2))
-        (tile 'asphalt-line rotation))
+    (begin
+        (define this-chunk
+            (fill-area
+                (fill-area
+                    (filled-chunk (tile 'concrete-path))
+                    (make-area
+                        (make-point 0 2)
+                        (make-point size-x (- size-y 4)))
+                    (tile 'asphalt))
+                (make-area
+                    (make-point 0 (- (/ size-y 2) 1))
+                    (make-point size-x 2))
+                (tile 'asphalt-line rotation)))
+        (let
+            (
+                (try-path
+                    (lambda (side line-y)
+                        (let
+                            ((check-chunk (chunk-at (position-at-side position side))))
+                            (if (and (eq? (car check-chunk) 'building) (= (cdr check-chunk) (side-combine rotation (side-opposite side))))
+                                (let
+                                    (
+                                        (r (random-integer-between 0 3))
+                                        (make-path-with
+                                            (lambda (path-tile)
+                                                (horizontal-line-length this-chunk (make-point 1 line-y) (- size-x 3) path-tile))))
+                                    (cond
+                                        ((= r 0) (make-path-with (tile 'concrete-path-tiled)))
+                                        ((= r 1) (make-path-with (tile 'brick-path))))))))))
+            (begin (try-path side-up 0) (try-path side-down (- size-y 1))))
+        this-chunk)
     (begin
         (define this-chunk (filled-chunk (tile 'air)))
 

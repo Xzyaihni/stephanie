@@ -12,6 +12,17 @@
             }
         },
         {
+            "name": "park",
+            "range": {
+                "start": {
+                    "Number": 0
+                },
+                "end": {
+                    "Number": 2
+                }
+            }
+        },
+        {
             "name": "road_straight",
             "range": {
                 "start": {

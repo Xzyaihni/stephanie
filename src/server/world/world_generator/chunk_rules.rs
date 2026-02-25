@@ -24,6 +24,7 @@ use crate::{
         lisp::{self, Program, Primitives, LispMemory},
         world::{
             CHUNK_SIZE,
+            LocalPos,
             GlobalPos,
             TileRotation,
             Pos3,
@@ -714,6 +715,7 @@ impl ConditionalRule
 #[derive(Debug)]
 pub struct ConditionalInfo<'a>
 {
+    pub position: LocalPos,
     pub height: i32,
     pub difficulty: f32,
     pub rotation: TileRotation,

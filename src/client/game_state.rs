@@ -71,12 +71,12 @@ use crate::{
         clothing::EquipSlot,
         player::MEDIUM_SCREENSHAKE,
         systems::{
-            render_system,
             physical_system,
             enemy_system,
             damaging_system,
             anatomy_system,
             player_system,
+            render_system::{self, MouseInfo},
             collider_system::{self, ContactResolver}
         },
         entity::{
@@ -819,7 +819,7 @@ pub struct GameState
     pub common_textures: Rc<CommonTextures>,
     pub connected_and_ready: bool,
     pub world: World,
-    pub cooldown_fraction: f32,
+    pub mouse_fraction: MouseInfo,
     loot: Loot,
     screen_object: SolidObject,
     mouse_object: Object,
@@ -1008,7 +1008,7 @@ impl GameState
             is_trusted: false,
             is_loading: true,
             is_paused: false,
-            cooldown_fraction: 0.0,
+            mouse_fraction: MouseInfo{amount: 0.0, alpha: 1.0},
             user_receiver,
             debug_visibility,
             connections_handler: handler,
@@ -1329,7 +1329,14 @@ impl GameState
             }
         }
 
-        let entity_sets_max = if self.is_loading { usize::MAX } else { 25 };
+        let entity_sets_max = if self.is_loading || DebugConfig::is_enabled(DebugTool::InstantChunks)
+        {
+            usize::MAX
+        } else
+        {
+            25
+        };
+
         let message = crate::frame_time_this!{
             [update, game_state_update, process_messages] -> world_handle_message,
             some_or_value!{self.world.handle_message(&mut self.delayed_messages, entity_sets_max, self.is_trusted, message), true}
@@ -1354,6 +1361,11 @@ impl GameState
             #[cfg(debug_assertions)]
             Message::DebugMessage(_) => (),
             x => panic!("unhandled message: {x:?}")
+        }
+
+        if DebugConfig::is_enabled(DebugTool::InstantChunks)
+        {
+            return true;
         }
 
         // multiple chunk syncs in a single frame would cause stutters, i dont like those >:(
@@ -1539,7 +1551,7 @@ impl GameState
             info,
             timestamp_query: self.timestamp_query.clone(),
             is_loading: self.is_loading,
-            cooldown_fraction: self.cooldown_fraction
+            mouse_fraction: self.mouse_fraction
         };
 
         let sky_colors = {

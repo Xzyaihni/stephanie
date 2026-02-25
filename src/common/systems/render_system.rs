@@ -34,11 +34,12 @@ pub struct BackgroundColor
     pub color: [f32; 3]
 }
 
-#[derive(BufferContents)]
+#[derive(Debug, Clone, Copy, BufferContents)]
 #[repr(C)]
 pub struct MouseInfo
 {
-    pub amount: f32
+    pub amount: f32,
+    pub alpha: f32
 }
 
 pub struct DrawEntities<'a>
@@ -60,7 +61,7 @@ pub struct DrawingInfo<'a, 'b, 'c>
     pub info: &'b mut DrawInfo<'c>,
     pub timestamp_query: TimestampQuery,
     pub is_loading: bool,
-    pub cooldown_fraction: f32
+    pub mouse_fraction: MouseInfo
 }
 
 pub struct SkyColors
@@ -68,26 +69,26 @@ pub struct SkyColors
     pub light_color: [f32; 3]
 }
 
-    pub fn draw(
-        entities: &ClientEntities,
-        ui: &Ui,
-        DrawEntities{
-            solid,
-            mouse_solid,
-            renders,
-            above_world,
-            occluders,
-            shaded_renders,
-            full_lit_renders,
-            light_renders,
-            world
-        }: DrawEntities,
+pub fn draw(
+    entities: &ClientEntities,
+    ui: &Ui,
+    DrawEntities{
+        solid,
+        mouse_solid,
+        renders,
+        above_world,
+        occluders,
+        shaded_renders,
+        full_lit_renders,
+        light_renders,
+        world
+    }: DrawEntities,
     DrawingInfo{
         shaders,
         info,
         timestamp_query,
         is_loading,
-        cooldown_fraction
+        mouse_fraction
     }: DrawingInfo,
     SkyColors{
         light_color
@@ -433,9 +434,9 @@ pub struct SkyColors
 
     info.bind_pipeline(shaders.mouse);
 
-    if !is_loading && cooldown_fraction > 0.0
+    if !is_loading && (mouse_fraction.amount > 0.0 || mouse_fraction.alpha > 0.0)
     {
-        info.push_constants(MouseInfo{amount: cooldown_fraction});
+        info.push_constants(mouse_fraction);
 
         mouse_solid.draw(info);
     }

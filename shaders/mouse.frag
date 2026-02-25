@@ -8,6 +8,7 @@ layout(set = 0, binding = 0) uniform sampler2D tex;
 
 layout(push_constant) uniform MouseInfo{
     float amount;
+    float alpha;
 } info;
 
 const vec3 COLOR_FULL = vec3(1.0, 0.766, 0.953);
@@ -23,5 +24,5 @@ void main()
     float angle_fraction = angle / (2.0 * PI);
     vec3 circle_color = angle_fraction > info.amount ? COLOR_FULL : COLOR_EMPTY;
 
-    f_color = color.rgb == vec3(0.0) ? vec4(circle_color, color.a) : vec4(0.0);
+    f_color = vec4(mix(circle_color, COLOR_FULL, color.r), color.a * info.alpha);
 }

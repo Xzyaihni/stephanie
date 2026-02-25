@@ -293,7 +293,14 @@
         "name": "bullet",
         "rarity_rolls": false,
         "comfort": 0.5,
-        "mass": 0.01,
+        "mass": 0.1,
+        "durability": 0.1
+    },
+    {
+        "name": "bullet casing",
+        "rarity_rolls": false,
+        "comfort": 0.5,
+        "mass": 0.09,
         "durability": 0.1
     },
     {

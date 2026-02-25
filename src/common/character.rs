@@ -312,6 +312,7 @@ impl Faction
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum CharacterAction
 {
+    PickupItem{item: Entity},
     Reload{item: Option<InventoryItem>},
     Throw{state: bool, target: Vector3<f32>},
     Poke{state: bool},
@@ -942,6 +943,7 @@ impl Character
         }
     }
 
+    #[allow(unused_variables)]
     pub fn verify_valid(&self, entities: &ClientEntities)
     {
         #[cfg(debug_assertions)]
@@ -1129,7 +1131,7 @@ impl Character
 
         self.attack_cooldown = self.attack_cooldown.max(0.5);
 
-        let info = some_or_return!(self.info.as_ref());
+        let info = some_or_unexpected_return!(self.info.as_ref());
 
         let entities = &combined_info.entities;
 
@@ -2380,6 +2382,69 @@ impl Character
         });
     }
 
+    fn pickup_item(&self, combined_info: CombinedInfo, item_entity: Entity)
+    {
+        let info = some_or_return!(self.info.as_ref());
+
+        let entities = combined_info.entities;
+
+        let item = some_or_return!(entities.item(item_entity).map(|x| x.clone()));
+
+        let mut inventory = some_or_return!(entities.inventory_mut(info.this));
+
+        inventory.push(combined_info.items_info, item);
+
+        let mut lazy = some_or_return!(entities.lazy_transform_mut(item_entity));
+
+        lazy.scaling = Scaling::EaseIn(EaseInInfo::new(0.015));
+
+        if let Some(mut hand_right_transform) = entities.transform_mut(info.hand_right)
+        {
+            if let Some(item_transform) = entities.transform(item_entity)
+            {
+                if let Some(mut hand_right_lazy) = entities.lazy_transform_mut(info.hand_right)
+                {
+                    let hand_right = info.hand_right;
+
+                    let item_direction = (item_transform.position - hand_right_transform.position).normalize();
+
+                    hand_right_lazy.connection = Connection::EaseOut{
+                        decay: 6.0,
+                        limit: None
+                    };
+
+                    hand_right_transform.position += item_direction * (ENTITY_SCALE * 0.5);
+
+                    entities.add_watcher(hand_right, Watcher{
+                        kind: WatcherType::Lifetime(0.5.into()),
+                        action: Box::new(move |entities, entity|
+                        {
+                            if let Some(mut lazy) = entities.lazy_transform_mut(entity)
+                            {
+                                lazy.connection = default_connection();
+                            }
+                        }),
+                        ..Default::default()
+                    });
+                }
+            }
+        }
+
+        let transform = some_or_unexpected_return!(entities.transform(info.this));
+
+        lazy.target_local.position = transform.position;
+        lazy.target_local.scale = with_z(Vector2::zeros(), lazy.target_local.scale.z);
+
+        entities.add_watcher(item_entity, Watcher{
+            kind: WatcherType::Lifetime(1.0.into()),
+            action: Box::new(|entities: &mut ClientEntities, entity|
+            {
+                entities.remove_deferred(entity);
+            }),
+            ..Default::default()
+        });
+    }
+
     fn handle_actions(&mut self, combined_info: CombinedInfo)
     {
         if self.info.is_none()
@@ -2406,6 +2471,7 @@ impl Character
 
             match action
             {
+                CharacterAction::PickupItem{item} => self.pickup_item(combined_info, item),
                 CharacterAction::Reload{item} =>
                 {
                     if let Some(item) = item.or(self.holding)
