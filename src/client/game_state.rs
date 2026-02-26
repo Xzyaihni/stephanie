@@ -1017,12 +1017,15 @@ impl GameState
             receiver
         };
 
-        this.initialize();
+        this.initialize(object_info.partial.size);
 
         Rc::new(RefCell::new(this))
     }
 
-    fn initialize(&mut self)
+    fn initialize(
+        &mut self,
+        screen_size: [f32; 2]
+    )
     {
         {
             let ui = self.ui.clone();
@@ -1133,7 +1136,7 @@ impl GameState
         {
             let aspect = self.camera.read().aspect();
 
-            self.set_camera_scale(DEFAULT_ZOOM);
+            self.set_camera_scale(DEFAULT_ZOOM * (screen_size[0].max(screen_size[1]) / 1920.0));
 
             self.resize(aspect);
             self.camera_resized();
