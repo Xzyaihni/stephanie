@@ -722,7 +722,12 @@ impl VisualChunk
             return false;
         }
 
-        model_builder.create(pos, (tile_info.connecting.is_some()).then(|| tiles.tile(pos)), tile.0.unwrap());
+        model_builder.create(
+            tilemap,
+            pos,
+            (tile_info.connecting.is_some()).then(|| tiles.tile(pos)),
+            tile.0.unwrap()
+        );
 
         let occluding = !tile_info.transparent;
 

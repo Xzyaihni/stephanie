@@ -60,6 +60,12 @@
 (define (side-horizontal? x) (or (= x side-left) (= x side-right)))
 (define (side-vertical? x) (not (side-horizontal? x)))
 
+(define (side-flip-x x)
+    (cond
+        ((= x side-right) side-left)
+        ((= x side-left) side-right)
+        (else x)))
+
 (define (side-opposite x)
     (cond
         ((= x side-up) side-down)
@@ -186,27 +192,31 @@
     (rectangle-outline-different chunk area this-tile this-tile this-tile this-tile))
 
 (define (rectangle-fence chunk area wall corner)
-    (rectangle-outline-different
-        chunk
-        area
-        (tile wall rotation)
-        (tile wall (side-combine rotation side-right))
-        (tile wall (side-combine rotation side-left))
-        (tile wall (side-combine rotation side-down)))
+    (let
+        (
+            (locked-rotation-a (cond ((= rotation side-right) side-down) ((= rotation side-left) side-up) (else rotation)))
+            (locked-rotation-b (cond ((= rotation side-right) side-up) ((= rotation side-left) side-down) (else rotation))))
+        (rectangle-outline-different
+            chunk
+            area
+            (tile wall (side-combine locked-rotation-a side-up))
+            (tile wall (side-combine locked-rotation-b side-down))
+            (tile wall (side-combine locked-rotation-b side-up))
+            (tile wall (side-combine locked-rotation-a side-down))))
     (let (
             (end (area-end area))
             (start (area-start area))
             (put-corner
-                (lambda (pos rotation)
+                (lambda (pos)
                     (put-tile
                         chunk
                         pos
-                        (tile corner rotation)))))
+                        (tile corner)))))
         (begin
-            (put-corner start (side-combine rotation side-up))
-            (put-corner (make-point (point-x end) (point-y start)) (side-combine rotation side-right))
-            (put-corner end (side-combine rotation side-down))
-            (put-corner (make-point (point-x start) (point-y end)) (side-combine rotation side-left)))))
+            (put-corner start)
+            (put-corner (make-point (point-x end) (point-y start)))
+            (put-corner end)
+            (put-corner (make-point (point-x start) (point-y end))))))
 
 (define (pick-weighted a b value)
     (if (< (random-float) value)

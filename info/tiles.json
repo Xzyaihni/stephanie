@@ -18,7 +18,8 @@
         "health": 0.15
     },
     {
-        "name": "concrete"
+        "name": "concrete",
+        "connecting": "Edge"
     },
     {
         "name": "concrete-path"
@@ -45,12 +46,9 @@
     },
     {
         "name": "concrete-fence",
+        "connecting": "Edge",
         "transparent": true,
         "colliding": false
-    },
-    {
-        "name": "concrete-fence-l",
-        "inherit": "concrete-fence"
     },
     {
         "name": "stairs-up",

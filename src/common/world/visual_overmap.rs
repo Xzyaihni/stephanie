@@ -704,7 +704,7 @@ impl VisualOvermap
         let (sender, receiver) = mpsc::channel();
         let (generate_sender, generate_receiver) = mpsc::channel();
 
-        let (info_map, model_builder) = (tiles_factory.tilemap().clone(), tiles_factory.builder());
+        let (info_map, model_builder) = (tiles_factory.tilemap().clone(), TilesFactory::builder());
 
         let generate_thread = thread::spawn(move ||
         {

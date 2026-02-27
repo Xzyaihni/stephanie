@@ -338,7 +338,7 @@
                         (make-point 1 1)
                         (make-point (- size-x 2) (- size-y 2)))
                     'concrete-fence
-                    'concrete-fence-l)
+                    'concrete-fence)
                 (fill-area
                     this-chunk
                     (make-area

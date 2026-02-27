@@ -234,7 +234,7 @@ impl SkyLight
 pub struct ChunkInfo
 {
     model: Arc<RwLock<Model>>,
-    transform: Transform
+    pub transform: Transform
 }
 
 #[derive(Debug, Clone)]
@@ -254,26 +254,24 @@ impl ExtendableModel
 #[derive(Debug, Clone)]
 pub struct ChunkModelBuilder
 {
-    model: ChunkSlice<ExtendableModel>,
-    tilemap: Arc<TileMap>
+    model: ChunkSlice<ExtendableModel>
 }
 
 impl ChunkModelBuilder
 {
-    pub fn new(
-        tilemap: Arc<TileMap>
-    ) -> Self
+    pub fn new() -> Self
     {
         let model = (0..CHUNK_SIZE).map(|_|
         {
             ExtendableModel(Model::new())
         }).collect::<Vec<_>>().try_into().unwrap();
 
-        Self{model, tilemap}
+        Self{model}
     }
 
     pub fn create(
         &mut self,
+        tilemap: &TileMap,
         chunk_pos: ChunkLocal,
         tile_neighbors: Option<MaybeGroup<Tile>>,
         tile: TileExisting
@@ -285,7 +283,7 @@ impl ChunkModelBuilder
 
         {
             let id = {
-                let tile_info = self.tilemap.info_existing(tile);
+                let tile_info = tilemap.info_existing(tile);
 
                 if let Some(connecting) = tile_info.connecting
                 {
@@ -323,13 +321,13 @@ impl ChunkModelBuilder
                 }
             };
 
-            let uvs = self.tile_uvs(tile, id as usize);
+            let uvs = Self::tile_uvs(tilemap, tile, id as usize);
 
             self.model[chunk_height].0.uvs.extend(uvs);
         }
 
         {
-            let pos = if self.tilemap.info_existing(tile).transparent
+            let pos = if tilemap.info_existing(tile).transparent
             {
                 Pos3{z: pos.z - TILE_SIZE, ..pos}
             } else
@@ -337,15 +335,15 @@ impl ChunkModelBuilder
                 pos
             };
 
-            let (vertices, indices) = self.tile_vertices(pos);
+            let (vertices, indices) = Self::tile_vertices(pos);
 
             self.model[chunk_height].extend(vertices, indices);
         }
     }
 
-    fn tile_uvs(&self, tile: TileExisting, id: usize) -> [[f32; 2]; 4]
+    fn tile_uvs(tilemap: &TileMap, tile: TileExisting, id: usize) -> [[f32; 2]; 4]
     {
-        let side = self.tilemap.texture_row_size();
+        let side = tilemap.texture_row_size();
 
         let x = id % side;
         let y = id / side;
@@ -355,7 +353,7 @@ impl ChunkModelBuilder
             value as f32 / side as f32
         };
 
-        let pixel_fraction = self.tilemap.pixel_fraction(PADDING);
+        let pixel_fraction = tilemap.pixel_fraction(PADDING);
 
         let x_end = to_uv(x + 1) - pixel_fraction;
         let y_end = to_uv(y + 1) - pixel_fraction;
@@ -386,7 +384,7 @@ impl ChunkModelBuilder
         }
     }
 
-    fn tile_vertices(&self, pos: Pos3<f32>) -> ([[f32; 3]; 4], [u16; 6])
+    fn tile_vertices(pos: Pos3<f32>) -> ([[f32; 3]; 4], [u16; 6])
     {
         let (x, y, z) = (pos.x, pos.y, pos.z - TILE_SIZE);
         let (x_end, y_end) = (pos.x + TILE_SIZE, pos.y + TILE_SIZE);
@@ -436,7 +434,7 @@ pub struct TilesFactory
 impl TilesFactory
 {
     pub fn new(
-        init_info: &mut InitInfo,
+        init_info: &mut ObjectCreatePartialInfo,
         tilemap: TileMapWithTextures
     ) -> Result<Self, ImageError>
     {
@@ -447,7 +445,7 @@ impl TilesFactory
 
         let texture = {
             let tilemap = tilemap.generate_tilemap(
-                init_info.partial.builder_wrapper.resource_uploader_mut(),
+                init_info.builder_wrapper.resource_uploader_mut(),
                 base_textures.into_iter().filter(|x| !x.is_empty())
             );
 
@@ -457,18 +455,29 @@ impl TilesFactory
         let tilemap = Arc::new(tilemap);
 
         let square = {
-            let assets = init_info.partial.assets.lock();
+            let assets = init_info.assets.lock();
 
             let id = assets.default_model(DefaultModel::Square);
             assets.model(id).clone()
         };
 
         Ok(Self{
-            object_factory: init_info.partial.object_factory.clone(),
+            object_factory: init_info.object_factory.clone(),
             square,
             tilemap,
             texture
         })
+    }
+
+    pub fn build_slice(&self, ChunkInfo{model, transform}: ChunkInfo) -> Object
+    {
+        let object_info = ObjectInfo{
+            model,
+            texture: self.texture.clone(),
+            transform
+        };
+
+        self.object_factory.create(object_info)
     }
 
     pub fn build(
@@ -478,15 +487,9 @@ impl TilesFactory
     {
         chunk_info.map(|chunk_info|
         {
-            chunk_info.map(|ChunkInfo{model, transform}|
+            chunk_info.map(|info|
             {
-                let object_info = ObjectInfo{
-                    model,
-                    texture: self.texture.clone(),
-                    transform
-                };
-
-                self.object_factory.create(object_info)
+                self.build_slice(info)
             })
         })
     }
@@ -572,9 +575,9 @@ impl TilesFactory
         })
     }
 
-    pub fn builder(&self) -> ChunkModelBuilder
+    pub fn builder() -> ChunkModelBuilder
     {
-        ChunkModelBuilder::new(self.tilemap.clone())
+        ChunkModelBuilder::new()
     }
 
     pub fn tilemap(&self) -> &Arc<TileMap>

@@ -58,6 +58,7 @@ use stephanie::{
     },
     client::{
         ui_common::*,
+        tiles_factory::{TilesFactory, ChunkModelBuilder},
         game_state::{
             UiControls,
             ControlsController,
@@ -76,7 +77,6 @@ use stephanie::{
         WorldChunksBlock,
         Sprite,
         TileMap,
-        TileMapWithTextures,
         ItemsInfo,
         FurnituresInfo,
         CharactersInfo,
@@ -84,7 +84,14 @@ use stephanie::{
         furniture_creator,
         items_info::TextureCreator,
         colors::Lcha,
-        world::{TILE_SIZE, CHUNK_VISUAL_SIZE, LocalPos, Tile, TileRotation}
+        world::{
+            TILE_SIZE,
+            CHUNK_VISUAL_SIZE,
+            MaybeGroup,
+            DirectionsGroup,
+            LocalPos,
+            TileRotation
+        }
     }
 };
 
@@ -303,29 +310,6 @@ fn new_tile_like_inner(
     info.object_factory.create(object_info)
 }
 
-fn new_tile(
-    info: &mut ObjectCreatePartialInfo,
-    tilemap: &TileMapWithTextures,
-    tile: Tile,
-    pos: Vector2<usize>
-) -> Object
-{
-
-    let tile_info = tilemap.tilemap.info(tile);
-    let rotation = -(tile.0.unwrap().rotation().to_angle() - f32::consts::FRAC_PI_2);
-
-    let search_texture = tile_info.get_weighted_texture().unwrap();
-    let image = tilemap.textures.iter()
-        .find_map(|x| x.iter().find(|(x, _)| *x == search_texture))
-        .unwrap()
-        .1
-        .clone();
-
-    let texture = Texture::new(info.builder_wrapper.resource_uploader_mut(), image.into());
-
-    new_tile_like_inner(info, Arc::new(Mutex::new(texture)), rotation, None, pos.cast() * TILE_SIZE)
-}
-
 struct ChunkPreview
 {
     tiles: Vec<Object>
@@ -501,7 +485,7 @@ struct Tags
 
 struct AssetsDependent
 {
-    tilemap: Option<(LispMemory, TileMapWithTextures)>,
+    tilemap: Option<(LispMemory, TilesFactory)>,
     furniture: FurnituresInfo,
     enemies: (CharactersInfo, EnemiesInfo),
     rules: Rc<ChunkRulesGroup>,
@@ -519,7 +503,7 @@ impl AssetsDependent
         let tilemap = {
             let tilemap = with_error(TileMap::parse("info/tiles.json", "textures/tiles/"));
 
-            tilemap.map(|tilemap|
+            tilemap.and_then(|tilemap|
             {
                 let overmaps = Rc::new(RefCell::new(vec![world_chunks.clone()]));
 
@@ -527,7 +511,9 @@ impl AssetsDependent
 
                 let memory = LispMemory::new(primitives, 256, 1 << 13);
 
-                (memory, tilemap)
+                let tiles_factory = with_error(TilesFactory::new(info, tilemap))?;
+
+                Some((memory, tiles_factory))
             })
         };
 
@@ -659,7 +645,7 @@ impl YanyaApp for ChunkPreviewer
 
         let controls = ControlsController::new(default_bindings());
 
-        let camera_position = Vector2::new(-0.5, 0.0);
+        let camera_position = Vector2::new(-0.7, 0.0);
         let camera_zoom = 3.0;
         let mut camera = Camera::new(info.object_info.aspect(), -1.0..1.0);
         camera.rescale(camera_zoom);
@@ -1129,24 +1115,53 @@ impl YanyaApp for ChunkPreviewer
                     }
                 );
 
-                let tilemap = &some_or_return!(self.assets_dependent.tilemap.as_ref()).1;
+                let tiles_factory = &some_or_return!(self.assets_dependent.tilemap.as_ref()).1;
 
                 match tiles
                 {
                     Ok(x) =>
                     {
-                        self.preview = Some(ChunkPreview{
-                            tiles: x.flat_slice_iter(0).filter_map(|(pos, tile)|
+                        let mut chunk_builder = ChunkModelBuilder::new();
+
+                        x.flat_slice_iter(0).for_each(|(pos, tile)|
+                        {
+                            let pos = pos.pos;
+
+                            if tile.is_none()
                             {
-                                let pos = pos.pos;
+                                return;
+                            }
 
-                                if tile.is_none()
-                                {
-                                    return None;
-                                }
+                            chunk_builder.create(
+                                &tiles_factory.tilemap(),
+                                Pos3::new(pos.x, pos.y, 0).into(),
+                                Some(MaybeGroup{
+                                    this: *tile,
+                                    other: DirectionsGroup{
+                                        up: if pos.y == 0 { None } else { x.get(Pos3::new(pos.x, pos.y - 1, 0)).copied() },
+                                        down: x.get(Pos3::new(pos.x, pos.y + 1, 0)).copied(),
+                                        left: if pos.x == 0 { None } else { x.get(Pos3::new(pos.x - 1, pos.y, 0)).copied() },
+                                        right: x.get(Pos3::new(pos.x + 1, pos.y, 0)).copied()
+                                    }
+                                }),
+                                tile.0.unwrap()
+                            );
+                        });
 
-                                Some(new_tile(&mut info.partial, tilemap, *tile, Vector2::new(pos.x, pos.y)))
-                            }).chain(markers).collect()
+                        let slices = chunk_builder.build(Pos3::repeat(0).into());
+
+                        let mut tiles = Vec::new();
+
+                        if let Some(mut slice_info) = slices.into_iter().next().unwrap()
+                        {
+                            slice_info.transform.position -= Vector3::repeat(CHUNK_VISUAL_SIZE * 0.5);
+                            tiles.push(tiles_factory.build_slice(slice_info));
+                        }
+
+                        tiles.extend(markers);
+
+                        self.preview = Some(ChunkPreview{
+                            tiles
                         });
                     },
                     Err(err) => eprintln!("{err} in ({})", &self.preview_tags.name.0.text)

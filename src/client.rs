@@ -148,7 +148,7 @@ impl Client
         let camera = Arc::new(RwLock::new(camera));
 
         let tiles_factory = TilesFactory::new(
-            &mut info,
+            &mut info.partial,
             client_init_info.tilemap
         )?;
 
