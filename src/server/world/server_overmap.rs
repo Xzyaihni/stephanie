@@ -437,7 +437,7 @@ impl<'a, 'b, 'c, S: SaveLoad<WorldChunksBlock>> ServerOvermapRef<'a, 'b, 'c, S>
                 outside_indexer.player_position.0.z = 0;
                 outside_indexer.size.z = 1;
 
-                self.world_generator.generate_surface(surface_blocks, &mut self.world_plane, &outside_indexer)
+                self.world_generator.generate_surface(surface_blocks, self.world_plane, &outside_indexer)
             };
 
             if let Some(local_z) = local_z
@@ -466,7 +466,7 @@ impl<'a, 'b, 'c, S: SaveLoad<WorldChunksBlock>> ServerOvermapRef<'a, 'b, 'c, S>
             }
         }
 
-        self.world_generator.generate_missing(&mut self.world_chunks, &self.world_plane, &self.indexer);
+        self.world_generator.generate_missing(self.world_chunks, self.world_plane, &self.indexer);
     }
 }
 

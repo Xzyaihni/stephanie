@@ -38,11 +38,18 @@ pub enum SpecialTile
     StairsDown
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ConnectingType
+{
+    Edge
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TileInfoRaw
 {
     pub name: String,
+    pub connecting: Option<ConnectingType>,
     pub inherit: Option<String>,
     pub textures: Option<Vec<f32>>,
     pub health: Option<f32>,
@@ -97,6 +104,7 @@ pub struct TileTexture
 pub struct TileInfo
 {
     pub name: String,
+    pub connecting: Option<ConnectingType>,
     pub textures: Vec<TileTexture>,
     pub health: f32,
     pub drawable: bool,
@@ -114,6 +122,7 @@ impl TileInfo
     {
         let mut this = TileInfo{
             name: tile_raw.name,
+            connecting: tile_raw.connecting,
             textures: {
                 let total_textures_weight: f32 = tile_raw.textures.iter().flatten().copied().sum();
 
@@ -123,10 +132,16 @@ impl TileInfo
                     vec![TileTexture{weight: 1.0, id}]
                 } else
                 {
-                    tile_raw.textures.into_iter().flatten().zip(textures.iter()).map(|(weight, (id, _))|
+                    if tile_raw.textures.as_ref().map(|x| !x.is_empty()).unwrap_or(false)
                     {
-                        TileTexture{weight: weight / total_textures_weight, id: *id}
-                    }).collect()
+                        tile_raw.textures.into_iter().flatten().zip(textures.iter()).map(|(weight, (id, _))|
+                        {
+                            TileTexture{weight: weight / total_textures_weight, id: *id}
+                        }).collect()
+                    } else
+                    {
+                        textures.iter().map(|(id, _)| TileTexture{weight: 1.0, id: *id}).collect()
+                    }
                 }
             },
             health: tile_raw.health.unwrap_or(1.0),
@@ -248,6 +263,13 @@ impl TileMap
 
         (0..tiles.len()).for_each(|index|
         {
+            if tiles[index].textures.as_ref().map(|x| !x.is_empty()).unwrap_or(false) && tiles[index].connecting.is_some()
+            {
+                eprintln!("{} has textures and connecting, removing textures", &tiles[index].name);
+
+                tiles[index].textures = None;
+            }
+
             if tiles[index].inherit.is_none()
             {
                 return;
@@ -269,22 +291,62 @@ impl TileMap
                 {
                     let texture_name = tile_raw.texture.as_ref().unwrap_or(&tile_raw.name);
 
-                    let loader = |name: &str| -> SimpleImage
+                    let loader_size = |name: &str, width: usize, height: usize| -> SimpleImage
                     {
                         Self::load_texture(
-                            TEXTURE_TILE_SIZE as u32,
-                            TEXTURE_TILE_SIZE as u32,
+                            width as u32,
+                            height as u32,
                             PathBuf::from(load_texture_path(textures_root, name))
                         ).unwrap_or_else(|err|
                         {
                             eprintln!("{err}, using empty image");
-                            SimpleImage::filled(Color::new(0, 0, 0, 0), TEXTURE_TILE_SIZE, TEXTURE_TILE_SIZE)
+                            SimpleImage::filled(Color::new(0, 0, 0, 0), width, height)
                         })
+                    };
+
+                    let loader = |name: &str| -> SimpleImage
+                    {
+                        loader_size(name, TEXTURE_TILE_SIZE, TEXTURE_TILE_SIZE)
                     };
 
                     let textures = if tile_raw.textures.as_ref().map(|x| x.is_empty()).unwrap_or(true)
                     {
-                        vec![(*current_id, loader(texture_name))]
+                        if let Some(connecting) = tile_raw.connecting
+                        {
+                            match connecting
+                            {
+                                ConnectingType::Edge =>
+                                {
+                                    let tilemap_image = loader_size(texture_name, TEXTURE_TILE_SIZE * 4, TEXTURE_TILE_SIZE * 4);
+
+                                    [
+                                        (0, 0), (0, 3), (1, 0), (1, 3),
+                                        (0, 1), (0, 2), (1, 1), (1, 2),
+                                        (3, 0), (3, 3), (2, 0), (2, 3),
+                                        (3, 1), (3, 2), (2, 1), (2, 2)
+                                    ].into_iter().enumerate().map(|(index, (x, y))|
+                                    {
+                                        let this_index = *current_id + index as u32;
+
+                                        let offset_x = x * TEXTURE_TILE_SIZE;
+                                        let offset_y = y * TEXTURE_TILE_SIZE;
+
+                                        let this_image = SimpleImage::from_fn(TEXTURE_TILE_SIZE, TEXTURE_TILE_SIZE, |pixel_index|
+                                        {
+                                            let pixel_x = pixel_index % TEXTURE_TILE_SIZE;
+                                            let pixel_y = pixel_index / TEXTURE_TILE_SIZE;
+
+                                            tilemap_image.get_pixel(pixel_x + offset_x, pixel_y + offset_y)
+                                        });
+
+                                        (this_index, this_image)
+                                    }).collect::<Vec<_>>()
+                                }
+                            }
+                        } else
+                        {
+                            vec![(*current_id, loader(texture_name))]
+                        }
                     } else
                     {
                         tile_raw.textures.iter().flatten().enumerate().map(|(index, _)|
@@ -315,6 +377,7 @@ impl TileMap
 
         let air = TileInfo{
             name: "air".to_owned(),
+            connecting: None,
             textures: Vec::new(),
             health: 0.0,
             drawable: false,

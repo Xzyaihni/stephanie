@@ -31,7 +31,7 @@ use crate::common::{
     OccludingPlane,
     TileMap,
     TileMapWithTextures,
-    tilemap::{PADDING, TileInfo},
+    tilemap::{PADDING, ConnectingType, TileInfo},
     world::{
         CHUNK_SIZE,
         TILE_SIZE,
@@ -41,6 +41,7 @@ use crate::common::{
         Tile,
         TileExisting,
         TileRotation,
+        MaybeGroup,
         chunk::ChunkLocal,
         overmap::visual_chunk::{OccluderCached, LineIndices}
     }
@@ -271,14 +272,10 @@ impl ChunkModelBuilder
         Self{model, tilemap}
     }
 
-    pub fn create(&mut self, pos: ChunkLocal, tile: TileExisting)
-    {
-        self.create_inner(pos, tile);
-    }
-
-    fn create_inner(
+    pub fn create(
         &mut self,
         chunk_pos: ChunkLocal,
+        tile_neighbors: Option<MaybeGroup<Tile>>,
         tile: TileExisting
     )
     {
@@ -287,13 +284,43 @@ impl ChunkModelBuilder
         let chunk_height = chunk_pos.pos().z;
 
         {
-            let id = if let Some(x) = self.tilemap.info_existing(tile).get_weighted_texture()
-            {
-                x
-            } else
-            {
-                eprintln!("tried to get textures of tile {tile:?}, got none");
-                return;
+            let id = {
+                let tile_info = self.tilemap.info_existing(tile);
+
+                if let Some(connecting) = tile_info.connecting
+                {
+                    let tile_neighbors = tile_neighbors.unwrap().other;
+
+                    match connecting
+                    {
+                        ConnectingType::Edge =>
+                        {
+                            let f = |other_tile: Option<Tile>| -> usize
+                            {
+                                other_tile.map(|other_tile| (Some(tile.id()) == other_tile.id())).unwrap_or(false) as usize
+                            };
+
+                            let is_up = f(tile_neighbors.up);
+                            let is_right = f(tile_neighbors.right);
+                            let is_down = f(tile_neighbors.down);
+                            let is_left = f(tile_neighbors.left);
+
+                            let index = is_up
+                                | (is_right << 1)
+                                | (is_down << 2)
+                                | (is_left << 3);
+
+                            tile_info.textures[index].id
+                        }
+                    }
+                } else if let Some(x) = tile_info.get_weighted_texture()
+                {
+                    x
+                } else
+                {
+                    eprintln!("tried to get textures of tile {tile:?}, got none");
+                    return;
+                }
             };
 
             let uvs = self.tile_uvs(tile, id as usize);

@@ -1771,7 +1771,7 @@ impl<Id: Idable> Controller<Id>
             let mut remove_ids = Vec::new();
             shared.tree.for_each(|parent_id, id|
             {
-                let discard = !closer(parent_id, &id) || parent_id.map(|parent_id| remove_ids.contains(parent_id)).unwrap_or(false);
+                let discard = !closer(parent_id, id) || parent_id.map(|parent_id| remove_ids.contains(parent_id)).unwrap_or(false);
 
                 if discard
                 {

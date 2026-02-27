@@ -237,12 +237,6 @@ impl VisualChunk
         sky_occlusions: TileReader<ChunkSkyOcclusion>
     ) -> VisualChunkInfo
     {
-        let occluders = Self::create_occluders(
-            &tilemap,
-            pos,
-            &tiles
-        );
-
         let mut occlusions = [[false; CHUNK_SIZE * CHUNK_SIZE]; CHUNK_SIZE];
         let mut is_drawable = [[false; CHUNK_SIZE * CHUNK_SIZE]; CHUNK_SIZE];
 
@@ -261,6 +255,7 @@ impl VisualChunk
                         &tilemap,
                         &mut model_builder,
                         pos,
+                        &tiles,
                         tile
                     );
 
@@ -271,9 +266,16 @@ impl VisualChunk
             }
         }
 
+        let occluders = Self::create_occluders(
+            &tilemap,
+            pos,
+            &tiles
+        );
+
         let total_sky = *sky_occlusions.get_this().occluded();
 
         let vertical_occluders = Self::create_vertical_occluders(&total_sky, pos);
+
         let sky_lights = Self::create_sky_lights(&tilemap, tiles.get_this(), &sky_occlusions);
 
         let infos = model_builder.build(pos);
@@ -704,22 +706,25 @@ impl VisualChunk
         (next.try_into().unwrap(), indices.try_into().unwrap())
     }
 
+    #[allow(clippy::let_and_return)]
     fn create_tile(
         tilemap: &TileMap,
         model_builder: &mut ChunkModelBuilder,
         pos: ChunkLocal,
+        tiles: &TileReader<Chunk>,
         tile: Tile
     ) -> bool
     {
-        if !tilemap[tile].drawable
+        let tile_info = &tilemap[tile];
+
+        if !tile_info.drawable
         {
             return false;
         }
 
-        model_builder.create(pos, tile.0.unwrap());
+        model_builder.create(pos, (tile_info.connecting.is_some()).then(|| tiles.tile(pos)), tile.0.unwrap());
 
-        #[allow(clippy::let_and_return)]
-        let occluding = !tilemap[tile].transparent;
+        let occluding = !tile_info.transparent;
 
         occluding
     }

@@ -40,6 +40,7 @@
     },
     {
         "name": "glass",
+        "connecting": "Edge",
         "health": 0.004
     },
     {
