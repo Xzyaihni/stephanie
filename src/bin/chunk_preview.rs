@@ -85,6 +85,7 @@ use stephanie::{
         items_info::TextureCreator,
         colors::Lcha,
         world::{
+            CHUNK_SIZE,
             TILE_SIZE,
             CHUNK_VISUAL_SIZE,
             MaybeGroup,
@@ -1139,9 +1140,9 @@ impl YanyaApp for ChunkPreviewer
                                     this: *tile,
                                     other: DirectionsGroup{
                                         up: if pos.y == 0 { None } else { x.get(Pos3::new(pos.x, pos.y - 1, 0)).copied() },
-                                        down: x.get(Pos3::new(pos.x, pos.y + 1, 0)).copied(),
+                                        down: if pos.y == (CHUNK_SIZE - 1) { None } else { x.get(Pos3::new(pos.x, pos.y + 1, 0)).copied() },
                                         left: if pos.x == 0 { None } else { x.get(Pos3::new(pos.x - 1, pos.y, 0)).copied() },
-                                        right: x.get(Pos3::new(pos.x + 1, pos.y, 0)).copied()
+                                        right: if pos.x == (CHUNK_SIZE - 1) { None } else { x.get(Pos3::new(pos.x + 1, pos.y, 0)).copied() }
                                     }
                                 }),
                                 tile.0.unwrap()

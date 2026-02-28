@@ -245,12 +245,12 @@
                 (> (random-float) fraction)))))
 
 (define (make-park-walls this-chunk)
-    (define wall-tile (tile 'concrete))
+    (define wall-tile (tile 'metal-fence))
 
     (define (wall-hole wall-x wall-y)
         (if (random-bool)
-            (put-tile this-chunk (make-point wall-x (random-integer-between 1 (- size-y 1))) (tile 'air))
-            (put-tile this-chunk (make-point (random-integer-between 1 (- size-x 1)) wall-y) (tile 'air))))
+            (put-tile this-chunk (make-point wall-x (random-integer-between 2 (- size-y 3))) (tile 'air))
+            (put-tile this-chunk (make-point (random-integer-between 2 (- size-x 3)) wall-y) (tile 'air))))
 
     (define (isnt-park position)
         (let

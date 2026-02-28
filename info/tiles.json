@@ -51,6 +51,12 @@
         "colliding": false
     },
     {
+        "name": "metal-fence",
+        "connecting": "Edge",
+        "transparent": true,
+        "health": 0.2
+    },
+    {
         "name": "stairs-up",
         "special": "StairsUp"
     },
