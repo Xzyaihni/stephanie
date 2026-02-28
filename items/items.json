@@ -205,6 +205,14 @@
         "tags": ["adhesive"]
     },
     {
+        "name": "grass",
+        "damage_scale": 0.1,
+        "rarity_rolls": false,
+        "mass": 0.05,
+        "durability": 0.1,
+        "tags": ["adhesive"]
+    },
+    {
         "name": "short stick",
         "comfort": 1.5,
         "sharpness": 0.03,

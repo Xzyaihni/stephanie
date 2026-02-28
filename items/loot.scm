@@ -105,15 +105,24 @@
 
 (define (safe)
     (cond
-        ((eq? state 'create) (and-always (append '(bullet bullet) (maybe-multiple (lambda () 'bullet) (drop-rate 1 3) 3)) 'glock))
+        ((eq? state 'create)
+            (and-maybe
+                (append '(bullet bullet) (maybe-multiple (lambda () 'bullet) (drop-rate 1 3) 3))
+                (drop-rate 1 3)
+                'glock))
         ((eq? state 'destroy) (standard-drops '(metal_shard)))))
 
 (define (wood_chair) (points-drops '((short_stick 1) (stick 2) (plank 3)) 3))
 (define (wood_table) (points-drops '((stick 2) (plank 3)) 6))
 (define (bed) (points-drops '((cloth 2) (stick 2) (plank 3)) 8))
 
+(define (grass1) (and-maybe '() (drop-rate 1 3) 'grass))
+(define grass2 grass1)
+
 (define (metal_door) (standard-drops '(metal_shard)))
 (define (wood_door) (points-drops '((stick 2) (plank 3)) 6))
+
+(define (metal-fence) (standard-drops '(pipe metal_shard)))
 
 (define (wood) (points-drops '((short_stick 2) (stick 2) (plank 3)) 7))
 
@@ -121,5 +130,8 @@
 
 (define (concrete) (points-drops '((rock 1) (boulder 3)) (random-integer-between 2 5)))
 (define (asphalt) (points-drops '((rock 1) (boulder 3)) (random-integer-between 2 5)))
+
+(define (soil) (standard-drops '(rock)))
+(define (grassie) (and-always (standard-drops '(rock)) 'grass))
 
 ((eval name))

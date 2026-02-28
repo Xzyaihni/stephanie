@@ -42,5 +42,17 @@
         "symmetry": "Horizontal",
         "container": true,
         "health": 200.0
+    },
+    {
+        "name": "grass1",
+        "attached": true,
+        "colliding": false,
+        "health": 0.1
+    },
+    {
+        "name": "grass2",
+        "attached": true,
+        "colliding": false,
+        "health": 0.1
     }
 ]

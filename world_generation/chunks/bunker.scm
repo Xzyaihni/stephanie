@@ -43,6 +43,10 @@
                 (make-point (/ size-x 2) 10)
                 (single-marker (list 'light 1.3)))
             (make-park-walls this-chunk)
+            (make-park-grass this-chunk (make-area (make-point 1 1) (make-point (- size-x 2) 7)))
+            (make-park-grass this-chunk (make-area (make-point 1 8) (make-point 5 6)))
+            (make-park-grass this-chunk (make-area (make-point 12 8) (make-point 3 6)))
+            (make-park-grass this-chunk (make-area (make-point 1 14) (make-point (- size-x 2) 1)))
             (let ((doorway-point (make-point (/ size-x 2) 8)))
                 (begin
                     (fill-area

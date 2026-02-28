@@ -39,6 +39,7 @@
 (define area-start car)
 (define area-size cdr)
 (define (area-end area) (point-add (area-start area) (point-sub (area-size area) (make-point 1 1))))
+(define (area-area area) (let ((size (area-size area))) (* (point-x size) (point-y size))))
 
 (define (area-offset area offset)
     (make-area
@@ -291,3 +292,11 @@
                     (if (and isnt-left-park isnt-down-park)
                         (wall-hole 0 (- size-y 1))
                         (if (and isnt-right-park isnt-down-park) (wall-hole (- size-x 1) (- size-y 1)))))))))
+
+(define (make-park-grass this-chunk grass-area)
+    (define grass-rate 0.25)
+    (for-each-tile
+        (lambda (pos)
+            (if (< (random-float) grass-rate)
+                (combine-markers this-chunk pos (list 'furniture (if (random-bool) 'grass1 'grass2) side-up))))
+        grass-area))

@@ -1216,7 +1216,7 @@ impl YanyaApp for ChunkPreviewer
 
         if self.controls.is_down(GameControl::ZoomIn)
         {
-            self.camera_zoom = (self.camera_zoom - zoom_speed).max(0.0);
+            self.camera_zoom = (self.camera_zoom - zoom_speed).max(0.01);
         }
     }
 
