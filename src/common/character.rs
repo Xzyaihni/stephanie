@@ -1071,11 +1071,6 @@ impl Character
         combined_info: CombinedInfo
     )
     {
-        if *self.sprite_state.value() == SpriteState::Lying
-        {
-            return;
-        }
-
         let held_item_id = self.held_item_id(combined_info.entities);
 
         {
@@ -1116,16 +1111,6 @@ impl Character
                         holding.special = Some(holding_info);
                     }
                 }
-            }
-
-            if let Some(last_held_item) = info.last_held_item.as_mut()
-            {
-                if *last_held_item == held_item_id
-                {
-                    return;
-                }
-
-                *last_held_item = held_item_id;
             }
         }
 
