@@ -13,7 +13,9 @@ use crate::{
         some_or_value,
         some_or_return,
         angle_between,
+        angle_to_direction_3d,
         short_rotation,
+        random_rotation,
         character::*,
         raycast::*,
         collider::*,
@@ -187,6 +189,7 @@ impl EnemyBehavior
                 match state
                 {
                     BehaviorState::Wait => 10.0..=20.0,
+                    BehaviorState::Rotate(_) => return None,
                     BehaviorState::MoveDirection(_) => 0.8..=2.0,
                     BehaviorState::MoveTo(_, _) => return None,
                     BehaviorState::Attack(_, _) => return None
@@ -202,6 +205,7 @@ impl EnemyBehavior
 pub enum BehaviorState
 {
     Wait,
+    Rotate(f32),
     MoveDirection(Unit<Vector3<f32>>),
     MoveTo(WorldPath, Transform),
     Attack(Option<WorldPath>, Entity)
@@ -351,19 +355,24 @@ impl Enemy
                         let start = this_transform.position;
                         let end = start + *direction * (fastrand::f32() * 0.5 + 0.5 * TILE_SIZE * 5.0);
 
-                        let path = pathfinder.pathfind_straight(
+                        if let Some(path) = pathfinder.pathfind_straight(
                             this_entity,
                             start,
                             end
-                        );
+                        )
+                        {
+                            let transform = Transform{
+                                position: end,
+                                ..this_transform.clone()
+                            };
 
-                        let transform = Transform{
-                            position: end,
-                            ..this_transform.clone()
-                        };
-
-                        BehaviorState::MoveTo(some_or_value!(path, BehaviorState::Wait), transform)
+                            BehaviorState::MoveTo(path, transform)
+                        } else
+                        {
+                            BehaviorState::Rotate(random_rotation())
+                        }
                     },
+                    BehaviorState::Rotate(_) => BehaviorState::Wait,
                     BehaviorState::MoveDirection(_) => BehaviorState::Wait,
                     BehaviorState::MoveTo(_, _) => BehaviorState::Wait,
                     BehaviorState::Attack(_, entity) =>
@@ -440,6 +449,15 @@ impl Enemy
 
         match &mut self.behavior_state
         {
+            BehaviorState::Rotate(rotation) =>
+            {
+                if let Some(mut character) = entities.character_mut(entity)
+                {
+                    Self::look_direction(&mut character, angle_to_direction_3d(*rotation));
+                }
+
+                self.reset_state = true;
+            },
             BehaviorState::MoveDirection(direction) =>
             {
                 Self::move_direction(entities, entity, *direction, dt);
