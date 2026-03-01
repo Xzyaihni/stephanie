@@ -240,11 +240,13 @@ impl Pathfinder<'_>
         entity: Entity,
         layer: Option<ColliderLayer>,
         scale: Vector3<f32>,
-        start: Vector3<f32>,
+        mut start: Vector3<f32>,
         end: Vector3<f32>
     ) -> Option<WorldPath>
     {
         let direction = end - start;
+
+        start.z += -(start.z % TILE_SIZE) + TILE_SIZE * 0.5;
 
         self.straight_line_free(entity, start, direction, scale, layer).then(||
         {
@@ -308,6 +310,7 @@ impl Pathfinder<'_>
             steps += 1;
             if steps > PATHFIND_MAX_STEPS || limits.over()
             {
+                eprintln!("pathfind took too long: {steps} steps, {} points", limits.0);
                 return None;
             }
 
@@ -337,7 +340,8 @@ impl Pathfinder<'_>
 
             let is_grounded = below_tile.map(|x| x.colliding).unwrap_or(false);
 
-            let mut try_push = |
+            let try_push = |
+                unexplored: &mut BinaryHeap<Node>,
                 explored: &mut HashMap<TilePos, NodeInfo>,
                 position: TilePos,
                 node: NodeKind,
@@ -373,6 +377,7 @@ impl Pathfinder<'_>
             if let Some(SpecialTile::StairsDown) = below_tile.and_then(|x| x.special.as_ref())
             {
                 try_push(
+                    &mut unexplored,
                     &mut explored,
                     current.value.position.offset(Pos3{x: 0, y: 0, z: -2}),
                     NodeKind::StairsMove{down: true},
@@ -385,6 +390,7 @@ impl Pathfinder<'_>
             if let Some(SpecialTile::StairsUp) = current_tile_info.and_then(|x| x.special.as_ref())
             {
                 try_push(
+                    &mut unexplored,
                     &mut explored,
                     current.value.position.offset(Pos3{x: 0, y: 0, z: 2}),
                     NodeKind::StairsMove{down: false},
@@ -418,12 +424,12 @@ impl Pathfinder<'_>
                             (NodeKind::MoveTo, base_move_cost)
                         };
 
-                        try_push(&mut explored, position, node, cost);
+                        try_push(&mut unexplored, &mut explored, position, node, cost);
                     }
                 });
             } else
             {
-                try_push(&mut explored, below, NodeKind::MoveTo, 1.0);
+                try_push(&mut unexplored, &mut explored, below, NodeKind::MoveTo, 1.0);
             }
         }
 

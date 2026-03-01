@@ -133,7 +133,7 @@
             "neighbors": {
                 "SymmetryVertical": {
                     "left": ["park", "building", "bunker"],
-                    "right": ["road_straight", "road_end"],
+                    "right": ["road_straight", "road_end", "road_corner", {"rotation": "Left", "value": "road_corner"}],
                     "vertical": []
                 }
             }
