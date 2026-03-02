@@ -298,5 +298,13 @@
     (for-each-tile
         (lambda (pos)
             (if (< (random-float) grass-rate)
-                (combine-markers this-chunk pos (list 'furniture (if (random-bool) 'grass1 'grass2) side-up))))
+                (combine-markers
+                    this-chunk
+                    pos
+                    (list
+                        'furniture
+                        (if (= (random-integer 9) 0)
+                            (if (random-bool) 'bush1 'bush2)
+                            (if (random-bool) 'grass1 'grass2))
+                        side-up))))
         grass-area))

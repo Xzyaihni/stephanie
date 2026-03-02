@@ -44,6 +44,18 @@
         "health": 200.0
     },
     {
+        "name": "bush1",
+        "attached": true,
+        "colliding": false,
+        "health": 0.5
+    },
+    {
+        "name": "bush2",
+        "attached": true,
+        "colliding": false,
+        "health": 0.5
+    },
+    {
         "name": "grass1",
         "attached": true,
         "colliding": false,

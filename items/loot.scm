@@ -118,6 +118,8 @@
 
 (define (grass1) (and-maybe '() (drop-rate 1 3) 'grass))
 (define grass2 grass1)
+(define (bush1) (if (random-bool) '(branch) '(grass grass)))
+(define bush2 bush1)
 
 (define (metal_door) (standard-drops '(metal_shard)))
 (define (wood_door) (points-drops '((stick 2) (plank 3)) 6))
