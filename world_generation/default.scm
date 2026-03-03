@@ -46,6 +46,24 @@
         (point-add area-start offset)
         (area-size area)))
 
+(define (area-halves-x area)
+    (let
+        ((this-size (area-size area)))
+        (if (< (point-x this-size) 2)
+            area
+            (let
+                ((half-size (make-point (/ (point-x this-size) 2) (/ (point-y this-size) 2))))
+                (cons
+                    (make-area (area-start area) half-size)
+                    (make-area (point-add (area-start area) half-size) (point-sub this-size half-size)))))))
+
+(define (area-point-random area)
+    (let
+        ((start (area-start area)) (end (area-end area)))
+        (make-point
+            (random-integer-between (point-x start) (+ (point-x end) 1))
+            (random-integer-between (point-y start) (+ (point-y end) 1)))))
+
 (define side-up 0)
 (define side-right 1)
 (define side-left 2)
@@ -250,8 +268,8 @@
 
     (define (wall-hole wall-x wall-y)
         (if (random-bool)
-            (put-tile this-chunk (make-point wall-x (random-integer-between 2 (- size-y 3))) (tile 'air))
-            (put-tile this-chunk (make-point (random-integer-between 2 (- size-x 3)) wall-y) (tile 'air))))
+            (put-tile this-chunk (make-point wall-x (if (random-bool) 2 (- size-y 3))) (tile 'air))
+            (put-tile this-chunk (make-point (if (random-bool) 2 (- size-x 3)) wall-y) (tile 'air))))
 
     (define (isnt-park position)
         (let
@@ -263,15 +281,43 @@
 
     (let
         (
+            (bench-side (random-integer 4))
             (isnt-up-park (isnt-park-side side-up))
             (isnt-left-park (isnt-park-side side-left))
             (isnt-right-park (isnt-park-side side-right))
             (isnt-down-park (isnt-park-side side-down)))
         (begin
-            (if isnt-up-park (horizontal-line this-chunk 0 wall-tile))
-            (if isnt-down-park (horizontal-line this-chunk (- size-y 1) wall-tile))
-            (if isnt-left-park (vertical-line this-chunk 0 wall-tile))
-            (if isnt-right-park (vertical-line this-chunk (- size-x 1) wall-tile))
+            (if isnt-up-park
+                (begin
+                    (horizontal-line this-chunk 0 wall-tile)
+                    (if (= bench-side side-up) (combine-markers
+                        this-chunk
+                        (make-point (random-integer-between 3 (- size-x 4)) 1)
+                        (list 'furniture 'bench side-up '(0.5 0.0 0.0))))))
+
+            (if isnt-down-park
+                (begin
+                    (horizontal-line this-chunk (- size-y 1) wall-tile)
+                    (if (= bench-side side-down) (combine-markers
+                        this-chunk
+                        (make-point (random-integer-between 3 (- size-x 4)) (- size-y 2))
+                        (list 'furniture 'bench side-down '(0.5 0.0 0.0))))))
+
+            (if isnt-left-park
+                (begin
+                    (vertical-line this-chunk 0 wall-tile)
+                    (if (= bench-side side-right) (combine-markers
+                        this-chunk
+                        (make-point (- size-x 2) (random-integer-between 3 (- size-y 4)))
+                        (list 'furniture 'bench side-right)))))
+
+            (if isnt-right-park
+                (begin
+                    (vertical-line this-chunk (- size-x 1) wall-tile)
+                    (if (= bench-side side-left) (combine-markers
+                        this-chunk
+                        (make-point 1 (random-integer-between 3 (- size-y 4)))
+                        (list 'furniture 'bench side-left)))))
 
             (if (isnt-park (position-at-side (position-at-side position side-up) side-left))
                 (put-tile this-chunk (make-point 0 0) wall-tile))
@@ -294,7 +340,36 @@
                         (if (and isnt-right-park isnt-down-park) (wall-hole (- size-x 1) (- size-y 1)))))))))
 
 (define (make-park-grass this-chunk grass-area)
+    (define (decide-enemy type)
+        (cond
+            ((eq? type 'easy) (pick-weighted 'old 'smol 0.25))
+            ((eq? type 'normal) (pick-weighted 'zob 'runner 0.25))
+            (else 'bigy)))
+
+    (define (place-enemy point)
+        (let
+            ((enemy-type
+                (gradient-pick
+                    '(none easy normal strong)
+                    difficulty
+                    1.0
+                    3.0)))
+            (if (not (eq? enemy-type 'none))
+                (combine-markers
+                    this-chunk
+                    point
+                    (list 'enemy (decide-enemy enemy-type))))))
+
+    (define (try-spawn-grass-enemies this-chunk grass-area)
+        (if (> (area-area grass-area) 20)
+            (let
+                ((halves (area-halves-x grass-area)))
+                (begin (try-spawn-grass-enemies this-chunk (car halves)) (try-spawn-grass-enemies this-chunk (cdr halves))))
+            (place-enemy (area-point-random grass-area))))
+
     (define grass-rate 0.25)
+
+    (try-spawn-grass-enemies this-chunk grass-area)
     (for-each-tile
         (lambda (pos)
             (if (< (random-float) grass-rate)

@@ -44,6 +44,12 @@
         "health": 200.0
     },
     {
+        "name": "bench",
+        "symmetry": "None",
+        "attached": true,
+        "health": 50.0
+    },
+    {
         "name": "bush1",
         "attached": true,
         "colliding": false,
