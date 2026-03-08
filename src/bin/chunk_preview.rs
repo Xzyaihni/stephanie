@@ -4,6 +4,7 @@ use std::{
     f32,
     fs,
     array,
+    collections::HashMap,
     cell::RefCell,
     ops::{Range, Deref, DerefMut},
     time::SystemTime,
@@ -48,6 +49,7 @@ use stephanie::{
     server::world::{
         MarkerKind,
         world_generator::{
+            WORLD_CHUNK_SIZE,
             WorldChunk,
             WorldChunkId,
             WorldChunkTag,
@@ -70,6 +72,7 @@ use stephanie::{
         with_z,
         with_error,
         some_or_return,
+        some_or_unexpected_return,
         render_info::*,
         lisp::*,
         Pos3,
@@ -572,7 +575,7 @@ struct ChunkPreviewer
     update_timer: f32,
     regenerate: bool,
     selected_textbox: Option<UiId>,
-    chunk_code: Option<Lisp>,
+    chunk_code: HashMap<String, ModifiedWatcher<Lisp>>,
     current_tags: ModifiedWatcher<Tags>,
     preview_tags: ModifiedWatcher<Tags>,
     preview: Option<ChunkPreview>
@@ -582,16 +585,21 @@ const PARENT_DIRECTORY: &str = "world_generation";
 
 impl ChunkPreviewer
 {
-    fn compile_chunk(&mut self)
+    fn compile_chunk(&mut self, name: String)
     {
         let memory = some_or_return!(self.assets_dependent.tilemap.as_ref()).0.clone();
 
         let parent_directory = PathBuf::from(PARENT_DIRECTORY);
-        let filepath = parent_directory.join("chunks").join(format!("{}.scm", &self.preview_tags.name.0.text));
+        let filepath = parent_directory.join("chunks").join(format!("{name}.scm"));
 
         if !filepath.exists()
         {
-            self.chunk_code = None;
+            self.chunk_code.remove(&name);
+            return;
+        }
+
+        if !self.chunk_code.get_mut(&name).map(|x| x.modified_check()).unwrap_or(true)
+        {
             return;
         }
 
@@ -619,8 +627,17 @@ impl ChunkPreviewer
 
         match Lisp::new_with_config(config, &[&standard_code, &default_code, &chunk_code])
         {
-            Ok(lisp) => self.chunk_code = Some(lisp),
-            Err(err) => eprintln!("error compiling {}: {err}", &self.preview_tags.name.0.text)
+            Ok(lisp) =>
+            {
+                if let Some(chunk_code) = self.chunk_code.get_mut(&name)
+                {
+                    **chunk_code = lisp;
+                } else
+                {
+                    self.chunk_code.insert(name, ModifiedWatcher::new_many(vec![standard_path.into(), default_path.into(), filepath.into()], lisp));
+                }
+            },
+            Err(err) => eprintln!("error compiling {name}: {err}")
         }
     }
 }
@@ -658,8 +675,8 @@ impl YanyaApp for ChunkPreviewer
 
         let tags = ModifiedWatcher::new(PARENT_DIRECTORY, Tags{
             name: String::new().into(),
-            chunks: (0..9).map(|i| (Pos3::new(i % 3, i / 3, 0), String::new().into())).collect(),
-            height: 1,
+            chunks: (0..9).map(|i| (Pos3::new((i % 3) + 1, (i / 3) + 1, 0), String::new().into())).collect(),
+            height: 0,
             difficulty: 0.0,
             rotation: TileRotation::Up,
             seed: String::new().into(),
@@ -668,7 +685,7 @@ impl YanyaApp for ChunkPreviewer
 
         let preview = None;
 
-        let world_chunks = Rc::new(RefCell::new(ChunksContainer::new(Pos3::new(3, 3, 1))));
+        let world_chunks = Rc::new(RefCell::new(ChunksContainer::new(Pos3::new(5, 5, 1))));
 
         let assets_dependent = ModifiedWatcher::new_many(
             vec!["textures".into(), "info".into(), "lisp".into()],
@@ -690,7 +707,7 @@ impl YanyaApp for ChunkPreviewer
             update_timer: 0.0,
             regenerate: false,
             selected_textbox: None,
-            chunk_code: None,
+            chunk_code: HashMap::new(),
             current_tags: tags.clone(),
             preview_tags: tags,
             preview
@@ -959,59 +976,93 @@ impl YanyaApp for ChunkPreviewer
 
             self.preview_tags = self.current_tags.clone();
 
-            self.compile_chunk();
-
-            if let Some(chunk_code) = self.chunk_code.as_mut()
+            if !self.preview_tags.seed.0.text.is_empty()
             {
-                let mappings = &self.rules.name_mappings().text;
+                let seed = self.preview_tags.seed.0.text.bytes().fold(0_u64, |acc, x| acc + x as u64);
 
-                let tags = self.preview_tags.others.iter().filter_map(|text|
+                fastrand::seed(seed);
+            }
+
+            let set_chunk = |pos, name|
+            {
+                let name_mappings = self.rules.name_mappings();
+                let world_chunk = name_mappings.world_chunk.get(&(TileRotation::Up, name))
+                    .cloned()
+                    .unwrap_or(WorldChunkId::none());
+
+                let mut block: [_; 16] = array::from_fn(|_| WorldChunk::default());
+                block[0] = WorldChunk::new(world_chunk, Vec::new());
+
+                self.world_chunks.borrow_mut()[pos] = Some(block);
+            };
+
+            self.world_chunks.borrow_mut().iter_mut().for_each(|(_, world_chunk)|
+            {
+                *world_chunk = Some(array::from_fn(|_| WorldChunk::default()));
+            });
+
+            self.preview_tags.chunks.iter().for_each(|(pos, x)|
+            {
+                set_chunk(*pos, x.0.text.clone());
+            });
+
+            set_chunk(Pos3::new(2, 2, 0), self.preview_tags.name.0.text.clone());
+
+            let mut chunk_objects = Vec::new();
+
+            let mut markers = Vec::new();
+            let mut create_chunk_at = |chunk_pos: Pos3<usize>|
+            {
+                let is_middle = chunk_pos == Pos3::new(1, 1, 0);
+
+                let tags = if is_middle
                 {
-                    let equals_pos = text.0.text.chars().position(|x| x == '=')?;
+                    let mappings = &self.rules.name_mappings().text;
 
-                    let name = text.0.text.chars().take(equals_pos).collect::<String>();
+                    self.preview_tags.others.iter().filter_map(|text|
+                    {
+                        let equals_pos = text.0.text.chars().position(|x| x == '=')?;
 
-                    let content: i32 = text.0.text.chars().skip(equals_pos + 1).collect::<String>()
-                        .trim()
-                        .parse()
-                        .ok()?;
+                        let name = text.0.text.chars().take(equals_pos).collect::<String>();
 
-                    Some(WorldChunkTag::from_raw(mappings.get(&name)?, content))
-                }).collect::<Vec<_>>();
+                        let content: i32 = text.0.text.chars().skip(equals_pos + 1).collect::<String>()
+                            .trim()
+                            .parse()
+                            .ok()?;
+
+                        Some(WorldChunkTag::from_raw(mappings.get(&name)?, content))
+                    }).collect::<Vec<_>>()
+                } else
+                {
+                    Vec::new()
+                };
+
+                let pos_offset: Vector3<f32> = Vector3::from(chunk_pos.map(|x| x as i32) - Pos3::new(2 as i32, 2 as i32, 0)).cast();
 
                 let chunk_info = ConditionalInfo{
-                    position: LocalPos::new(Pos3::new(1, 1, 0), Pos3::new(3, 3, 1)),
+                    position: LocalPos::new(chunk_pos, Pos3::new(3, 3, 1)),
                     height: self.preview_tags.height,
                     difficulty: self.preview_tags.difficulty,
-                    rotation: self.preview_tags.rotation,
+                    rotation: if is_middle { self.preview_tags.rotation } else { TileRotation::Up },
                     tags: &tags
                 };
 
-                if !self.preview_tags.seed.0.text.is_empty()
-                {
-                    let seed = self.preview_tags.seed.0.text.bytes().fold(0_u64, |acc, x| acc + x as u64);
+                let chunk_name = {
+                    let world_chunk_id = self.world_chunks.borrow()[chunk_pos].as_ref().map(|x| x[0].id()).unwrap_or(WorldChunkId::none());
 
-                    fastrand::seed(seed);
-                }
+                    some_or_unexpected_return!(self.rules.name_mappings().world_chunk.get_back(&world_chunk_id).clone()).1.clone()
+                };
 
-                self.preview_tags.chunks.iter().for_each(|(pos, x)|
-                {
-                    let name_mappings = self.rules.name_mappings();
-                    let world_chunk = name_mappings.world_chunk.get(&(TileRotation::Up, x.0.text.clone()))
-                        .cloned()
-                        .unwrap_or(WorldChunkId::none());
+                let chunk_code = {
+                    self.compile_chunk(chunk_name.clone());
 
-                    let mut block: [_; 16] = array::from_fn(|_| WorldChunk::default());
-                    block[0] = WorldChunk::new(world_chunk, Vec::new());
+                    some_or_return!(self.chunk_code.get_mut(&chunk_name))
+                };
 
-                    self.world_chunks.borrow_mut()[*pos] = Some(block);
-                });
-
-                let mut markers = Vec::new();
                 let tiles = ChunkGenerator::generate_chunk_with(
                     &chunk_info,
                     &self.rules,
-                    &self.preview_tags.name.0.text,
+                    &chunk_name,
                     0,
                     chunk_code,
                     &mut |marker|
@@ -1112,6 +1163,11 @@ impl YanyaApp for ChunkPreviewer
                             }
                         };
 
+                        let chunk_offset = (pos_offset.xy().map(|x| x as f32)
+                            .component_mul(&Vector3::from(WORLD_CHUNK_SIZE).xy().map(|x| x as f32))) * TILE_SIZE;
+
+                        let pos = pos + chunk_offset;
+
                         markers.push(new_tile_like(&info.partial, texture, rotation, scale, pos));
                     }
                 );
@@ -1140,9 +1196,9 @@ impl YanyaApp for ChunkPreviewer
                                     this: *tile,
                                     other: DirectionsGroup{
                                         up: if pos.y == 0 { None } else { x.get(Pos3::new(pos.x, pos.y - 1, 0)).copied() },
-                                        down: if pos.y == (CHUNK_SIZE - 1) { None } else { x.get(Pos3::new(pos.x, pos.y + 1, 0)).copied() },
+                                        down: if pos.y == (WORLD_CHUNK_SIZE.y - 1) { None } else { x.get(Pos3::new(pos.x, pos.y + 1, 0)).copied() },
                                         left: if pos.x == 0 { None } else { x.get(Pos3::new(pos.x - 1, pos.y, 0)).copied() },
-                                        right: if pos.x == (CHUNK_SIZE - 1) { None } else { x.get(Pos3::new(pos.x + 1, pos.y, 0)).copied() }
+                                        right: if pos.x == (WORLD_CHUNK_SIZE.x - 1) { None } else { x.get(Pos3::new(pos.x + 1, pos.y, 0)).copied() }
                                     }
                                 }),
                                 tile.0.unwrap()
@@ -1151,23 +1207,39 @@ impl YanyaApp for ChunkPreviewer
 
                         let slices = chunk_builder.build(Pos3::repeat(0).into());
 
-                        let mut tiles = Vec::new();
-
                         if let Some(mut slice_info) = slices.into_iter().next().unwrap()
                         {
-                            slice_info.transform.position -= Vector3::repeat(CHUNK_VISUAL_SIZE * 0.5);
-                            tiles.push(tiles_factory.build_slice(slice_info));
+                            let chunk_ratio = with_z(
+                                Vector2::new(CHUNK_SIZE, CHUNK_SIZE).component_div(&Vector3::from(WORLD_CHUNK_SIZE).xy()),
+                                1
+                            );
+
+                            let pos_offset = (pos_offset * CHUNK_VISUAL_SIZE).component_div(&chunk_ratio.cast());
+
+                            slice_info.transform.position += Vector3::repeat(-CHUNK_VISUAL_SIZE * 0.5) + pos_offset;
+                            chunk_objects.push(tiles_factory.build_slice(slice_info));
                         }
-
-                        tiles.extend(markers);
-
-                        self.preview = Some(ChunkPreview{
-                            tiles
-                        });
                     },
                     Err(err) => eprintln!("{err} in ({})", &self.preview_tags.name.0.text)
                 }
-            }
+            };
+
+            (0..3).flat_map(|x|
+            {
+                (0..3).map(move |y|
+                {
+                    Pos3::new(x + 1, y + 1, 0)
+                })
+            }).for_each(|pos|
+            {
+                create_chunk_at(pos);
+            });
+
+            chunk_objects.extend(markers);
+
+            self.preview = Some(ChunkPreview{
+                tiles: chunk_objects
+            });
 
             self.update_timer = 0.5;
         }

@@ -2,12 +2,13 @@
     (begin
         (define this-chunk
             (fill-area
-                (fill-area
-                    (filled-chunk (tile 'concrete-path))
-                    (make-area
-                        (make-point 0 2)
-                        (make-point size-x (- size-y 4)))
-                    (tile 'asphalt))
+                (horizontal-line
+                    (horizontal-line
+                        (filled-chunk (tile 'asphalt))
+                        0
+                        (tile 'concrete-path))
+                    (- size-y 1)
+                    (tile 'concrete-path))
                 (make-area
                     (make-point 0 (- (/ size-y 2) 1))
                     (make-point size-x 2))
@@ -18,13 +19,13 @@
                     (lambda (side line-y)
                         (let
                             ((check-chunk (chunk-at (position-at-side position side))))
-                            (if (and (eq? (car check-chunk) 'building) (= (cdr check-chunk) (side-combine rotation (side-opposite side))))
+                            (if (and (eq? (car check-chunk) 'building_t) (= (cdr check-chunk) (side-combine rotation (side-opposite side))))
                                 (let
                                     (
                                         (r (random-integer-between 0 3))
                                         (make-path-with
                                             (lambda (path-tile)
-                                                (horizontal-line-length this-chunk (make-point 1 line-y) (- size-x 3) path-tile))))
+                                                (horizontal-line this-chunk line-y path-tile))))
                                     (cond
                                         ((= r 0) (make-path-with (tile 'concrete-path-tiled)))
                                         ((= r 1) (make-path-with (tile 'brick-path))))))))))

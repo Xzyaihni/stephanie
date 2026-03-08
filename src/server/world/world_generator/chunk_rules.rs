@@ -35,7 +35,7 @@ use crate::{
 };
 
 
-pub const WORLD_CHUNK_SIZE: Pos3<usize> = Pos3{x: 16, y: 16, z: 1};
+pub const WORLD_CHUNK_SIZE: Pos3<usize> = Pos3{x: 8, y: 8, z: 1};
 pub const CHUNK_RATIO: Pos3<usize> = Pos3{
     x: CHUNK_SIZE / WORLD_CHUNK_SIZE.x,
     y: CHUNK_SIZE / WORLD_CHUNK_SIZE.y,
@@ -420,9 +420,16 @@ impl ChunkRule
         let neighbors = {
             let n = |neighbors: ChunkNeighborType|
             {
-                neighbors.into_iter().map(|name|
+                neighbors.into_iter().filter_map(|name|
                 {
-                    name_mappings.world_chunk[&name.into()]
+                    let neighbor = name_mappings.world_chunk.get(&name.clone().into()).cloned();
+
+                    if neighbor.is_none()
+                    {
+                        eprintln!("{name:?} doesnt exist");
+                    }
+
+                    neighbor
                 }).collect::<Vec<_>>()
             };
 

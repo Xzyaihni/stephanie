@@ -1,11 +1,12 @@
-(fill-area
-    (fill-area
-        (filled-chunk (tile 'concrete-path))
-        (make-area
-            (make-point 2 0)
-            (make-point (- size-x 4) size-y))
-        (tile 'asphalt))
-    (make-area
-        (make-point 2 2)
-        (make-point (- size-x 2) (- size-y 4)))
-    (tile 'asphalt))
+(define path-tile (tile 'concrete-path))
+
+(put-tile
+    (put-tile
+        (vertical-line
+            (filled-chunk (tile 'asphalt))
+            0
+            path-tile)
+        (make-point (- size-x 1) 0)
+        path-tile)
+    (make-point (- size-x 1) (- size-y 1))
+    path-tile)

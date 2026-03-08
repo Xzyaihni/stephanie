@@ -23,7 +23,7 @@ use crate::common::{
         Pos3,
         LocalPos,
         GlobalPos,
-        Chunk,
+        ChunkLocal,
         overmap::{
             CommonIndexing,
             OvermapIndexing,
@@ -487,6 +487,11 @@ impl ChunkGenerator
                 values: impl Iterator<Item=&'a LispValue>
             ) -> Box<[Tile]>
             {
+                fn index_to_pos(index: usize) -> ChunkLocal
+                {
+                    ChunkLocal::new(index % WORLD_CHUNK_SIZE.x, index / WORLD_CHUNK_SIZE.x, 0)
+                }
+
                 values.enumerate().map(|(index, x)|
                 {
                     || -> Result<_, _>
@@ -501,7 +506,7 @@ impl ChunkGenerator
 
                             let value = x.as_list().unwrap().cdr;
 
-                            let pos = Chunk::index_to_pos(index);
+                            let pos = index_to_pos(index);
                             MarkerKind::from_lisp_value(value)?.into_iter().for_each(|marker_tile|
                             {
                                 marker(MarkerTile{kind: marker_tile.rotated(rotation), pos});
@@ -514,7 +519,7 @@ impl ChunkGenerator
                         }
                     }().unwrap_or_else(|err|
                     {
-                        let pos = *Chunk::index_to_pos(index).pos();
+                        let pos = *index_to_pos(index).pos();
 
                         eprintln!("tile error at ({}, {}) in ({chunk_name}): {err}, using fallback", pos.x, pos.y);
 

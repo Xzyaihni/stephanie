@@ -305,7 +305,7 @@ impl<S: SaveLoad<WorldChunksBlock>> ServerOvermap<S>
 
     pub fn generate_chunk(&mut self, pos: GlobalPos, marker: impl FnMut(MarkerTile)) -> Chunk
     {
-        if let Some(local_pos) = self.to_local(pos)
+        if let Some(local_pos) = self.to_local(worldchunk_pos(pos))
         {
             self.generate_existing_chunk(local_pos, marker)
         } else
@@ -362,7 +362,14 @@ impl<S: SaveLoad<WorldChunksBlock>> ServerOvermap<S>
 
                     let mut marker = |mut marker_tile: MarkerTile|
                     {
-                        marker_tile.pos.pos_mut().z = z;
+                        {
+                            let pos = marker_tile.pos.pos_mut();
+                            pos.z = z;
+
+                            pos.x += x * WORLD_CHUNK_SIZE.x;
+                            pos.y += y * WORLD_CHUNK_SIZE.y;
+                        }
+
                         marker(marker_tile)
                     };
 
@@ -373,7 +380,7 @@ impl<S: SaveLoad<WorldChunksBlock>> ServerOvermap<S>
                         &mut marker
                     );
 
-                    Self::partially_fill(&mut chunk, world_chunk, this_pos);
+                    Self::partially_fill(&mut chunk, world_chunk, this_pos * WORLD_CHUNK_SIZE);
                 }
             }
         }

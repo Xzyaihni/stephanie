@@ -394,7 +394,7 @@ impl GameServer
         let transform = {
             let scale = Vector3::repeat(ENTITY_SCALE);
 
-            let mut position = Vector3::repeat(CHUNK_VISUAL_SIZE / 2.0);
+            let mut position = Vector3::repeat(CHUNK_VISUAL_SIZE / 4.0);
             position.z = -TILE_SIZE + (scale.z / 2.0);
 
             Transform{

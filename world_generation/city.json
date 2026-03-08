@@ -1,13 +1,101 @@
 {
     "rules": [
         {
+            "name": "building_tl",
+            "range": {
+                "start": {
+                    "Number": 0
+                },
+                "end": {
+                    "Number": 25
+                }
+            }
+        },
+        {
+            "name": "building_t",
+            "range": {
+                "start": {
+                    "Number": 0
+                },
+                "end": {
+                    "Number": 25
+                }
+            }
+        },
+        {
+            "name": "building_tr",
+            "range": {
+                "start": {
+                    "Number": 0
+                },
+                "end": {
+                    "Number": 25
+                }
+            }
+        },
+        {
+            "name": "building_l",
+            "range": {
+                "start": {
+                    "Number": 0
+                },
+                "end": {
+                    "Number": 25
+                }
+            }
+        },
+        {
             "name": "building",
             "range": {
                 "start": {
                     "Number": 0
                 },
                 "end": {
-                    "Tag": "building-height"
+                    "Number": 25
+                }
+            }
+        },
+        {
+            "name": "building_r",
+            "range": {
+                "start": {
+                    "Number": 0
+                },
+                "end": {
+                    "Number": 25
+                }
+            }
+        },
+        {
+            "name": "building_bl",
+            "range": {
+                "start": {
+                    "Number": 0
+                },
+                "end": {
+                    "Number": 25
+                }
+            }
+        },
+        {
+            "name": "building_b",
+            "range": {
+                "start": {
+                    "Number": 0
+                },
+                "end": {
+                    "Number": 25
+                }
+            }
+        },
+        {
+            "name": "building_br",
+            "range": {
+                "start": {
+                    "Number": 0
+                },
+                "end": {
+                    "Number": 25
                 }
             }
         },

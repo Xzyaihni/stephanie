@@ -131,6 +131,11 @@ macro_rules! implement_common
 
             pub fn get(&self, value: Pos3<usize>) -> Option<&T>
             {
+                if value.x >= self.indexer.size.x || value.y >= self.indexer.size.y
+                {
+                    return None;
+                }
+
                 self.chunks.get(self.indexer.to_index(value))
             }
 

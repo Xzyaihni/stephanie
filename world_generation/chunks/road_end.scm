@@ -1,11 +1,17 @@
+(define path-tile (tile 'concrete-path))
+
 (fill-area
-    (fill-area
-        (filled-chunk (tile 'concrete-path))
-        (make-area
-            (make-point 0 2)
-            (make-point (- size-x 2) (- size-y 4)))
-        (tile 'asphalt))
+    (vertical-line
+        (horizontal-line
+            (horizontal-line
+                (filled-chunk (tile 'asphalt))
+                0
+                path-tile)
+            (- size-y 1)
+            path-tile)
+        (- size-x 1)
+        path-tile)
     (make-area
         (make-point 0 (- (/ size-y 2) 1))
-        (make-point (- size-x 11) 2))
+        (make-point 3 2))
     (tile 'asphalt-line rotation))

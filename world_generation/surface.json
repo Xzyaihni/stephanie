@@ -1,6 +1,50 @@
 {
     "rules": [
         {
+            "name": "building_tl",
+            "neighbors": {
+                "SymmetryNone": {
+                    "up": ["road_straight"],
+                    "down": ["building_l"],
+                    "left": [{"rotation": "Right", "value": "road_straight"}],
+                    "right": ["building_t"]
+                }
+            }
+        },
+        {
+            "name": "building_t",
+            "neighbors": {
+                "SymmetryNone": {
+                    "up": ["road_straight"],
+                    "down": ["building"],
+                    "left": ["building_tl"],
+                    "right": ["building_tr"]
+                }
+            }
+        },
+        {
+            "name": "building_tr",
+            "neighbors": {
+                "SymmetryNone": {
+                    "up": ["road_straight"],
+                    "down": ["building_r"],
+                    "left": ["building_t"],
+                    "right": [{"rotation": "Right", "value": "road_straight"}]
+                }
+            }
+        },
+        {
+            "name": "building_l",
+            "neighbors": {
+                "SymmetryNone": {
+                    "up": ["building_tl"],
+                    "down": ["building_bl"],
+                    "left": [{"rotation": "Right", "value": "road_straight"}],
+                    "right": ["building"]
+                }
+            }
+        },
+        {
             "name": "building",
             "tags": [
                 {
@@ -10,21 +54,55 @@
             ],
             "weight": 4,
             "neighbors": {
-                "SymmetryHorizontal": {
-                    "up": ["building"],
-                    "down": ["building"],
-                    "horizontal": ["building"]
+                "SymmetryNone": {
+                    "up": ["building_t"],
+                    "down": ["building_b"],
+                    "left": ["building_l"],
+                    "right": ["building_r"]
                 }
             }
         },
         {
-            "rotation": "Right",
-            "name": "building",
+            "name": "building_r",
             "neighbors": {
-                "SymmetryVertical": {
-                    "left": ["building", "road_end"],
-                    "right": ["building"],
-                    "vertical": ["building"]
+                "SymmetryNone": {
+                    "up": ["building_tr"],
+                    "down": ["building_br"],
+                    "left": ["building"],
+                    "right": [{"rotation": "Right", "value": "road_straight"}]
+                }
+            }
+        },
+        {
+            "name": "building_bl",
+            "neighbors": {
+                "SymmetryNone": {
+                    "up": ["building_l"],
+                    "down": ["road_straight"],
+                    "left": [{"rotation": "Right", "value": "road_straight"}],
+                    "right": ["building_b"]
+                }
+            }
+        },
+        {
+            "name": "building_b",
+            "neighbors": {
+                "SymmetryNone": {
+                    "up": ["building"],
+                    "down": ["road_straight"],
+                    "left": ["building_bl"],
+                    "right": ["building_br"]
+                }
+            }
+        },
+        {
+            "name": "building_br",
+            "neighbors": {
+                "SymmetryNone": {
+                    "up": ["building_r"],
+                    "down": ["road_straight"],
+                    "left": ["building_b"],
+                    "right": [{"rotation": "Right", "value": "road_straight"}]
                 }
             }
         },
@@ -52,8 +130,8 @@
             "neighbors": {
                 "SymmetryVertical": {
                     "left": ["road_straight", "road_intersection"],
-                    "right": ["park", "building", "bunker"],
-                    "vertical": ["park", "building", "bunker"]
+                    "right": ["park", "bunker"],
+                    "vertical": ["park", "bunker"]
                 }
             }
         },
@@ -63,8 +141,19 @@
             "neighbors": {
                 "SymmetryHorizontal": {
                     "up": ["road_t"],
-                    "down": ["park", "building", "bunker"],
-                    "horizontal": ["park", "building", "bunker"]
+                    "down": ["park", "bunker"],
+                    "horizontal": ["park", "bunker"]
+                }
+            }
+        },
+        {
+            "rotation": "Left",
+            "name": "road_end",
+            "neighbors": {
+                "SymmetryHorizontal": {
+                    "up": [],
+                    "down": ["road_t"],
+                    "horizontal": []
                 }
             }
         },
@@ -77,7 +166,7 @@
                         "road_straight",
                         "road_intersection"
                     ],
-                    "vertical": ["park", "building", "bunker"]
+                    "vertical": ["park", "bunker"]
                 }
             }
         },
@@ -86,7 +175,7 @@
             "name": "road_straight",
             "neighbors": {
                 "SymmetryBoth": {
-                    "horizontal": ["park", "building", "bunker"],
+                    "horizontal": ["park", "bunker"],
                     "vertical": ["road_t"]
                 }
             }
@@ -97,9 +186,21 @@
             "neighbors": {
                 "SymmetryNone": {
                     "up": ["road_t"],
-                    "down": ["park", "building", "bunker"],
-                    "right": ["park", "building", "bunker"],
+                    "down": ["park", "bunker"],
+                    "right": ["park", "bunker"],
                     "left": ["road_straight"]
+                }
+            }
+        },
+        {
+            "rotation": "Left",
+            "name": "road_corner",
+            "neighbors": {
+                "SymmetryNone": {
+                    "up": [],
+                    "down": ["road_t"],
+                    "right": [],
+                    "left": []
                 }
             }
         },
@@ -109,9 +210,9 @@
             "neighbors": {
                 "SymmetryNone": {
                     "up": [],
-                    "down": ["park", "building", "bunker"],
-                    "right": ["road_straight", "road_end"],
-                    "left": ["park", "building", "bunker"]
+                    "down": ["park", "bunker"],
+                    "right": ["road_straight", "road_end", {"rotation": "Left", "value": "road_corner"}],
+                    "left": ["park", "bunker"]
                 }
             }
         },
@@ -120,10 +221,10 @@
             "name": "road_corner",
             "neighbors": {
                 "SymmetryNone": {
-                    "up": ["park", "building", "bunker"],
+                    "up": ["park", "bunker"],
                     "down": ["road_t"],
                     "right": ["road_straight", "road_corner", "road_end"],
-                    "left": ["park", "building", "bunker"]
+                    "left": ["park", "bunker"]
                 }
             }
         },
@@ -132,7 +233,7 @@
             "weight": 0.9,
             "neighbors": {
                 "SymmetryVertical": {
-                    "left": ["park", "building", "bunker"],
+                    "left": ["park", "bunker"],
                     "right": ["road_straight", "road_end", "road_corner", {"rotation": "Left", "value": "road_corner"}],
                     "vertical": []
                 }
@@ -143,7 +244,7 @@
             "name": "road_t",
             "neighbors": {
                 "SymmetryHorizontal": {
-                    "up": ["park", "building", "bunker"],
+                    "up": ["park", "bunker"],
                     "down": [],
                     "horizontal": ["road_straight"]
                 }
@@ -155,7 +256,7 @@
             "neighbors": {
                 "SymmetryVertical": {
                     "left": ["road_straight"],
-                    "right": ["park", "building", "bunker"],
+                    "right": ["park", "bunker"],
                     "vertical": ["road_t"]
                 }
             }
