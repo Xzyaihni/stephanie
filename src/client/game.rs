@@ -1017,6 +1017,7 @@ impl Game
 
         let config = LispConfig{
             type_checks: true,
+            load_handler: None,
             memory: LispMemory::new(self.info.borrow().console.primitives.as_ref().unwrap().clone(), 2048, 1 << 16)
         };
 

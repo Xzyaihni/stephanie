@@ -35,6 +35,9 @@
 (define (point-add a b) (make-point (+ (point-x a) (point-x b)) (+ (point-y a) (point-y b))))
 (define (point-sub a b) (point-add a (make-point (* (point-x b) -1) (* (point-y b) -1))))
 
+(define (point-map a f) (make-point (f (point-x a)) (f (point-y a))))
+(define (point-zip-map a b f) (make-point (f (point-x a) (point-x b)) (f (point-y a) (point-y b))))
+
 (define make-area cons)
 (define area-start car)
 (define area-size cdr)
@@ -210,33 +213,6 @@
 (define (rectangle-outline chunk area this-tile)
     (rectangle-outline-different chunk area this-tile this-tile this-tile this-tile))
 
-(define (rectangle-fence chunk area wall corner)
-    (let
-        (
-            (locked-rotation-a (cond ((= rotation side-right) side-down) ((= rotation side-left) side-up) (else rotation)))
-            (locked-rotation-b (cond ((= rotation side-right) side-up) ((= rotation side-left) side-down) (else rotation))))
-        (rectangle-outline-different
-            chunk
-            area
-            (tile wall (side-combine locked-rotation-a side-up))
-            (tile wall (side-combine locked-rotation-b side-down))
-            (tile wall (side-combine locked-rotation-b side-up))
-            (tile wall (side-combine locked-rotation-a side-down))))
-    (let (
-            (end (area-end area))
-            (start (area-start area))
-            (put-corner
-                (lambda (pos)
-                    (put-tile
-                        chunk
-                        pos
-                        (tile corner)))))
-        (begin
-            (put-corner start)
-            (put-corner (make-point (point-x end) (point-y start)))
-            (put-corner end)
-            (put-corner (make-point (point-x start) (point-y end))))))
-
 (define (pick-weighted a b value)
     (if (< (random-float) value)
         b
@@ -262,23 +238,3 @@
             #f
             (let ((fraction (/ (- difficulty start) (- end start))))
                 (> (random-float) fraction)))))
-
-(define (default-module name)
-    (cond
-        ((eq? name 'building)
-            (lambda (op)
-                (let ((wall-tile (tile 'concrete)))
-                    (cond
-                        ((eq? op 'wall-tile) wall-tile)
-                        ((eq? op 'room-seed)
-                            (lambda (chunk-side)
-                                (lambda (room-number)
-                                    (random-integer-seeded
-                                        (wrapping-add
-                                            (random-integer-seeded
-                                                (wrapping-add
-                                                    (assq 'building-seed (chunk-tags-at (position-at-side position chunk-side)))
-                                                    height))
-                                            room-number)))))
-                        (else (begin (display "(default.scm) unknown op named: ") (display op) (newline)))))))
-        (else (begin (display "(default.scm) unknown default module named: ") (display name) (newline)))))

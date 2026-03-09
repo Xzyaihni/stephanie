@@ -404,6 +404,7 @@ impl ChunkRuleTag
     {
         let content = Program::parse(
             cfg!(debug_assertions),
+            None,
             LispMemory::new(primitives, 64, 64),
             &[&raw_tag.content]
         ).unwrap_or_else(|err|

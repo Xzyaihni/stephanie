@@ -590,7 +590,8 @@ impl ChunkPreviewer
         let memory = some_or_return!(self.assets_dependent.tilemap.as_ref()).0.clone();
 
         let parent_directory = PathBuf::from(PARENT_DIRECTORY);
-        let filepath = parent_directory.join("chunks").join(format!("{name}.scm"));
+        let chunks_directory = parent_directory.join("chunks");
+        let filepath = chunks_directory.join(format!("{name}.scm"));
 
         if !filepath.exists()
         {
@@ -620,8 +621,35 @@ impl ChunkPreviewer
             panic!("cant load {}: {err}", filepath.display())
         });
 
+        let depend_paths: Rc<RefCell<Vec<PathBuf>>> = Rc::new(RefCell::new(vec![
+            standard_path.into(),
+            default_path.into(),
+            filepath.into()
+        ]));
+
         let config = LispConfig{
             type_checks: true,
+            load_handler: {
+                let depend_paths = depend_paths.clone();
+                let parent_directory = chunks_directory;
+                Some(Box::new(move |filename|
+                {
+                    let load_path = parent_directory.join(filename);
+
+                    depend_paths.borrow_mut().push(load_path.clone());
+
+                    match fs::read_to_string(load_path)
+                    {
+                        Ok(x) => Some(x),
+                        Err(err) =>
+                        {
+                            eprintln!("error trying to load `{filename}`: {err}");
+
+                            None
+                        }
+                    }
+                }))
+            },
             memory
         };
 
@@ -634,7 +662,7 @@ impl ChunkPreviewer
                     **chunk_code = lisp;
                 } else
                 {
-                    self.chunk_code.insert(name, ModifiedWatcher::new_many(vec![standard_path.into(), default_path.into(), filepath.into()], lisp));
+                    self.chunk_code.insert(name, ModifiedWatcher::new_many(depend_paths.borrow().clone(), lisp));
                 }
             },
             Err(err) => eprintln!("error compiling {name}: {err}")

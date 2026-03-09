@@ -1717,6 +1717,7 @@ impl<M: Borrow<LispMemory>> GenericOutputWrapper<M>
 pub struct LispConfig
 {
     pub type_checks: bool,
+    pub load_handler: Option<Box<dyn Fn(&str) -> Option<String>>>,
     pub memory: LispMemory
 }
 
@@ -1735,6 +1736,7 @@ impl Lisp
     {
         let program = Program::parse(
             config.type_checks,
+            config.load_handler,
             config.memory,
             code
         )?;
@@ -1749,6 +1751,7 @@ impl Lisp
     {
         let config = LispConfig{
             type_checks: true,
+            load_handler: None,
             memory
         };
 

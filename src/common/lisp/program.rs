@@ -37,8 +37,10 @@ pub const QUOTE_PRIMITIVE: &str = "quote";
 pub const MAKE_VECTOR_PRIMITIVE: &str = "make-vector";
 pub const VECTOR_SET_PRIMITIVE: &str = "vector-set!";
 
+pub type LoadHandler = Option<(SymbolId, Box<dyn Fn(&str) -> Option<String>>)>;
+
 pub type OnApply = Rc<dyn Fn(&mut LispMemory, CodePosition, Register) -> Result<(), Error>>;
-pub type OnEval = Rc<dyn Fn(&mut LispMemory, AstPos) -> Result<InterRepr, ErrorPos>>;
+pub type OnEval = Rc<dyn Fn(&LoadHandler, &mut LispMemory, AstPos) -> Result<InterRepr, ErrorPos>>;
 
 #[derive(Debug, Clone, Copy)]
 pub enum ArgsCount
@@ -300,35 +302,35 @@ impl Default for Primitives
 
         let (indices, primitives): (HashMap<String, _>, Vec<_>) = [
             (BEGIN_PRIMITIVE,
-                PrimitiveProcedureInfo::new_eval(ArgsCount::Min(1), Rc::new(|memory, args|
+                PrimitiveProcedureInfo::new_eval(ArgsCount::Min(1), Rc::new(|load_handler, memory, args|
                 {
-                    Ok(InterRepr::Sequence(InterReprPos::parse_args(memory, args)?))
+                    Ok(InterRepr::Sequence(InterReprPos::parse_args(load_handler, memory, args)?))
                 }))),
             (QUOTE_PRIMITIVE,
-                PrimitiveProcedureInfo::new_eval(1, Rc::new(|_memory, args|
+                PrimitiveProcedureInfo::new_eval(1, Rc::new(|_load_handler, _memory, args|
                 {
                     Ok(InterRepr::Quoted(args.car()))
                 }))),
             ("if",
-                PrimitiveProcedureInfo::new_eval(2..=3, Rc::new(|memory, args|
+                PrimitiveProcedureInfo::new_eval(2..=3, Rc::new(|load_handler, memory, args|
                 {
-                    InterRepr::parse_if(memory, args)
+                    InterRepr::parse_if(load_handler, memory, args)
                 }))),
             ("cond",
-                PrimitiveProcedureInfo::new_eval(ArgsCount::Min(2), Rc::new(|memory, args|
+                PrimitiveProcedureInfo::new_eval(ArgsCount::Min(2), Rc::new(|load_handler, memory, args|
                 {
-                    fn parse_clause(memory: &mut LispMemory, clause: AstPos) -> Result<(InterReprPos, InterReprPos), ErrorPos>
+                    fn parse_clause(load_handler: &LoadHandler, memory: &mut LispMemory, clause: AstPos) -> Result<(InterReprPos, InterReprPos), ErrorPos>
                     {
-                        let check = InterReprPos::parse(memory, clause.car())?;
+                        let check = InterReprPos::parse(load_handler, memory, clause.car())?;
 
                         let tail = clause.cdr();
                         let tail_position = tail.position;
-                        let then = InterRepr::Sequence(InterReprPos::parse_args(memory, tail)?);
+                        let then = InterRepr::Sequence(InterReprPos::parse_args(load_handler, memory, tail)?);
 
                         Ok((check, then.with_position(tail_position)))
                     }
 
-                    fn parse_rest(memory: &mut LispMemory, clauses: AstPos) -> Result<InterReprPos, ErrorPos>
+                    fn parse_rest(load_handler: &LoadHandler, memory: &mut LispMemory, clauses: AstPos) -> Result<InterReprPos, ErrorPos>
                     {
                         if !clauses.is_list() || clauses.is_null()
                         {
@@ -337,7 +339,7 @@ impl Default for Primitives
 
                         let this = clauses.car();
                         let this_position = this.position;
-                        let (check, then) = parse_clause(memory, this)?;
+                        let (check, then) = parse_clause(load_handler, memory, this)?;
 
                         let rest = clauses.cdr();
 
@@ -348,7 +350,7 @@ impl Default for Primitives
                             InterRepr::Value(LispValue::new_empty_list()).with_position(rest.position)
                         } else
                         {
-                            parse_rest(memory, rest)?
+                            parse_rest(load_handler, memory, rest)?
                         };
 
                         Ok(InterRepr::If{
@@ -358,7 +360,7 @@ impl Default for Primitives
                         }.with_position(this_position))
                     }
 
-                    parse_rest(memory, args).map(|x| x.value)
+                    parse_rest(load_handler, memory, args).map(|x| x.value)
                 }))),
             ("cons",
                 PrimitiveProcedureInfo::new_simple(2, Effect::Pure, |mut args|
@@ -457,12 +459,12 @@ impl Default for Primitives
                 Ok(is_equal.into())
             })),
             ("lambda",
-                PrimitiveProcedureInfo::new_eval(ArgsCount::Min(2), Rc::new(|memory, args|
+                PrimitiveProcedureInfo::new_eval(ArgsCount::Min(2), Rc::new(|load_handler, memory, args|
                 {
-                    InterRepr::parse_lambda(memory, "<lambda>".to_owned(), args)
+                    InterRepr::parse_lambda(load_handler, memory, "<lambda>".to_owned(), args)
                 }))),
             ("define",
-                PrimitiveProcedureInfo::new_eval(ArgsCount::Min(2), Rc::new(|memory, args: AstPos|
+                PrimitiveProcedureInfo::new_eval(ArgsCount::Min(2), Rc::new(|load_handler, memory, args: AstPos|
                 {
                     let first = args.car();
 
@@ -481,14 +483,14 @@ impl Default for Primitives
                         let lambdas_body = AstPos::cons(first.cdr(), args.cdr());
 
                         let lambda_name = memory.get_symbol(name);
-                        let lambda = InterRepr::parse_lambda(memory, lambda_name, lambdas_body)?
+                        let lambda = InterRepr::parse_lambda(load_handler, memory, lambda_name, lambdas_body)?
                             .with_position(position);
 
                         (name, lambda)
                     } else
                     {
                         let name = InterReprPos::parse_symbol(memory, &first)?;
-                        let args = InterReprPos::parse_args(memory, args.cdr())?;
+                        let args = InterReprPos::parse_args(load_handler, memory, args.cdr())?;
 
                         (name, args.into_iter().next().unwrap())
                     };
@@ -499,9 +501,9 @@ impl Default for Primitives
                     })
                 }))),
             ("let",
-                PrimitiveProcedureInfo::new_eval(2, Rc::new(|memory, args|
+                PrimitiveProcedureInfo::new_eval(2, Rc::new(|load_handler, memory, args|
                 {
-                    InterRepr::parse_let(memory, args)
+                    InterRepr::parse_let(load_handler, memory, args)
                 }))),
             ("eval",
                 PrimitiveProcedureInfo::new_simple(1, Effect::Pure, |mut args|
@@ -1264,6 +1266,7 @@ impl InterReprPos
     }
 
     pub fn parse(
+        load_handler: &LoadHandler,
         memory: &mut LispMemory,
         ast: AstPos
     ) -> Result<Self, ErrorPos>
@@ -1296,7 +1299,7 @@ impl InterReprPos
             Ast::EmptyList => Ok(InterRepr::Value(LispValue::new_empty_list()).with_position(ast.position)),
             Ast::List{car, cdr} =>
             {
-                let op = Self::parse(memory, *car)?;
+                let op = Self::parse(load_handler, memory, *car)?;
 
                 if let InterRepr::Value(value) = op.value
                 {
@@ -1317,12 +1320,65 @@ impl InterReprPos
                                 }).with_position(ast.position);
                             }
 
-                            return on_eval(memory, args).map(|x| x.with_position(ast.position));
+                            return on_eval(load_handler, memory, args).map(|x| x.with_position(ast.position));
                         }
                     }
                 }
 
-                let args = Self::parse_args(memory, *cdr)?;
+                let args = Self::parse_args(load_handler, memory, *cdr)?;
+
+                if let Some((load_symbol, load_handler_fn)) = load_handler.as_ref()
+                {
+                    if let InterRepr::Lookup(this_lookup) = *op
+                    {
+                        if this_lookup == *load_symbol
+                        {
+                            let filename_repr = if let Some(x) = args.into_iter().next()
+                            {
+                                x
+                            } else
+                            {
+                                return Err(Error::WrongArgumentsCount{
+                                    proc: "load".to_owned(),
+                                    expected: 1.to_string(),
+                                    got: 0
+                                }).with_position(ast.position);
+                            };
+
+                            let filename_ast = if let InterRepr::Quoted(x) = filename_repr.value
+                            {
+                                x
+                            } else
+                            {
+                                return Err(Error::Custom("expected filepath string".to_owned())).with_position(ast.position);
+                            };
+
+                            let filename = if let Ast::Allocated(x) = filename_ast.value
+                            {
+                                x
+                            } else
+                            {
+                                return Err(Error::Custom("expected filepath string".to_owned())).with_position(ast.position);
+                            };
+
+                            let loaded_code = if let Some(x) = load_handler_fn(&filename)
+                            {
+                                x
+                            } else
+                            {
+                                return Err(Error::Custom(format!("error when loading {filename}"))).with_position(ast.position);
+                            };
+
+                            let loaded_ast = Parser::parse(&[&loaded_code])?;
+
+                            return InterReprPos::parse(
+                                load_handler,
+                                memory,
+                                loaded_ast
+                            );
+                        }
+                    }
+                }
 
                 Ok(InterRepr::Apply{op: Box::new(op), args}.with_position(ast.position))
             }
@@ -1330,6 +1386,7 @@ impl InterReprPos
     }
 
     pub fn parse_args(
+        load_handler: &LoadHandler,
         memory: &mut LispMemory,
         ast: AstPos
     ) -> Result<Vec<Self>, ErrorPos>
@@ -1341,9 +1398,9 @@ impl InterReprPos
             Ast::EmptyList => Ok(Vec::new()),
             Ast::List{car, cdr} =>
             {
-                let tail = Self::parse_args(memory, *cdr)?;
+                let tail = Self::parse_args(load_handler, memory, *cdr)?;
 
-                Ok(iter::once(Self::parse(memory, *car)?).chain(tail).collect())
+                Ok(iter::once(Self::parse(load_handler, memory, *car)?).chain(tail).collect())
             }
         }
     }
@@ -1793,11 +1850,12 @@ impl InterReprPos
 impl InterRepr
 {
     pub fn parse_if(
+        load_handler: &LoadHandler,
         memory: &mut LispMemory,
         ast: AstPos
     ) -> Result<Self, ErrorPos>
     {
-        let args = InterReprPos::parse_args(memory, ast)?;
+        let args = InterReprPos::parse_args(load_handler, memory, ast)?;
 
         let mut args = args.into_iter();
 
@@ -1813,6 +1871,7 @@ impl InterRepr
     }
 
     pub fn parse_let(
+        load_handler: &LoadHandler,
         memory: &mut LispMemory,
         ast: AstPos
     ) -> Result<Self, ErrorPos>
@@ -1820,7 +1879,7 @@ impl InterRepr
         let position = ast.position;
 
         let params_ast = ast.car();
-        let body = InterReprPos::parse_args(memory, ast.cdr())?
+        let body = InterReprPos::parse_args(load_handler, memory, ast.cdr())?
             .into_iter().next().unwrap();
 
         let mut params = Vec::new();
@@ -1857,7 +1916,7 @@ impl InterRepr
 
             params.push(param);
 
-            args.push(InterReprPos::parse(memory, arg)?);
+            args.push(InterReprPos::parse(load_handler, memory, arg)?);
 
             Ok(())
         })?;
@@ -1871,6 +1930,7 @@ impl InterRepr
     }
 
     pub fn parse_lambda(
+        load_handler: &LoadHandler,
         memory: &mut LispMemory,
         name: String,
         ast: AstPos
@@ -1882,7 +1942,7 @@ impl InterRepr
 
         let bodies_position = cdr.position;
 
-        let bodies = InterReprPos::parse_args(memory, cdr)?;
+        let bodies = InterReprPos::parse_args(load_handler, memory, cdr)?;
         let body = InterRepr::Sequence(bodies).with_position(bodies_position);
 
         let params = LambdaParams::parse(memory, params)?;
@@ -2370,6 +2430,7 @@ impl Program
 {
     pub fn parse(
         type_checks: bool,
+        load_handler: Option<Box<dyn Fn(&str) -> Option<String>>>,
         mut memory: LispMemory,
         code: &[&str]
     ) -> Result<Self, ErrorPos>
@@ -2378,7 +2439,15 @@ impl Program
 
         let ast = Parser::parse(code)?;
 
-        let ir = InterReprPos::parse(&mut memory, ast)?;
+        let ir = InterReprPos::parse(
+            &load_handler.map(|x|
+            {
+                let load_symbol = memory.new_symbol_id("load");
+                (load_symbol, x)
+            }),
+            &mut memory,
+            ast
+        )?;
 
         let code = {
             let type_checks = type_checks && DebugConfig::is_disabled(DebugTool::LispDisableChecks);

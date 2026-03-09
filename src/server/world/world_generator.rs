@@ -409,7 +409,8 @@ impl ChunkGenerator
                 .unwrap_or_else(|err| panic!("{} must exist >_< ({err})", name.display()))
         }
 
-        let filepath = parent_directory.join("chunks").join(format!("{name}.scm"));
+        let chunks_directory = parent_directory.join("chunks");
+        let filepath = chunks_directory.join(format!("{name}.scm"));
 
         let standard_code = load("lisp/standard.scm");
         let default_code = load(parent_directory.join("default.scm"));
@@ -421,6 +422,22 @@ impl ChunkGenerator
 
         let config = LispConfig{
             type_checks: cfg!(debug_assertions),
+            load_handler: {
+                let parent_directory = chunks_directory;
+                Some(Box::new(move |filename|
+                {
+                    match fs::read_to_string(parent_directory.join(filename))
+                    {
+                        Ok(x) => Some(x),
+                        Err(err) =>
+                        {
+                            eprintln!("error trying to load `{filename}`: {err}");
+
+                            None
+                        }
+                    }
+                }))
+            },
             memory
         };
 
