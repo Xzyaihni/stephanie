@@ -10,7 +10,10 @@ use std::{
 
 use strum::{EnumCount, FromRepr};
 
-use crate::debug_config::*;
+use crate::{
+    debug_config::*,
+    common::SeededRandom
+};
 
 pub use super::{
     Error,
@@ -582,17 +585,48 @@ impl Default for Primitives
 
                     Ok(().into())
                 })),
-            ("random-integer",
-                PrimitiveProcedureInfo::new_simple(1, Effect::Impure, |mut args|
+            ("random-integer-seeded",
+                PrimitiveProcedureInfo::new_simple(ArgsCount::Between{start: 1, end_inclusive: 2}, Effect::Pure, |mut args|
                 {
-                    let limit = args.next().unwrap().as_integer()?;
+                    let seed = args.next().unwrap().as_integer()?;
+                    let mut random_generator = SeededRandom::from(seed as u64);
 
-                    if limit <= 0
+                    let value = if let Some(limit) = args.next()
                     {
-                        return Ok(0.into());
-                    }
+                        let limit = limit.as_integer()?;
 
-                    Ok(fastrand::i32(0..limit).into())
+                        if limit <= 0
+                        {
+                            return Ok(0.into());
+                        }
+
+                        random_generator.next_u64_between(0..limit as u64) as i32
+                    } else
+                    {
+                        random_generator.next_u64_between(0..i32::MAX as u64) as i32
+                    };
+
+                    Ok(value.into())
+                })),
+            ("random-integer",
+                PrimitiveProcedureInfo::new_simple(ArgsCount::Between{start: 0, end_inclusive: 1}, Effect::Impure, |mut args|
+                {
+                    let value = if let Some(limit) = args.next()
+                    {
+                        let limit = limit.as_integer()?;
+
+                        if limit <= 0
+                        {
+                            return Ok(0.into());
+                        }
+
+                        fastrand::i32(0..limit)
+                    } else
+                    {
+                        fastrand::i32(0..)
+                    };
+
+                    Ok(value.into())
                 })),
             ("random-float",
                 PrimitiveProcedureInfo::new_simple(0, Effect::Impure, |_args|
@@ -603,6 +637,14 @@ impl Default for Primitives
                 PrimitiveProcedureInfo::new_simple(1, Effect::Pure, |mut args|
                 {
                     Ok(args.next().unwrap().as_float()?.floor().into())
+                })),
+            ("wrapping-add",
+                PrimitiveProcedureInfo::new_simple(2, Effect::Pure, |mut args|
+                {
+                    let a = args.next().unwrap().as_integer()?;
+                    let b = args.next().unwrap().as_integer()?;
+
+                    Ok(a.wrapping_add(b).into())
                 })),
             ("exact->inexact",
                 PrimitiveProcedureInfo::new_simple(1, Effect::Pure, |mut args|

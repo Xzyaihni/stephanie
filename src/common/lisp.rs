@@ -1486,15 +1486,19 @@ impl LispMemory
     ) -> Result<LispValue, Error>
     where
         V: Into<LispValue>,
-        I: IntoIterator<Item=V>,
-        I::IntoIter: ExactSizeIterator
+        I: IntoIterator<Item=V>
     {
         self.cons_list_with(move |this|
         {
             let mut iter = values.into_iter();
 
-            let len = iter.len();
-            iter.try_for_each(|x| this.push_stack(x))?;
+            let mut len = 0;
+            iter.try_for_each(|x|
+            {
+                len += 1;
+
+                this.push_stack(x)
+            })?;
 
             Ok(len)
         })
@@ -1887,6 +1891,22 @@ mod tests
         ";
 
         simple_integer_test(code, 19);
+    }
+
+    #[test]
+    fn currying()
+    {
+        let code = "
+            (define (top-level x)
+                (lambda (y)
+                    (let ((s (+ x y)))
+                        (lambda (z)
+                            (lambda (w)
+                                (+ s z w))))))
+            ((((top-level 1000) 200) 30) 4)
+        ";
+
+        simple_integer_test(code, 1234);
     }
 
     #[test]

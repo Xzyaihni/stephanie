@@ -983,7 +983,7 @@ impl YanyaApp for ChunkPreviewer
                 fastrand::seed(seed);
             }
 
-            let set_chunk = |pos, name|
+            let set_chunk = |pos, name, tags|
             {
                 let name_mappings = self.rules.name_mappings();
                 let world_chunk = name_mappings.world_chunk.get(&(TileRotation::Up, name))
@@ -991,7 +991,7 @@ impl YanyaApp for ChunkPreviewer
                     .unwrap_or(WorldChunkId::none());
 
                 let mut block: [_; 16] = array::from_fn(|_| WorldChunk::default());
-                block[0] = WorldChunk::new(world_chunk, Vec::new());
+                block[0] = WorldChunk::new(world_chunk, tags);
 
                 self.world_chunks.borrow_mut()[pos] = Some(block);
             };
@@ -1003,10 +1003,28 @@ impl YanyaApp for ChunkPreviewer
 
             self.preview_tags.chunks.iter().for_each(|(pos, x)|
             {
-                set_chunk(*pos, x.0.text.clone());
+                set_chunk(*pos, x.0.text.clone(), Vec::new());
             });
 
-            set_chunk(Pos3::new(2, 2, 0), self.preview_tags.name.0.text.clone());
+            let middle_tags = {
+                let mappings = &self.rules.name_mappings().text;
+
+                self.preview_tags.others.iter().filter_map(|text|
+                {
+                    let equals_pos = text.0.text.chars().position(|x| x == '=')?;
+
+                    let name = text.0.text.chars().take(equals_pos).collect::<String>();
+
+                    let content: i32 = text.0.text.chars().skip(equals_pos + 1).collect::<String>()
+                        .trim()
+                        .parse()
+                        .ok()?;
+
+                    Some(WorldChunkTag::from_raw(mappings.get(&name)?, content))
+                }).collect::<Vec<_>>()
+            };
+
+            set_chunk(Pos3::new(2, 2, 0), self.preview_tags.name.0.text.clone(), middle_tags.clone());
 
             let mut chunk_objects = Vec::new();
 
@@ -1017,21 +1035,7 @@ impl YanyaApp for ChunkPreviewer
 
                 let tags = if is_middle
                 {
-                    let mappings = &self.rules.name_mappings().text;
-
-                    self.preview_tags.others.iter().filter_map(|text|
-                    {
-                        let equals_pos = text.0.text.chars().position(|x| x == '=')?;
-
-                        let name = text.0.text.chars().take(equals_pos).collect::<String>();
-
-                        let content: i32 = text.0.text.chars().skip(equals_pos + 1).collect::<String>()
-                            .trim()
-                            .parse()
-                            .ok()?;
-
-                        Some(WorldChunkTag::from_raw(mappings.get(&name)?, content))
-                    }).collect::<Vec<_>>()
+                    middle_tags.clone()
                 } else
                 {
                     Vec::new()

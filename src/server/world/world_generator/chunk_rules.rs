@@ -21,7 +21,7 @@ use crate::{
         some_or_return,
         BiMap,
         generic_info::Symmetry,
-        lisp::{self, Program, Primitives, LispMemory},
+        lisp::{self, Program, Primitives, LispMemory, LispValue, Register},
         world::{
             CHUNK_SIZE,
             LocalPos,
@@ -132,6 +132,29 @@ impl WorldChunkTag
             name: tag.name,
             content: Self::generate_content(&tag.content)
         }
+    }
+
+    pub fn as_lisp_value(
+        &self,
+        mappings: &NameMappings,
+        memory: &mut LispMemory
+    ) -> Result<LispValue, lisp::Error>
+    {
+        let name = mappings.text.get_name(self.name);
+        let name = memory.new_symbol(name);
+
+        let restore = memory.with_saved_registers([Register::Value, Register::Temporary]);
+
+        memory.set_register(Register::Value, self.content);
+        memory.set_register(Register::Temporary, name);
+
+        memory.cons(Register::Value, Register::Temporary, Register::Value)?;
+
+        let value = memory.get_register(Register::Value);
+
+        restore(memory)?;
+
+        Ok(value)
     }
 
     pub fn define(

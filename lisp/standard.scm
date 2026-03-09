@@ -48,6 +48,14 @@
 (define (append as bs)
     (fold cons bs (reverse as)))
 
+(define (assq needle xs)
+    (if (null? xs)
+        '()
+        (let ((current (car xs)))
+            (if (eq? (car current) needle)
+                (cdr current)
+                (assq needle (cdr xs))))))
+
 (define (counter x)
     (define (counter-inner current)
         (if (< current x)

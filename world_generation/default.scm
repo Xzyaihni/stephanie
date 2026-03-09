@@ -270,5 +270,15 @@
                 (let ((wall-tile (tile 'concrete)))
                     (cond
                         ((eq? op 'wall-tile) wall-tile)
+                        ((eq? op 'room-seed)
+                            (lambda (chunk-side)
+                                (lambda (room-number)
+                                    (random-integer-seeded
+                                        (wrapping-add
+                                            (random-integer-seeded
+                                                (wrapping-add
+                                                    (assq 'building-seed (chunk-tags-at (position-at-side position chunk-side)))
+                                                    height))
+                                            room-number)))))
                         (else (begin (display "(default.scm) unknown op named: ") (display op) (newline)))))))
         (else (begin (display "(default.scm) unknown default module named: ") (display name) (newline)))))

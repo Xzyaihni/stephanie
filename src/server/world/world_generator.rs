@@ -14,6 +14,7 @@ use std::{
 use nalgebra::Vector3;
 
 use crate::common::{
+    with_error,
     TileMap,
     SaveLoad,
     WeightedPicker,
@@ -294,60 +295,96 @@ impl ChunkGenerator
                 tile.as_lisp_value(args.memory)
             }));
 
+        fn read_chunk_info<T>(
+            overmaps_world_chunks: &Vec<Rc<RefCell<ChunksContainer<Option<WorldChunksBlock>>>>>,
+            args: &mut PrimitiveArgs,
+            f: impl FnOnce(&mut PrimitiveArgs, &WorldChunk) -> T
+        ) -> Result<T, lisp::Error>
+        {
+            let values = args.next().unwrap().as_pairs_list(args.memory)?;
+
+            if values.len() != 4
+            {
+                return Err(lisp::Error::Custom("chunk position is malformed".to_owned()));
+            }
+
+            let mut values = values.into_iter();
+
+            let overmap_index = values.next().unwrap().as_integer()? as usize;
+            let x = values.next().unwrap().as_integer()? as usize;
+            let y = values.next().unwrap().as_integer()? as usize;
+            let z = values.next().unwrap().as_integer()? as usize;
+
+            let this_overmap = overmaps_world_chunks.get(overmap_index).ok_or_else(||
+            {
+                lisp::Error::Custom(format!("overmap index {overmap_index} doesnt exist"))
+            })?;
+
+            let this_overmap = this_overmap.borrow();
+
+            let pos = Pos3::new(x, y, z);
+
+            Ok(f(args, &this_overmap.get(pos).ok_or_else(||
+            {
+                lisp::Error::Custom(format!("{pos} is out of range"))
+            })?.as_ref().ok_or_else(||
+            {
+                lisp::Error::Custom("world chunk block isnt generated, this isnt supposed to happen ever".to_owned())
+            })?[0]))
+        }
+
+        {
+            let overmaps_world_chunks = overmaps_world_chunks.clone();
+            let rules = rules.clone();
+
+            primitives.add(
+                "chunk-at",
+                PrimitiveProcedureInfo::new_simple(1, Effect::Pure, move |mut args|
+                {
+                    let world_chunk = {
+                        let overmaps_world_chunks = overmaps_world_chunks.borrow();
+
+                        read_chunk_info(&overmaps_world_chunks, &mut args, |_, x| x.id())?
+                    };
+
+                    let (rotation, name) = rules.name_mappings().world_chunk.get_back(&world_chunk).unwrap();
+
+                    let memory = args.memory;
+
+                    let restore = memory.with_saved_registers([Register::Value, Register::Temporary]);
+
+                    memory.set_register(Register::Value, *rotation as i32);
+
+                    let name = memory.new_symbol(name);
+                    memory.set_register(Register::Temporary, name);
+
+                    memory.cons(Register::Value, Register::Temporary, Register::Value)?;
+
+                    let value = memory.get_register(Register::Value);
+
+                    restore(memory)?;
+
+                    Ok(value)
+                }));
+        }
+
         primitives.add(
-            "chunk-at",
+            "chunk-tags-at",
             PrimitiveProcedureInfo::new_simple(1, Effect::Pure, move |mut args|
             {
-                let values = args.next().unwrap().as_pairs_list(args.memory)?;
-
-                if values.len() != 4
-                {
-                    return Err(lisp::Error::Custom("chunk position is malformed".to_owned()));
-                }
-
-                let mut values = values.into_iter();
-
-                let overmap_index = values.next().unwrap().as_integer()? as usize;
-                let x = values.next().unwrap().as_integer()? as usize;
-                let y = values.next().unwrap().as_integer()? as usize;
-                let z = values.next().unwrap().as_integer()? as usize;
-
                 let overmaps_world_chunks = overmaps_world_chunks.borrow();
-                let this_overmap = overmaps_world_chunks.get(overmap_index).ok_or_else(||
+
+                let name_mappings = rules.name_mappings();
+
+                read_chunk_info(&overmaps_world_chunks, &mut args, |args, x|
                 {
-                    lisp::Error::Custom(format!("overmap index {overmap_index} doesnt exist"))
-                })?;
+                    let tag_values: Vec<_> = x.tags().iter().filter_map(|tag|
+                    {
+                        with_error(tag.as_lisp_value(name_mappings, args.memory))
+                    }).collect();
 
-                let this_overmap = this_overmap.borrow();
-
-                let pos = Pos3::new(x, y, z);
-
-                let world_chunk = this_overmap.get(pos).ok_or_else(||
-                {
-                    lisp::Error::Custom(format!("{pos} is out of range"))
-                })?.as_ref().ok_or_else(||
-                {
-                    lisp::Error::Custom("world chunk block isnt generated, this isnt supposed to happen ever".to_owned())
-                })?[0].id();
-
-                let (rotation, name) = rules.name_mappings().world_chunk.get_back(&world_chunk).unwrap();
-
-                let memory = args.memory;
-
-                let restore = memory.with_saved_registers([Register::Value, Register::Temporary]);
-
-                memory.set_register(Register::Value, *rotation as i32);
-
-                let name = memory.new_symbol(name);
-                memory.set_register(Register::Temporary, name);
-
-                memory.cons(Register::Value, Register::Temporary, Register::Value)?;
-
-                let value = memory.get_register(Register::Value);
-
-                restore(memory)?;
-
-                Ok(value)
+                    args.memory.cons_list(tag_values.into_iter())
+                }).flatten()
             }));
 
         primitives
@@ -1336,23 +1373,15 @@ mod tests
 
         let tiles = generator.generate_chunk(&info, "test_chunk", 0, &mut |_| {});
 
-        let check_tiles = ChunksContainer::from_raw(Pos3::new(16, 16, 1), Box::new([
-            a,a,a,a,b,b,b,b,c,c,d,d,d,d,d,d,
-            a,a,a,a,b,b,b,b,b,b,d,d,d,d,d,d,
-            a,a,a,a,b,b,b,b,b,b,b,b,b,b,b,b,
-            a,a,a,a,b,b,b,b,b,b,b,b,b,b,b,b,
-            b,b,b,b,b,b,b,b,b,b,b,b,b,b,b,b,
-            b,b,b,b,b,b,b,b,b,b,b,b,b,b,b,b,
-            b,b,b,b,b,b,b,c,c,c,c,b,b,b,b,b,
-            b,b,b,b,b,b,b,c,c,c,c,b,b,b,b,b,
-            b,b,b,b,b,b,b,c,c,c,c,b,b,b,b,b,
-            b,b,b,d,d,d,d,d,d,d,d,d,b,b,b,b,
-            b,b,b,d,d,d,d,d,d,d,d,d,b,b,b,b,
-            b,b,b,d,d,d,d,d,d,d,d,d,b,b,b,b,
-            b,b,b,d,d,d,d,d,d,d,d,d,b,b,b,b,
-            b,b,b,b,b,b,b,c,c,c,c,b,b,b,b,b,
-            b,b,b,b,b,b,b,b,b,b,b,b,b,b,b,b,
-            b,b,b,b,b,b,b,b,b,b,b,b,b,b,b,b,
+        let check_tiles = ChunksContainer::from_raw(Pos3::new(8, 8, 1), Box::new([
+            a,a,a,a,b,b,b,b,
+            a,a,a,a,b,b,b,b,
+            a,a,a,a,b,b,b,b,
+            a,a,a,a,b,b,b,b,
+            b,b,b,b,d,d,b,b,
+            b,b,b,c,c,c,c,b,
+            b,b,b,b,d,d,b,b,
+            b,b,b,b,b,b,b,b,
         ]));
 
         let display_tiles = |tiles: &ChunksContainer<Tile>|

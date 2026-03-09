@@ -10,27 +10,13 @@
 (fill-area
     this-chunk
     (make-area
-        (make-point 8 0)
-        (make-point 2 1))
-    (tile 'glass))
-
-(fill-area
-    this-chunk
-    (make-area
-        (make-point 10 0)
-        (make-point 6 2))
+        (make-point 4 4)
+        (make-point 2 3))
     (tile 'concrete))
 
 (fill-area
     this-chunk
     (make-area
-        (make-point 7 6)
-        (make-point 4 8))
+        (make-point 3 5)
+        (make-point 4 1))
     (tile 'glass))
-
-(fill-area
-    this-chunk
-    (make-area
-        (make-point 3 9)
-        (make-point 9 4))
-    (tile 'concrete))

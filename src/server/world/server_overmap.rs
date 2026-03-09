@@ -636,7 +636,8 @@ mod tests
             WorldGenerator::new(saver, Rc::new(tilemap), "world_generation_test/").unwrap()
         ));
 
-        let size = Pos3::new(10, 11, SERVER_OVERMAP_SIZE_Z);
+        let overmap_size = Pos3::new(10, 11, SERVER_OVERMAP_SIZE_Z);
+        let size = Pos3::new(overmap_size.x * CHUNK_RATIO.x, overmap_size.y * CHUNK_RATIO.y, SERVER_OVERMAP_SIZE_Z);
 
         let random_chunk = ||
         {
@@ -657,7 +658,7 @@ mod tests
         let mut overmap = ServerOvermap::new(
             world_generator.clone(),
             0,
-            size,
+            overmap_size,
             Pos3::repeat(0.0)
         );
 

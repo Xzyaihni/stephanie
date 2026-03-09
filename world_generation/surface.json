@@ -50,6 +50,10 @@
                 {
                     "name": "building-height",
                     "content": "(+ 3 (* 4 (+ 1 (random-integer 4))))"
+                },
+                {
+                    "name": "building-seed",
+                    "content": "(random-integer)"
                 }
             ],
             "weight": 4,
