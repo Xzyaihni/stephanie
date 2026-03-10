@@ -3,7 +3,6 @@
 use std::{
     f32,
     fs,
-    array,
     collections::HashMap,
     cell::RefCell,
     ops::{Range, Deref, DerefMut},
@@ -50,6 +49,7 @@ use stephanie::{
         MarkerKind,
         world_generator::{
             WORLD_CHUNK_SIZE,
+            WorldPlane,
             WorldChunk,
             WorldChunkId,
             WorldChunkTag,
@@ -76,8 +76,7 @@ use stephanie::{
         render_info::*,
         lisp::*,
         Pos3,
-        ChunksContainer,
-        WorldChunksBlock,
+        FlatChunksContainer,
         Sprite,
         TileMap,
         ItemsInfo,
@@ -493,7 +492,7 @@ struct AssetsDependent
     furniture: FurnituresInfo,
     enemies: (CharactersInfo, EnemiesInfo),
     rules: Rc<ChunkRulesGroup>,
-    world_chunks: Rc<RefCell<ChunksContainer<Option<WorldChunksBlock>>>>
+    world_chunks: Rc<RefCell<WorldPlane>>
 }
 
 impl AssetsDependent
@@ -501,7 +500,7 @@ impl AssetsDependent
     fn new(
         info: &mut ObjectCreatePartialInfo,
         rules: Rc<ChunkRulesGroup>,
-        world_chunks: Rc<RefCell<ChunksContainer<Option<WorldChunksBlock>>>>
+        world_chunks: Rc<RefCell<WorldPlane>>
     ) -> Self
     {
         let tilemap = {
@@ -563,7 +562,7 @@ struct ChunkPreviewer
 {
     shaders: DrawShaders,
     fonts: Rc<FontsContainer>,
-    world_chunks: Rc<RefCell<ChunksContainer<Option<WorldChunksBlock>>>>,
+    world_chunks: Rc<RefCell<WorldPlane>>,
     assets_dependent: ModifiedWatcher<AssetsDependent>,
     rules: Rc<ChunkRulesGroup>,
     controls: ControlsController<UiId>,
@@ -713,7 +712,7 @@ impl YanyaApp for ChunkPreviewer
 
         let preview = None;
 
-        let world_chunks = Rc::new(RefCell::new(ChunksContainer::new(Pos3::new(5, 5, 1))));
+        let world_chunks = Rc::new(RefCell::new(WorldPlane(FlatChunksContainer::new(Pos3::new(5, 5, 1)))));
 
         let assets_dependent = ModifiedWatcher::new_many(
             vec!["textures".into(), "info".into(), "lisp".into()],
@@ -1018,15 +1017,12 @@ impl YanyaApp for ChunkPreviewer
                     .cloned()
                     .unwrap_or(WorldChunkId::none());
 
-                let mut block: [_; 16] = array::from_fn(|_| WorldChunk::default());
-                block[0] = WorldChunk::new(world_chunk, tags);
-
-                self.world_chunks.borrow_mut()[pos] = Some(block);
+                self.world_chunks.borrow_mut().0[pos] = Some(WorldChunk::new(world_chunk, tags));
             };
 
-            self.world_chunks.borrow_mut().iter_mut().for_each(|(_, world_chunk)|
+            self.world_chunks.borrow_mut().0.iter_mut().for_each(|(_, world_chunk)|
             {
-                *world_chunk = Some(array::from_fn(|_| WorldChunk::default()));
+                *world_chunk = Some(WorldChunk::default());
             });
 
             self.preview_tags.chunks.iter().for_each(|(pos, x)|
@@ -1061,26 +1057,17 @@ impl YanyaApp for ChunkPreviewer
             {
                 let is_middle = chunk_pos == Pos3::new(1, 1, 0);
 
-                let tags = if is_middle
-                {
-                    middle_tags.clone()
-                } else
-                {
-                    Vec::new()
-                };
-
                 let pos_offset: Vector3<f32> = Vector3::from(chunk_pos.map(|x| x as i32) - Pos3::new(2 as i32, 2 as i32, 0)).cast();
 
                 let chunk_info = ConditionalInfo{
                     position: LocalPos::new(chunk_pos, Pos3::new(3, 3, 1)),
                     height: self.preview_tags.height,
                     difficulty: self.preview_tags.difficulty,
-                    rotation: if is_middle { self.preview_tags.rotation } else { TileRotation::Up },
-                    tags: &tags
+                    rotation: if is_middle { self.preview_tags.rotation } else { TileRotation::Up }
                 };
 
                 let chunk_name = {
-                    let world_chunk_id = self.world_chunks.borrow()[chunk_pos].as_ref().map(|x| x[0].id()).unwrap_or(WorldChunkId::none());
+                    let world_chunk_id = self.world_chunks.borrow().0[chunk_pos].as_ref().map(|x| x.id()).unwrap_or(WorldChunkId::none());
 
                     some_or_unexpected_return!(self.rules.name_mappings().world_chunk.get_back(&world_chunk_id).clone()).1.clone()
                 };
@@ -1093,7 +1080,6 @@ impl YanyaApp for ChunkPreviewer
 
                 let tiles = ChunkGenerator::generate_chunk_with(
                     &chunk_info,
-                    &self.rules,
                     &chunk_name,
                     0,
                     chunk_code,

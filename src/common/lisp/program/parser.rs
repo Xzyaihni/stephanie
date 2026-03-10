@@ -362,9 +362,9 @@ pub struct Parser
 
 impl Parser
 {
-    pub fn parse(code: &[&str]) -> Result<AstPos, ErrorPos>
+    pub fn parse(source_offset: usize, code: &[&str]) -> Result<AstPos, ErrorPos>
     {
-        let lexemes = Lexer::parse(code);
+        let lexemes = Lexer::parse(source_offset, code);
 
         let lexemes = iter::once(Lexeme::OpenParen.with_position(Default::default()))
             .chain(lexemes)

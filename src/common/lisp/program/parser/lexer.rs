@@ -70,12 +70,12 @@ pub struct Lexer<'a>
 
 impl<'a> Lexer<'a>
 {
-    pub fn parse(texts: &[&'a str]) -> Vec<LexemePos>
+    pub fn parse(source_offset: usize, texts: &[&'a str]) -> Vec<LexemePos>
     {
         texts.iter().enumerate().flat_map(|(source, text)|
         {
             let this = Self{
-                position: CodePosition::new(source),
+                position: CodePosition::new(source + source_offset),
                 chars: text.chars(),
                 current_char: None
             };

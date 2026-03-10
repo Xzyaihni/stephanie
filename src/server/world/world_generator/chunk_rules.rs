@@ -642,8 +642,7 @@ enum ConditionalVariable
 #[derive(Debug, Clone, Deserialize)]
 enum RangeNumberRaw
 {
-    Number(i32),
-    Tag(String)
+    Number(i32)
 }
 
 #[derive(Debug, Deserialize)]
@@ -663,33 +662,26 @@ struct CityRulesRaw
 #[derive(Debug, Clone, Copy)]
 enum RangeNumber
 {
-    Number(i32),
-    Tag(TextId)
+    Number(i32)
 }
 
 impl RangeNumber
 {
     fn from_raw(
-        mappings: &NameMappings,
         value: RangeNumberRaw
     ) -> Self
     {
         match value
         {
-            RangeNumberRaw::Number(x) => Self::Number(x),
-            RangeNumberRaw::Tag(name) => Self::Tag(mappings.text[&name])
+            RangeNumberRaw::Number(x) => Self::Number(x)
         }
     }
 
-    fn as_number(&self, info: &ConditionalInfo) -> i32
+    fn as_number(&self) -> i32
     {
         match self
         {
-            Self::Number(x) => *x,
-            Self::Tag(tag) => info.get_tag(*tag).unwrap_or_else(||
-            {
-                panic!("tag `{tag:?}` doesnt exist in {info:#?}")
-            })
+            Self::Number(x) => *x
         }
     }
 }
@@ -704,14 +696,14 @@ struct ConditionalRule
 
 impl ConditionalRule
 {
-    fn from_raw_empty(name_mappings: &NameMappings, rule: ConditionalRuleRaw) -> Self
+    fn from_raw_empty(rule: ConditionalRuleRaw) -> Self
     {
         Self{
             name: WorldChunkId::none(),
             variable: rule.variable.unwrap_or(ConditionalVariable::Height),
             range: Range{
-                start: RangeNumber::from_raw(name_mappings, rule.range.start),
-                end: RangeNumber::from_raw(name_mappings, rule.range.end)
+                start: RangeNumber::from_raw(rule.range.start),
+                end: RangeNumber::from_raw(rule.range.end)
             }
         }
     }
@@ -732,8 +724,8 @@ impl ConditionalRule
     {
         if self.name == this
         {
-            let start = self.range.start.as_number(info);
-            let end = self.range.end.as_number(info);
+            let start = self.range.start.as_number();
+            let end = self.range.end.as_number();
 
             (start..end).contains(&info.get_variable(self.variable))
         } else
@@ -744,22 +736,16 @@ impl ConditionalRule
 }
 
 #[derive(Debug)]
-pub struct ConditionalInfo<'a>
+pub struct ConditionalInfo
 {
     pub position: LocalPos,
     pub height: i32,
     pub difficulty: f32,
-    pub rotation: TileRotation,
-    pub tags: &'a [WorldChunkTag]
+    pub rotation: TileRotation
 }
 
-impl ConditionalInfo<'_>
+impl ConditionalInfo
 {
-    fn get_tag(&self, search_tag: TextId) -> Option<i32>
-    {
-        self.tags.iter().find(|tag| tag.name == search_tag).map(|tag| tag.content)
-    }
-
     fn get_variable(&self, variable: ConditionalVariable) -> i32
     {
         match variable
@@ -786,7 +772,7 @@ impl CityRules
         rules.rules.into_iter().for_each(|rule|
         {
             let name = rule.name.clone();
-            let rule = ConditionalRule::from_raw_empty(name_mappings, rule);
+            let rule = ConditionalRule::from_raw_empty(rule);
 
             TileRotation::iter().for_each(|rotation|
             {

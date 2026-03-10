@@ -37,7 +37,7 @@ pub const QUOTE_PRIMITIVE: &str = "quote";
 pub const MAKE_VECTOR_PRIMITIVE: &str = "make-vector";
 pub const VECTOR_SET_PRIMITIVE: &str = "vector-set!";
 
-pub type LoadHandler = Option<(SymbolId, Box<dyn Fn(&str) -> Option<String>>)>;
+pub type LoadHandler = Option<(SymbolId, usize, Box<dyn Fn(&str) -> Option<String>>)>;
 
 pub type OnApply = Rc<dyn Fn(&mut LispMemory, CodePosition, Register) -> Result<(), Error>>;
 pub type OnEval = Rc<dyn Fn(&LoadHandler, &mut LispMemory, AstPos) -> Result<InterRepr, ErrorPos>>;
@@ -1327,7 +1327,7 @@ impl InterReprPos
 
                 let args = Self::parse_args(load_handler, memory, *cdr)?;
 
-                if let Some((load_symbol, load_handler_fn)) = load_handler.as_ref()
+                if let Some((load_symbol, source_id, load_handler_fn)) = load_handler.as_ref()
                 {
                     if let InterRepr::Lookup(this_lookup) = *op
                     {
@@ -1369,7 +1369,7 @@ impl InterReprPos
                                 return Err(Error::Custom(format!("error when loading {filename}"))).with_position(ast.position);
                             };
 
-                            let loaded_ast = Parser::parse(&[&loaded_code])?;
+                            let loaded_ast = Parser::parse(*source_id, &[&loaded_code])?;
 
                             return InterReprPos::parse(
                                 load_handler,
@@ -2437,13 +2437,13 @@ impl Program
     {
         debug_assert!(memory.iter_values().all(|x| x.tag != ValueTag::Address));
 
-        let ast = Parser::parse(code)?;
+        let ast = Parser::parse(0, code)?;
 
         let ir = InterReprPos::parse(
             &load_handler.map(|x|
             {
                 let load_symbol = memory.new_symbol_id("load");
-                (load_symbol, x)
+                (load_symbol, code.len(), x)
             }),
             &mut memory,
             ast

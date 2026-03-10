@@ -170,7 +170,7 @@ fn debug_overmap_with<S: fmt::Debug, T: fmt::Display>(
         acc
     });
 
-    let world_plane = overmap.world_plane.0.pretty_print_with(|x| f(x.as_ref()).to_string());
+    let world_plane = overmap.world_plane.borrow().0.pretty_print_with(|x| f(x.as_ref()).to_string());
 
     format!(
         "{:#?}\n{:#?}{world_chunks}\n{world_plane}",
@@ -191,7 +191,7 @@ pub struct ServerOvermap<S>
 {
     world_generator: Rc<RefCell<WorldGenerator<S>>>,
     world_chunks: Rc<RefCell<ChunksContainer<Option<WorldChunksBlock>>>>,
-    world_plane: WorldPlane,
+    world_plane: Rc<RefCell<WorldPlane>>,
     overmap_index: i32,
     indexer: Indexer
 }
@@ -241,9 +241,9 @@ impl<S: SaveLoad<WorldChunksBlock>> ServerOvermap<S>
 
         let world_chunks = Rc::new(RefCell::new(ChunksContainer::new(size)));
 
-        world_generator.borrow().push_world_chunks(world_chunks.clone());
+        let world_plane = Rc::new(RefCell::new(WorldPlane(FlatChunksContainer::new(size))));
 
-        let world_plane = WorldPlane(FlatChunksContainer::new(size));
+        world_generator.borrow().push_world_chunks(world_plane.clone());
 
         let mut this = Self{
             world_generator,
@@ -263,7 +263,7 @@ impl<S: SaveLoad<WorldChunksBlock>> ServerOvermap<S>
         f(ServerOvermapRef{
             world_generator: &mut self.world_generator.borrow_mut(),
             world_chunks: &mut self.world_chunks.borrow_mut(),
-            world_plane: &mut self.world_plane,
+            world_plane: &mut self.world_plane.borrow_mut(),
             indexer: self.indexer.clone()
         })
     }
@@ -342,10 +342,6 @@ impl<S: SaveLoad<WorldChunksBlock>> ServerOvermap<S>
 
                     let this_chunk = self.world_chunks.borrow()[local_pos].as_ref().map(|chunk| chunk[z].clone()).unwrap();
 
-                    let tags = self.world_plane.world_chunk(
-                        LocalPos::new(Pos3{z: 0, ..local_pos.pos}, Pos3{z: 1, ..local_pos.size})
-                    ).tags();
-
                     let mut world_generator = self.world_generator.borrow_mut();
 
                     let info = {
@@ -355,8 +351,7 @@ impl<S: SaveLoad<WorldChunksBlock>> ServerOvermap<S>
                             position: local_pos,
                             height: global_pos.0.z * CHUNK_RATIO.z as i32 + z as i32,
                             difficulty: chunk_difficulty(global_pos),
-                            rotation: world_generator.rotation_of(this_chunk.id()),
-                            tags
+                            rotation: world_generator.rotation_of(this_chunk.id())
                         }
                     };
 

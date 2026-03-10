@@ -74,34 +74,53 @@
             (put-outer-walls this-chunk)
             (make-area (make-point 2 2) (make-point (- big-size-x 4) (- big-size-y 4)))
             (tile 'wood))
-        (make-area (make-point 8 1) (make-point size-x 1))
-        (tile 'wood)))
+        (make-area (make-point 8 1) (make-point size-x 4))
+        (tile 'concrete)))
 
 (define roof-start (- building-height 4))
 
 (cond
     ((> height roof-start)
         (cond
-            ((= height (+ roof-start 1))
-                (big-fill-area
+            ((= height (+ roof-start 1)) (begin
+                (define this-chunk
                     (big-fill-area
-                        (filled-chunk (tile 'air))
-                        (make-area (make-point 1 1) (make-point 22 22))
-                        (tile 'concrete))
-                    (make-area (make-point 7 0) (make-point 10 1))
-                    (tile 'concrete)))
+                        (big-fill-area
+                            (filled-chunk (tile 'air))
+                            (make-area (make-point 1 1) (make-point 22 22))
+                            (tile 'concrete))
+                        (make-area (make-point 7 0) (make-point 10 1))
+                        (tile 'concrete)))
+                (big-put-tile
+                    this-chunk
+                    (make-point 9 2)
+                    (tile 'stairs-down rotation))
+                this-chunk))
             ((= height (+ roof-start 2))
                 (define this-chunk (filled-chunk (tile 'air)))
                 (big-fill-area this-chunk (make-point (make-point 1 1) (make-point 1 22)) (tile 'concrete-fence))
-                (big-fill-area this-chunk (make-point (make-point 16 1) (make-point 7 1)) (tile 'concrete-fence))
-                (big-fill-area this-chunk (make-point (make-point 2 1) (make-point 6 1)) (tile 'concrete-fence))
+                (big-fill-area this-chunk (make-point (make-point 17 1) (make-point 6 1)) (tile 'concrete-fence))
+                (big-fill-area this-chunk (make-point (make-point 2 1) (make-point 5 1)) (tile 'concrete-fence))
                 (big-fill-area this-chunk (make-point (make-point 2 22) (make-point 20 1)) (tile 'concrete-fence side-down))
                 (big-fill-area this-chunk (make-point (make-point 22 2) (make-point 1 20)) (tile 'concrete-fence side-down))
-                (big-put-tile this-chunk (make-point 22 22) (tile 'concrete-fence)))
-            ((= height (+ roof-start 3)) (filled-chunk (tile 'air)))))
+                (big-put-tile this-chunk (make-point 22 22) (tile 'concrete-fence))
+                (big-fill-area this-chunk (make-point (make-point 7 0) (make-point 10 1)) wall-tile)
+                (big-fill-area this-chunk (make-point (make-point 7 1) (make-point 1 4)) wall-tile)
+                (big-fill-area this-chunk (make-point (make-point 16 1) (make-point 1 4)) wall-tile)
+                (big-fill-area this-chunk (make-point (make-point 8 4) (make-point 6 1)) wall-tile)
+                (big-put-tile this-chunk (make-point 14 4) (single-marker (list 'door side-left 'metal 2))))
+            ((= height (+ roof-start 3))
+                (big-fill-area (filled-chunk (tile 'air)) (make-point (make-point 7 0) (make-point 10 5)) wall-tile))))
     ((= height 0)
         (put-floor (filled-chunk (tile 'concrete-path))))
-    ((= (remainder height 2) 0) (put-floor (filled-chunk (tile 'air))))
+    ((= (remainder height 2) 0) (begin
+        (define this-chunk (put-floor (filled-chunk (tile 'air))))
+        (let ((x (if (= (remainder height 4) 0) 9 14)))
+            (big-put-tile
+                this-chunk
+                (make-point x 2)
+                (tile 'stairs-down rotation)))
+        this-chunk))
     (else (begin
         (define this-chunk (filled-chunk (tile 'air)))
         (put-outer-walls this-chunk)
@@ -120,6 +139,11 @@
         (big-put-tile this-chunk (make-point 9 8) (single-marker (list 'door side-down 'metal 1)))
         (big-put-tile this-chunk (make-point 14 8) (single-marker (list 'door side-down 'metal 1)))
         (big-put-tile this-chunk (make-point (if (random-bool) 11 12) 16) (single-marker (list 'door side-right 'metal 1)))
+        (let ((x (if (= (remainder height 4) 3) 9 14)))
+            (big-put-tile
+                this-chunk
+                (make-point x 2)
+                (tile 'stairs-up rotation)))
         this-chunk)))
 
 ))

@@ -42,11 +42,12 @@ use crate::common::{
 use super::{
     SERVER_OVERMAP_SIZE_Z,
     MarkerTile,
-    MarkerKind,
-    server_overmap::WorldPlane
+    MarkerKind
 };
 
 use chunk_rules::ChunkRules;
+
+pub use super::server_overmap::WorldPlane;
 
 pub use chunk_rules::{
     WORLD_CHUNK_SIZE,
@@ -202,10 +203,9 @@ impl Display for ChunkGenerationError
 
 pub struct ChunkGenerator
 {
-    rules: Rc<ChunkRulesGroup>,
     chunks: HashMap<String, Lisp>,
     tilemap: Rc<TileMap>,
-    overmaps_world_chunks: Rc<RefCell<Vec<Rc<RefCell<ChunksContainer<Option<WorldChunksBlock>>>>>>>
+    overmaps_world_chunks: Rc<RefCell<Vec<Rc<RefCell<WorldPlane>>>>>
 }
 
 impl ChunkGenerator
@@ -224,7 +224,6 @@ impl ChunkGenerator
         let memory = LispMemory::new(primitives, 256, 1 << 13);
 
         let mut this = Self{
-            rules: rules.clone(),
             chunks,
             tilemap,
             overmaps_world_chunks
@@ -249,7 +248,7 @@ impl ChunkGenerator
     pub fn default_primitives(
         tilemap: &TileMap,
         rules: Rc<ChunkRulesGroup>,
-        overmaps_world_chunks: Rc<RefCell<Vec<Rc<RefCell<ChunksContainer<Option<WorldChunksBlock>>>>>>>
+        overmaps_world_chunks: Rc<RefCell<Vec<Rc<RefCell<WorldPlane>>>>>
     ) -> Primitives
     {
         let mut primitives = Primitives::default();
@@ -296,14 +295,14 @@ impl ChunkGenerator
             }));
 
         fn read_chunk_info<T>(
-            overmaps_world_chunks: &Vec<Rc<RefCell<ChunksContainer<Option<WorldChunksBlock>>>>>,
+            overmaps_world_chunks: &Vec<Rc<RefCell<WorldPlane>>>,
             args: &mut PrimitiveArgs,
             f: impl FnOnce(&mut PrimitiveArgs, &WorldChunk) -> T
         ) -> Result<T, lisp::Error>
         {
             let values = args.next().unwrap().as_pairs_list(args.memory)?;
 
-            if values.len() != 4
+            if values.len() != 3
             {
                 return Err(lisp::Error::Custom("chunk position is malformed".to_owned()));
             }
@@ -313,7 +312,6 @@ impl ChunkGenerator
             let overmap_index = values.next().unwrap().as_integer()? as usize;
             let x = values.next().unwrap().as_integer()? as usize;
             let y = values.next().unwrap().as_integer()? as usize;
-            let z = values.next().unwrap().as_integer()? as usize;
 
             let this_overmap = overmaps_world_chunks.get(overmap_index).ok_or_else(||
             {
@@ -322,15 +320,15 @@ impl ChunkGenerator
 
             let this_overmap = this_overmap.borrow();
 
-            let pos = Pos3::new(x, y, z);
+            let pos = Pos3::new(x, y, 0);
 
-            Ok(f(args, &this_overmap.get(pos).ok_or_else(||
+            Ok(f(args, this_overmap.0.get(pos).ok_or_else(||
             {
                 lisp::Error::Custom(format!("{pos} is out of range"))
             })?.as_ref().ok_or_else(||
             {
                 lisp::Error::Custom("world chunk block isnt generated, this isnt supposed to happen ever".to_owned())
-            })?[0]))
+            })?))
         }
 
         {
@@ -390,7 +388,7 @@ impl ChunkGenerator
         primitives
     }
 
-    fn push_world_chunks(&self, world_chunks: Rc<RefCell<ChunksContainer<Option<WorldChunksBlock>>>>)
+    fn push_world_chunks(&self, world_chunks: Rc<RefCell<WorldPlane>>)
     {
         self.overmaps_world_chunks.borrow_mut().push(world_chunks);
     }
@@ -453,7 +451,6 @@ impl ChunkGenerator
 
     pub fn generate_chunk_with(
         info: &ConditionalInfo,
-        rules: &ChunkRulesGroup,
         chunk_name: &str,
         overmap_index: i32,
         this_chunk: &mut Lisp,
@@ -474,7 +471,7 @@ impl ChunkGenerator
 
                 let pos = info.position.pos;
 
-                let chunk_position = memory.cons_list([overmap_index, pos.x as i32, pos.y as i32, pos.z as i32]).map_err(|err|
+                let chunk_position = memory.cons_list([overmap_index, pos.x as i32, pos.y as i32]).map_err(|err|
                 {
                     ChunkGenerationError::SymbolAllocation("position".to_owned(), err)
                 })?;
@@ -493,18 +490,10 @@ impl ChunkGenerator
             define_symbol("difficulty", info.difficulty.into())?;
             define_symbol("rotation", (rotation as i32).into())?;
 
-            info.tags.iter().try_for_each(|tag|
-            {
-                tag.define(rules.name_mappings(), this_chunk.memory_mut())
-            }).map_err(|err|
-            {
-                ChunkGenerationError::TagSymbolAllocation(err)
-            })?;
-
             let (memory, value): (LispMemory, LispValue) = this_chunk.run()
                 .map_err(|err|
                 {
-                    let source = ["standard", "default", "chunk"][err.position.source];
+                    let source = ["standard", "default", "chunk", "loaded file"].get(err.position.source).copied().unwrap_or("undefined");
 
                     ChunkGenerationError::LispRuntime{source, err}
                 })?
@@ -629,7 +618,7 @@ impl ChunkGenerator
             return empty_worldchunk();
         };
 
-        match Self::generate_chunk_with(info, &self.rules, chunk_name, overmap_index, this_chunk, marker)
+        match Self::generate_chunk_with(info, chunk_name, overmap_index, this_chunk, marker)
         {
             Ok(x) => x,
             Err(err) =>
@@ -676,7 +665,7 @@ impl<S: SaveLoad<WorldChunksBlock>> WorldGenerator<S>
         Ok(Self{generator, saver, rules})
     }
 
-    pub fn push_world_chunks(&self, world_chunks: Rc<RefCell<ChunksContainer<Option<WorldChunksBlock>>>>)
+    pub fn push_world_chunks(&self, world_chunks: Rc<RefCell<WorldPlane>>)
     {
         self.generator.push_world_chunks(world_chunks)
     }
@@ -832,8 +821,7 @@ impl<S: SaveLoad<WorldChunksBlock>> WorldGenerator<S>
                                 position: local_pos,
                                 height: global_z,
                                 difficulty,
-                                rotation,
-                                tags: this_surface.tags()
+                                rotation
                             };
 
                             self.rules.city.generate(info, this_surface.id())
@@ -848,8 +836,7 @@ impl<S: SaveLoad<WorldChunksBlock>> WorldGenerator<S>
                                 position: local_pos,
                                 height: global_z,
                                 difficulty,
-                                rotation,
-                                tags: this_surface.tags()
+                                rotation
                             };
 
                             let underground_city = self.rules.city.generate_underground(
