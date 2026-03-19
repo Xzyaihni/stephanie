@@ -1010,10 +1010,12 @@ impl YanyaApp for ChunkPreviewer
                 fastrand::seed(seed);
             }
 
-            let set_chunk = |pos, name, tags|
+            let set_chunk = |pos: Pos3<usize>, name: String, tags|
             {
+                let chunks_rotation = self.preview_tags.rotation;
+
                 let name_mappings = self.rules.name_mappings();
-                let world_chunk = name_mappings.world_chunk.get(&(TileRotation::Up, name))
+                let world_chunk = name_mappings.world_chunk.get(&(chunks_rotation, name))
                     .cloned()
                     .unwrap_or(WorldChunkId::none());
 
@@ -1025,9 +1027,20 @@ impl YanyaApp for ChunkPreviewer
                 *world_chunk = Some(WorldChunk::default());
             });
 
-            self.preview_tags.chunks.iter().for_each(|(pos, x)|
+            self.preview_tags.chunks.iter().for_each(|(pos, x): &(Pos3<usize>, TextboxWrapper)|
             {
-                set_chunk(*pos, x.0.text.clone(), Vec::new());
+                fn ti(x: usize) -> i32 { x as i32 - 2 }
+                fn tu(x: i32) -> usize { (x + 2) as usize }
+
+                let rotated_pos = match self.preview_tags.rotation
+                {
+                    TileRotation::Up => *pos,
+                    TileRotation::Right => Pos3::new(tu(-ti(pos.y)), pos.x, pos.z),
+                    TileRotation::Down => Pos3::new(tu(-ti(pos.x)), tu(-ti(pos.y)), pos.z),
+                    TileRotation::Left => Pos3::new(pos.y, tu(-ti(pos.x)), pos.z)
+                };
+
+                set_chunk(rotated_pos, x.0.text.clone(), Vec::new());
             });
 
             let middle_tags = {
@@ -1055,15 +1068,13 @@ impl YanyaApp for ChunkPreviewer
             let mut markers = Vec::new();
             let mut create_chunk_at = |chunk_pos: Pos3<usize>|
             {
-                let is_middle = chunk_pos == Pos3::new(1, 1, 0);
-
                 let pos_offset: Vector3<f32> = Vector3::from(chunk_pos.map(|x| x as i32) - Pos3::new(2 as i32, 2 as i32, 0)).cast();
 
                 let chunk_info = ConditionalInfo{
                     position: LocalPos::new(chunk_pos, Pos3::new(3, 3, 1)),
                     height: self.preview_tags.height,
                     difficulty: self.preview_tags.difficulty,
-                    rotation: if is_middle { self.preview_tags.rotation } else { TileRotation::Up }
+                    rotation: self.preview_tags.rotation
                 };
 
                 let chunk_name = {

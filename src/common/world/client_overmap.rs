@@ -349,7 +349,7 @@ impl ClientOvermap
         {
             self.chunks[local_pos] = Some(Arc::new(chunk));
 
-            self.visual_overmap.try_generate_sky_occlusion(&self.chunks, local_pos);
+            self.visual_overmap.try_generate_sky_occlusion(&self.chunks, local_pos, false);
         }
     }
 

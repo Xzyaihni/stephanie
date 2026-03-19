@@ -744,30 +744,6 @@ impl VisualOvermap
         }
     }
 
-    pub fn try_generate_sky_occlusion(
-        &mut self,
-        chunks: &ChunksContainer<Option<Arc<Chunk>>>,
-        pos: LocalPos
-    ) -> bool
-    {
-        if chunks[pos].is_none()
-        {
-            return false;
-        }
-
-        if let Some(forward) = pos.forward()
-        {
-            if self.chunks[forward].occlusion.is_none()
-            {
-                return false;
-            }
-        }
-
-        self.generate_sky_occlusion(chunks, pos);
-
-        true
-    }
-
     pub fn try_regenerate(
         &mut self,
         chunks: &ChunksContainer<Option<Arc<Chunk>>>,
@@ -790,7 +766,7 @@ impl VisualOvermap
         }
 
         self.mark_ungenerated(pos);
-        self.try_generate_sky_occlusion(chunks, pos);
+        self.try_generate_sky_occlusion(chunks, pos, false);
     }
 
     pub fn force_generate(
@@ -831,45 +807,71 @@ impl VisualOvermap
         Arc::new(occlusion)
     }
 
-    fn generate_sky_occlusion(
-        &mut self,
+    fn occlusion_generate_ready(
+        &self,
         chunks: &ChunksContainer<Option<Arc<Chunk>>>,
         pos: LocalPos
-    )
+    ) -> bool
     {
+        if chunks[pos].is_none()
+        {
+            return false;
+        }
+
+        if let Some(above) = pos.forward()
+        {
+            if self.chunks[above].occlusion.is_none()
+            {
+                return false;
+            }
+        }
+
+        true
+    }
+
+    pub fn try_generate_sky_occlusion(
+        &mut self,
+        chunks: &ChunksContainer<Option<Arc<Chunk>>>,
+        pos: LocalPos,
+        forced_occlusion_change: bool
+    ) -> bool
+    {
+        if !self.occlusion_generate_ready(chunks, pos)
+        {
+            return false;
+        }
+
         let occlusion = self.sky_occlusion_of(chunks, pos);
 
         let occlusion_changed = self.chunks[pos].occlusion.as_ref().map(|x| *x != occlusion).unwrap_or(true);
 
-        self.chunks[pos].occlusion = Some(occlusion);
-
+        let mut generated = false;
+        if !self.chunks[pos].chunk.is_generated() || occlusion_changed || forced_occlusion_change
         {
-            let generate = |this: &mut Self, pos|
-            {
-                if TileReader::creatable(chunks, pos) && creatable_with(&this.chunks, pos, |chunk| chunk.occlusion.is_some())
-                {
-                    this.force_generate(chunks, pos);
-                }
-            };
+            self.chunks[pos].occlusion = Some(occlusion);
 
-            if occlusion_changed || !self.chunks[pos].chunk.is_generated()
+            if TileReader::creatable(chunks, pos) && creatable_with(&self.chunks, pos, |chunk| chunk.occlusion.is_some())
             {
-                generate(self, pos);
+                self.force_generate(chunks, pos);
+
+                generated = true;
             }
+        }
 
+        if generated || occlusion_changed
+        {
             pos.directions().flatten().for_each(|pos|
             {
-                if !self.chunks[pos].chunk.is_generated()
-                {
-                    generate(self, pos);
-                }
+                self.try_generate_sky_occlusion(chunks, pos, occlusion_changed);
             });
+
+            if let Some(below) = pos.back()
+            {
+                self.try_generate_sky_occlusion(chunks, below, false);
+            }
         }
 
-        if let Some(back) = pos.back()
-        {
-            self.try_generate_sky_occlusion(chunks, back);
-        }
+        generated
     }
 
     pub fn update(&mut self)
@@ -980,20 +982,7 @@ impl VisualOvermap
 
                 let this_chunk = &mut self.chunks[local_pos].occlusion;
 
-                let is_more_occluded = if let Some(this_occlusion) = this_chunk.as_ref()
-                {
-                    occlusions.occluded[CHUNK_SIZE - 1].iter()
-                        .zip(this_occlusion.occluded[CHUNK_SIZE - 1].iter())
-                        .any(|(new, old)|
-                        {
-                            (!old) && *new
-                        })
-                } else
-                {
-                    return false;
-                };
-
-                if !is_more_occluded
+                if this_chunk.is_none()
                 {
                     return false;
                 }
