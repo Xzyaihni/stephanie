@@ -321,6 +321,11 @@ impl Default for Primitives
                 {
                     fn parse_clause(load_handler: &LoadHandler, memory: &mut LispMemory, clause: AstPos) -> Result<(InterReprPos, InterReprPos), ErrorPos>
                     {
+                        if !clause.is_list() || clause.is_null()
+                        {
+                            return Err(ErrorPos{position: clause.position, value: Error::ExpectedList});
+                        }
+
                         let check = InterReprPos::parse(load_handler, memory, clause.car())?;
 
                         let tail = clause.cdr();

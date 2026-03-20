@@ -147,6 +147,8 @@
                 (big-put-tile this-chunk (make-point 11 0) (single-marker (list 'door side-left 'metal 2)))))
         (big-put-tile this-chunk (make-point 8 4) (tile 'concrete))
         (big-put-tile this-chunk (make-point 15 4) (tile 'concrete))
+        (big-put-tile this-chunk (make-point 11 5) (single-marker (list 'light 1.5 '(0.5 0.0 0.0))))
+        (big-put-tile this-chunk (make-point 11 11) (single-marker (list 'light 1.5 '(0.5 0.0 0.0))))
         (big-put-tile this-chunk (make-point 9 8) (single-marker (list 'door side-down 'metal 1)))
         (big-put-tile this-chunk (make-point 14 8) (single-marker (list 'door side-down 'metal 1)))
         (big-put-tile this-chunk (make-point (if (random-bool) 11 12) 16) (single-marker (list 'door side-right 'metal 1)))
