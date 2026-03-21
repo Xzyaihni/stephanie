@@ -229,6 +229,9 @@
                         (remainder index-fractional 1))
                     (list-ref xs (- total 1)))))))
 
+(define (seed-with seed number)
+    (random-integer-seeded (wrapping-add seed number)))
+
 (define (difficulty-chance scale start) (< (random-float) (+ (* difficulty scale) start)))
 
 (define (stop-between-difficulty start end)

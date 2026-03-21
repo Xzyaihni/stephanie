@@ -131,7 +131,24 @@
                 (tile 'stairs-down rotation)))
         this-chunk))
     (else (begin
+        (define floor-seed (seed-with (assq 'building-seed (chunk-tags-at middle-position)) height))
         (define this-chunk (filled-chunk (tile 'air)))
+        (define (generate-main-room areas)
+            (for-each (lambda (area) (big-fill-area this-chunk area (tile 'grassie))) areas))
+        (define (generate-left-room)
+            (display "generating left ig") (newline))
+        (define (generate-right-room)
+            (display "generating right ig") (newline))
+        (define (generate-bottom-room)
+            (let ((variant (random-integer-seeded (seed-with floor-seed 2) 1)))
+                (cond
+                    ((eq? variant 0) (begin
+                        (big-fill-area this-chunk (make-area (make-point 7 18) (make-point 1 4)) wall-tile)
+                        (big-fill-area this-chunk (make-area (make-point 16 18) (make-point 1 4)) wall-tile)
+                        (big-put-tile this-chunk (make-point 7 (if (random-bool) 19 20)) (tile 'air))
+                        (big-put-tile this-chunk (make-point 16 (if (random-bool) 19 20)) (tile 'air))
+                        (generate-main-room (list (make-area (make-point 8 18) (make-point 8 4))))))
+                    (else (display "blabla") (newline)))))
         (put-outer-walls this-chunk)
         (big-fill-area this-chunk (make-area (make-point 7 2) (make-point 1 3)) wall-tile)
         (big-fill-area this-chunk (make-area (make-point 16 2) (make-point 1 3)) wall-tile)
@@ -157,19 +174,18 @@
                 this-chunk
                 (make-point x 2)
                 (tile 'stairs-up rotation)))
+        (cond
+            ((eq? part 'tr) (generate-right-room))
+            ((eq? part 'r) (generate-right-room))
+            ((eq? part 'tl) (generate-left-room))
+            ((eq? part 'l) (generate-left-room))
+            ((eq? part 't) (begin (generate-left-room) (generate-right-room)))
+            ((eq? part 'm) (begin (generate-left-room) (generate-right-room)))
+            ((eq? part 'bl) (begin (generate-left-room) (generate-bottom-room)))
+            ((eq? part 'b) (generate-bottom-room))
+            ((eq? part 'br) (begin (generate-right-room) (generate-bottom-room))))
         this-chunk)))
 
 ))
 
 )
-
-;                        ((eq? op 'room-seed)
-;                            (lambda (chunk-position)
-;                                (lambda (room-number)
-;                                    (random-integer-seeded
-;                                        (wrapping-add
-;                                            (random-integer-seeded
-;                                                (wrapping-add
-;                                                    (assq 'building-seed (chunk-tags-at chunk-position))
-;                                                    height))
-;                                            room-number)))))

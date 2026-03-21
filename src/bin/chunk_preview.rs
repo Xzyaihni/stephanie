@@ -22,7 +22,7 @@ use vulkano::pipeline::graphics::{
     }
 };
 
-use nalgebra::{Vector2, Vector3};
+use nalgebra::{vector, Vector2, Vector3};
 
 use yanyaengine::{
     game_object::*,
@@ -144,6 +144,8 @@ enum UiId
     TextboxLabel(TextboxId),
     Textbox(TextboxId, TextboxPartId),
     Button(ButtonId, ButtonPartId),
+    TileHighlight,
+    TileInfo,
     Padding(u32)
 }
 
@@ -768,12 +770,46 @@ impl YanyaApp for ChunkPreviewer
             let controls = &mut controls;
 
             let aspect = self.ui_camera.aspect();
+
             let screen_body = self.controller.update(UiId::ScreenBody, UiElement{
                 children_layout: UiLayout::Vertical,
                 width: aspect.min(1.0).into(),
                 height: aspect.recip().min(1.0).into(),
                 ..Default::default()
             });
+
+            {
+                let absolute_camera = self.camera_position / self.camera_zoom;
+
+                let tile_size = TILE_SIZE / self.camera_zoom;
+
+                let tiled_position = (self.controller.mouse_position() + absolute_camera).map(|x| (x / tile_size).floor());
+
+                let tile_position = (tiled_position * tile_size - absolute_camera) + Vector2::repeat(tile_size * 0.5);
+
+                self.controller.update(UiId::TileHighlight, UiElement{
+                    texture: UiTexture::Solid,
+                    mix: Some(MixColorLch::color(Lcha{a: 0.5, ..WHITE_COLOR})),
+                    width: UiSize::Absolute(tile_size).into(),
+                    height: UiSize::Absolute(tile_size).into(),
+                    position: UiPosition::Absolute{position: tile_position, align: UiPositionAlign::default()},
+                    ..Default::default()
+                });
+
+                let logical_position = tiled_position.map(|x| x as i32) + Vector3::from(WORLD_CHUNK_SIZE).xy().cast();
+
+                let tile_info_text = format!(
+                    "{}, {} (big {}, {})",
+                    logical_position.x, logical_position.y,
+                    logical_position.x + WORLD_CHUNK_SIZE.x as i32, logical_position.y + WORLD_CHUNK_SIZE.y as i32
+                );
+
+                self.controller.update(UiId::TileInfo, UiElement{
+                    texture: UiTexture::Text(TextInfo::new_simple(12, tile_info_text)),
+                    position: UiPosition::Absolute{position: tile_position + vector![0.0, -tile_size], align: UiPositionAlign::default()},
+                    ..UiElement::fit_content()
+                });
+            }
 
             let mut update_scrollbar = |this_id, tags: &mut Tags|
             {
