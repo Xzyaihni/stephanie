@@ -74,6 +74,12 @@
 (define (fold1 f xs)
     (fold f (car xs) (cdr xs)))
 
+(define (loop f state)
+    (let ((output (f state)))
+        (if (null? output)
+            '()
+            (loop f output))))
+
 (define (reverse xs) (fold cons '() xs))
 
 (define (map f xs)
@@ -263,3 +269,6 @@
 
 (define (random-bool)
     (= (random-integer 2) 1))
+
+(define (random-bool-seeded seed)
+    (= (random-integer-seeded seed 2) 1))

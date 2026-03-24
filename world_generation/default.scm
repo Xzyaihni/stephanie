@@ -38,16 +38,25 @@
 (define (point-map a f) (make-point (f (point-x a)) (f (point-y a))))
 (define (point-zip-map a b f) (make-point (f (point-x a) (point-x b)) (f (point-y a) (point-y b))))
 
+(define (index-to-pos width index)
+    (make-point
+        (remainder index width)
+        (/ index width)))
+
 (define make-area cons)
 (define area-start car)
 (define area-size cdr)
 (define (area-end area) (point-add (area-start area) (point-sub (area-size area) (make-point 1 1))))
 (define (area-area area) (let ((size (area-size area))) (* (point-x size) (point-y size))))
 
-(define (area-offset area offset)
-    (make-area
-        (point-add area-start offset)
-        (area-size area)))
+(define (area-index area index)
+    (let
+        (
+            (start (area-start area))
+            (width (point-x (area-size area))))
+        (make-point
+            (+ (remainder index width) (point-x start))
+            (+ (/ index width) (point-y start)))))
 
 (define (area-halves-x area)
     (let
@@ -94,6 +103,13 @@
         ((= x side-right) side-left)
         ((= x side-left) side-right)
         (else side-up)))
+
+(define (side-name x)
+    (cond
+        ((= x side-up) "up")
+        ((= x side-right) "right")
+        ((= x side-left) "left")
+        (else "down")))
 
 (define (position-at-side position side)
     (let
