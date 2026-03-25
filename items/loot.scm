@@ -30,6 +30,8 @@
 
 (define (and-always xs x) (cons x xs))
 
+(define (either a b) (if (random-bool) a b))
+
 (define (trash) '(rock bottle short_stick stick branch duct_tape))
 
 (define (standard-drops items)
@@ -115,6 +117,8 @@
 (define (wood_chair) (points-drops '((short_stick 1) (stick 2) (plank 3)) 3))
 (define (wood_table) (points-drops '((stick 2) (plank 3)) 6))
 (define (bed) (points-drops '((cloth 2) (stick 2) (plank 3)) 8))
+
+(define (potted_plant) (either '(grass) '(ceramic_shard)))
 
 (define (grass1) (and-maybe '() (drop-rate 1 3) 'grass))
 (define grass2 grass1)

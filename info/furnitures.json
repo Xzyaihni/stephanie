@@ -50,6 +50,12 @@
         "health": 50.0
     },
     {
+        "name": "potted plant",
+        "symmetry": "None",
+        "hitbox": 0.0,
+        "health": 2.0
+    },
+    {
         "name": "bush1",
         "z": "Hips",
         "attached": true,

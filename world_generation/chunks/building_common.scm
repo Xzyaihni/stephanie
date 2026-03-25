@@ -242,7 +242,19 @@
                                         (put-it)
                                         #f)
                                     (put-it)))
-                            #f))))
+                            #f))
+                    (lambda (a b c) #t)
+                    (lambda (a b c) #t)
+                    (lambda (a b c) #t)
+                    (lambda (inside-index outer-side current-area)
+                        (try-put-furniture
+                            (area-index current-area inside-index)
+                            (list
+                                'furniture
+                                'potted_plant
+                                outer-side
+                                '(0.0 -0.9 0.0) '(0.3 -0.7 0.0) '(-0.3 -0.5 0.0) '(0.1 -0.2 0.0)))
+                        #t)))
             (if (and (not (null? middle-area)) (> (area-area middle-area) 4))
                 (generate-room-with-furniture
                     (seed-with room-seed 7)
@@ -463,6 +475,7 @@
                         (big-put-tile this-chunk (side-offset-pos (make-point 4 5)) (single-marker (list 'light 1.2)))
                         (big-put-tile this-chunk (side-offset-pos (make-point 6 11)) (single-marker (list 'light 0.7)))
                         (big-put-tile this-chunk (side-offset-pos (make-point 3 11)) (single-marker (list 'light 0.6)))
+                        (big-put-tile this-chunk (side-offset-pos (make-point 8 10)) (single-marker (list 'light 0.7)))
                         (big-put-tile
                             this-chunk
                             (side-offset-pos (make-point 5 11))
