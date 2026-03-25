@@ -156,6 +156,10 @@
     (else (begin
         (define furnitures-seed (seed-with (seed-with (assq 'building-seed (chunk-tags-at middle-position)) height) 2222))
         (define this-chunk (filled-chunk (tile 'air)))
+        (define (decide-enemy type)
+            (if (eq? type 'normal)
+                (pick-weighted 'zob 'runner 0.25)
+                'bigy))
         (define (try-put-furniture pos t)
             (big-combine-markers this-chunk pos t))
         (define (generate-room-with-furniture room-seed wall-areas furnitures)
@@ -221,7 +225,7 @@
                 wall-areas
                 (list
                     (lambda (inside-index outer-side current-area)
-                        (if (> (- (area-area current-area) inside-index) 2)
+                        (if (and (> (- (area-area current-area) inside-index) 2) (if (= outer-side side-left) (> inside-index 0) #t))
                             (let
                                 (
                                     (put-it
@@ -239,44 +243,58 @@
                                         #f)
                                     (put-it)))
                             #f))))
-            (generate-room-with-furniture
-                (seed-with room-seed 7)
-                (list (cons side-up middle-area))
-                (filter (lambda (x) (not (null? x))) (list
-                    (if (null? vertical-table)
-                        '()
-                        (lambda (inside-index outer-side current-area)
-                            (let
-                                (
-                                    (pos (area-index current-area inside-index))
-                                    (size (area-size current-area)))
+            (if (not (null? middle-area))
+                (generate-room-with-furniture
+                    (seed-with room-seed 7)
+                    (list (cons side-up middle-area))
+                    (filter (lambda (x) (not (null? x))) (list
+                        (if (null? vertical-table)
+                            '()
+                            (lambda (inside-index outer-side current-area)
                                 (let
-                                    ((abs-pos (index-to-pos (point-x size) inside-index)))
-                                    (if
-                                        (if vertical-table
-                                            (< (point-y abs-pos) (- (point-y size) 2))
-                                            (< (point-x abs-pos) (- (point-x size) 2)))
-                                        (begin
-                                            (try-put-furniture
-                                                (area-index current-area inside-index)
-                                                (list
-                                                    'furniture
-                                                    'wood_chair
-                                                    (if vertical-table side-up side-left)))
-                                            #t)
-                                        #f)))))
-                    (if vertical-table
-                        (lambda (a b c) (is-nth (- (point-x (area-size middle-area)) 1)))
-                        '())
-                    (if (null? vertical-table)
+                                    (
+                                        (pos (area-index current-area inside-index))
+                                        (size (area-size current-area)))
+                                    (let
+                                        ((abs-pos (index-to-pos (point-x size) inside-index)))
+                                        (if
+                                            (if vertical-table
+                                                (< (point-y abs-pos) (- (point-y size) 2))
+                                                (< (point-x abs-pos) (- (point-x size) 2)))
+                                            (begin
+                                                (try-put-furniture
+                                                    (area-index current-area inside-index)
+                                                    (list
+                                                        'furniture
+                                                        'wood_chair
+                                                        (if vertical-table side-up side-left)))
+                                                #t)
+                                            #f)))))
+                        (if vertical-table
+                            (lambda (a b c) (is-nth (- (point-x (area-size middle-area)) 1)))
+                            '())
+                        (if (null? vertical-table)
+                            (lambda (a b c) #t)
+                            (lambda (inside-index outer-side current-area)
+                                (try-put-furniture
+                                    (area-index current-area inside-index)
+                                    (list
+                                        'furniture
+                                        'wood_table
+                                        (if vertical-table side-up side-left)))
+                                #t))
                         (lambda (a b c) #t)
                         (lambda (inside-index outer-side current-area)
                             (try-put-furniture
                                 (area-index current-area inside-index)
                                 (list
-                                    'furniture
-                                    'wood_table
-                                    (if vertical-table side-up side-left)))
+                                    'enemy
+                                    (decide-enemy
+                                        (gradient-pick
+                                            '(normal strong)
+                                            difficulty
+                                            0.2
+                                            2.0))))
                             #t))))))
         (define (generate-bathroom room-seed wall-areas middle-area)
             ;(mark-room-areas wall-areas '() (tile 'asphalt))
@@ -301,6 +319,25 @@
                     (begin (set-cdr! skip-tracker 1) #f)
                     #t))
             ;(mark-room-areas wall-areas '() (tile 'grassie))
+            (if (not (null? middle-area))
+                (generate-room-with-furniture
+                    (seed-with room-seed 387)
+                    (list (cons side-up middle-area))
+                    (list
+                        (if (difficulty-chance 0.5 0.25)
+                            (lambda (inside-index outer-side current-area)
+                                (try-put-furniture
+                                    (area-index current-area inside-index)
+                                    (list
+                                        'enemy
+                                        (decide-enemy
+                                            (gradient-pick
+                                                '(normal strong)
+                                                difficulty
+                                                0.2
+                                                2.0))))
+                                #t)
+                            (lambda (a b c) #t)))))
             (generate-room-with-furniture
                 (seed-with room-seed 4)
                 wall-areas

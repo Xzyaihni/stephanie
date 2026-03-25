@@ -49,7 +49,7 @@
             "tags": [
                 {
                     "name": "building-height",
-                    "content": "(+ 3 (* 4 (+ 1 3)))"
+                    "content": "(+ 3 (* 4 (+ 1 (random-integer 4))))"
                 },
                 {
                     "name": "building-seed",
