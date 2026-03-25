@@ -51,26 +51,34 @@
     },
     {
         "name": "bush1",
+        "z": "Hips",
         "attached": true,
         "colliding": false,
+        "hardness": 0.1,
         "health": 0.5
     },
     {
         "name": "bush2",
+        "z": "Hips",
         "attached": true,
         "colliding": false,
+        "hardness": 0.1,
         "health": 0.5
     },
     {
         "name": "grass1",
+        "z": "BelowFeet",
         "attached": true,
         "colliding": false,
+        "hardness": 0.0,
         "health": 0.1
     },
     {
         "name": "grass2",
+        "z": "BelowFeet",
         "attached": true,
         "colliding": false,
+        "hardness": 0.0,
         "health": 0.1
     }
 ]

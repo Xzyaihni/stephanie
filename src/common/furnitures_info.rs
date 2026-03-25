@@ -27,6 +27,7 @@ struct FurnitureInfoRaw
     colliding: Option<bool>,
     symmetry: Option<Symmetry>,
     hitbox: Option<f32>,
+    hardness: Option<f32>,
     health: Option<f32>
 }
 
@@ -43,6 +44,7 @@ pub struct FurnitureInfo
     pub colliding: bool,
     pub textures: DirectionsGroup<Sprite>,
     pub hitbox: Option<f32>,
+    pub hardness: f32,
     pub health: f32
 }
 
@@ -120,6 +122,7 @@ impl FurnitureInfo
             colliding: raw.colliding.unwrap_or(true),
             textures,
             hitbox: raw.hitbox,
+            hardness: raw.hardness.unwrap_or(1.0),
             health: raw.health.unwrap_or(5.0)
         }
     }

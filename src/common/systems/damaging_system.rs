@@ -53,6 +53,38 @@ use crate::{
 
 const HIGHLIGHT_DURATION: f32 = 0.2;
 
+fn damage_common_health(
+    entities: &ClientEntities,
+    textures: &CommonTextures,
+    loot: &Loot,
+    do_screenshake: impl FnOnce(f32),
+    entity: Entity,
+    damage: f32
+) -> bool
+{
+    if let Some(mut health) = entities.health_mut(entity)
+    {
+        *health -= damage;
+
+        if *health <= 0.0
+        {
+            let screenshake_factor = entities.furniture(entity).map(|id|
+            {
+                entities.infos().furnitures_info.get(*id).hardness
+            }).unwrap_or(1.0);
+
+            do_screenshake(MEDIUM_SCREENSHAKE * screenshake_factor);
+
+            destroy_entity(entities, textures, loot, entity);
+        }
+
+        true
+    } else
+    {
+        false
+    }
+}
+
 pub fn fall_damage(
     entities: &ClientEntities,
     textures: &CommonTextures,
@@ -72,23 +104,23 @@ pub fn fall_damage(
         }
     };
 
-    screenshake_near(WEAK_SCREENSHAKE);
+    let mut damaged = false;
 
     if let Some(mut anatomy) = entities.anatomy_mut(entity)
     {
         anatomy.fall_damage(damage);
+
+        damaged = true;
     }
 
-    if let Some(mut health) = entities.health_mut(entity)
+    if damage_common_health(entities, textures, loot, |amount| screenshake_near(amount), entity, damage)
     {
-        *health -= damage;
+        damaged = true;
+    }
 
-        if *health <= 0.0
-        {
-            screenshake_near(MEDIUM_SCREENSHAKE);
-
-            destroy_entity(entities, textures, loot, entity);
-        }
+    if !damaged
+    {
+        screenshake_near(WEAK_SCREENSHAKE);
     }
 }
 
@@ -264,7 +296,7 @@ pub fn damager<'a, 'b, 'c>(
                 let knockback = *knockback_direction * (knockback_strength * knockback_factor * ENEMY_MASS * 30.0);
                 knockback_entity(entities, entity, knockback);
 
-                flash_white(entities, entity);
+                flash_damage(entities, entity);
 
                 if entities.enemy_exists(entity) && entities.anatomy(entity).map(|anatomy| !anatomy.is_dead()).unwrap_or(true)
                 {
@@ -699,11 +731,15 @@ fn bullet_trail_between(
     });
 }
 
-fn flash_white_single(entities: &ClientEntities, entity: Entity)
+fn flash_damage_single(
+    entities: &ClientEntities,
+    entity: Entity,
+    [r, g, b]: [f32; 3]
+)
 {
     if let Some(mut mix_color) = entities.mix_color_target(entity)
     {
-        *mix_color = Some(MixColor{color: [1.0; 4], amount: 0.8, ..Default::default()});
+        *mix_color = Some(MixColor{color: [r, g, b, 1.0], amount: 0.8, ..Default::default()});
 
         entities.add_watcher(entity, Watcher{
             kind: WatcherType::Lifetime(HIGHLIGHT_DURATION.into()),
@@ -872,9 +908,17 @@ fn knockback_entity(entities: &ClientEntities, entity: Entity, knockback: Vector
     some_or_return!(entities.character_mut(entity)).knockbacked();
 }
 
-fn flash_white(entities: &ClientEntities, entity: Entity)
+fn flash_damage(entities: &ClientEntities, entity: Entity)
 {
-    let flash_single = |entity| flash_white_single(entities, entity);
+    let color = if entities.player_exists(entity)
+    {
+        [1.0; 3]
+    } else
+    {
+        [1.0, 0.0, 0.0]
+    };
+
+    let flash_single = |entity| flash_damage_single(entities, entity, color);
 
     if let Some(sibling) = entities.sibling(entity)
     {
@@ -965,30 +1009,33 @@ pub fn damage_entity(
         }
     }
 
-    if let Some(mut player) = entities.player_mut_no_change(other_entity)
-    {
-        player.screenshake.set(WEAK_SCREENSHAKE);
-    }
-
     turn_towards_other(entities, entity, other_entity);
 
-    if let Some(mut health) = entities.health_mut(entity)
+    let mut damaged = false;
+
+    if damage_common_health(entities, textures, loot, |amount|
     {
-        *health -= damage.data.as_flat();
-
-        if *health <= 0.0
+        if let Some(mut player) = entities.player_mut_no_change(other_entity)
         {
-            if let Some(mut player) = entities.player_mut_no_change(other_entity)
-            {
-                player.screenshake.set(MEDIUM_SCREENSHAKE);
-            }
-
-            destroy_entity(entities, textures, loot, entity);
+            player.screenshake.set(amount);
         }
+    }, entity, damage.data.as_flat())
+    {
+        damaged = true;
     }
 
     if let Some(mut anatomy) = entities.anatomy_mut(entity)
     {
         anatomy.damage(damage);
+
+        damaged = true;
+    }
+
+    if !damaged
+    {
+        if let Some(mut player) = entities.player_mut_no_change(other_entity)
+        {
+            player.screenshake.set(WEAK_SCREENSHAKE);
+        }
     }
 }
