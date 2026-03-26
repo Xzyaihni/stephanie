@@ -66,6 +66,9 @@
                     (fill-area this-chunk (make-area clipped-start clipped-size) fill-tile)
                     this-chunk)))))
 
+(define (light-intensity x)
+    (if (stop-between-difficulty 0.5 2.0) x (* x 0.2)))
+
 (define wall-tile (tile 'concrete))
 
 (define (put-outer-walls this-chunk)
@@ -138,8 +141,8 @@
                 (big-fill-area this-chunk (make-point (make-point 7 1) (make-point 1 4)) wall-tile)
                 (big-fill-area this-chunk (make-point (make-point 16 1) (make-point 1 4)) wall-tile)
                 (big-fill-area this-chunk (make-point (make-point 8 4) (make-point 6 1)) wall-tile)
-                (big-put-tile this-chunk (make-point 9 2) (single-marker (list 'light 0.7 '(0.0 0.0 0.0))))
-                (big-put-tile this-chunk (make-point 14 2) (single-marker (list 'light 0.7 '(0.5 0.0 0.0))))
+                (big-put-tile this-chunk (make-point 9 2) (single-marker (list 'light (light-intensity 0.7) '(0.0 0.0 0.0))))
+                (big-put-tile this-chunk (make-point 14 2) (single-marker (list 'light (light-intensity 0.7) '(0.5 0.0 0.0))))
                 (big-put-tile this-chunk (make-point 14 4) (single-marker (list 'door side-left 'metal 2))))
             ((= height (+ roof-start 3))
                 (big-fill-area (filled-chunk (tile 'air)) (make-point (make-point 7 0) (make-point 10 5)) wall-tile))))
@@ -253,13 +256,35 @@
                                 'furniture
                                 'potted_plant
                                 outer-side
-                                '(0.0 -0.9 0.0) '(0.3 -0.7 0.0) '(-0.3 -0.5 0.0) '(0.1 -0.2 0.0)))
-                        #t)))
+                                '(0.0 -0.9 0.0) '(0.3 -0.6 0.0) '(-0.3 -0.5 0.0) '(0.1 -0.2 0.0)))
+                        #t)
+                    (if (= (random-integer-seeded (seed-with room-seed 876) 5) 0)
+                        (lambda (inside-index outer-side current-area)
+                            (try-put-furniture
+                                (area-index current-area inside-index)
+                                (list
+                                    'furniture
+                                    'safe
+                                    outer-side))
+                            #t)
+                        (lambda (a b c) #t))))
             (if (and (not (null? middle-area)) (> (area-area middle-area) 4))
                 (generate-room-with-furniture
                     (seed-with room-seed 7)
                     (list (cons side-up middle-area))
                     (filter (lambda (x) (not (null? x))) (list
+                        (lambda (inside-index outer-side current-area)
+                            (try-put-furniture
+                                (area-index current-area inside-index)
+                                (list
+                                    'enemy
+                                    (decide-enemy
+                                        (gradient-pick
+                                            '(normal strong)
+                                            difficulty
+                                            0.2
+                                            2.0))))
+                            #t)
                         (if (null? vertical-table)
                             '()
                             (lambda (inside-index outer-side current-area)
@@ -294,20 +319,7 @@
                                         'furniture
                                         'wood_table
                                         (if vertical-table side-up side-left)))
-                                #t))
-                        (lambda (a b c) #t)
-                        (lambda (inside-index outer-side current-area)
-                            (try-put-furniture
-                                (area-index current-area inside-index)
-                                (list
-                                    'enemy
-                                    (decide-enemy
-                                        (gradient-pick
-                                            '(normal strong)
-                                            difficulty
-                                            0.2
-                                            2.0))))
-                            #t))))))
+                                #t)))))))
         (define (generate-bathroom room-seed wall-areas middle-area)
             ;(mark-room-areas wall-areas '() (tile 'asphalt))
             (generate-room-with-furniture
@@ -420,7 +432,7 @@
                     a))
             (let
                 (
-                    (variant (random-integer-seeded (seed-with furnitures-seed (if is-right 777 888)) 4))
+                    (variant (random-integer-seeded (seed-with furnitures-seed (if is-right 777 888)) 5))
                     (this-room-seed (seed-with (seed-with furnitures-seed 11111) (if is-right 222 111))))
                 (cond
                     ((= variant 0)
@@ -428,17 +440,17 @@
                         (big-fill-area this-chunk (side-offset-area (make-area (make-point 2 12) (make-point 7 1))) wall-tile)
                         (big-fill-area this-chunk (side-offset-area (make-area (make-point 1 6) (make-point 1 5))) (tile 'glass))
                         (big-fill-area this-chunk (side-offset-area (make-area (make-point 1 14) (make-point 1 2))) (tile 'glass))
-                        (big-put-tile this-chunk (side-offset-pos (make-point 6 9)) (single-marker (list 'light 1.6 '(0.5 0.5 0.0))))
-                        (big-put-tile this-chunk (side-offset-pos (make-point 5 14)) (single-marker (list 'light 1.2)))
-                        (big-put-tile this-chunk (side-offset-pos (make-point 4 3)) (single-marker (list 'light 0.7 '(0.0 -0.5 0.0))))
+                        (big-put-tile this-chunk (side-offset-pos (make-point 6 9)) (single-marker (list 'light (light-intensity 1.6) '(0.5 0.5 0.0))))
+                        (big-put-tile this-chunk (side-offset-pos (make-point 5 14)) (single-marker (list 'light (light-intensity 1.2))))
+                        (big-put-tile this-chunk (side-offset-pos (make-point 4 3)) (single-marker (list 'light (light-intensity 0.7) '(0.0 -0.5 0.0))))
                         (big-put-tile
                             this-chunk
                             (side-offset-pos (make-point (if (random-bool-seeded this-room-seed) 3 4) 12))
-                            (single-marker (list 'door side-right 'metal 1)))
+                            (single-marker (list 'door side-right 'wood 1)))
                         (big-put-tile
                             this-chunk
                             (side-offset-pos (make-point (+ (random-integer-seeded this-room-seed 3) 3) 4))
-                            (single-marker (list 'door side-right 'metal 1)))
+                            (single-marker (list 'door side-right 'wood 1)))
                         (generate-kitchen
                             this-room-seed
                             (list
@@ -471,27 +483,27 @@
                         (big-fill-area this-chunk (side-offset-area (make-area (make-point 2 13) (make-point 4 1))) wall-tile)
                         (big-fill-area this-chunk (side-offset-area (make-area (make-point 1 14) (make-point 1 3))) (tile 'glass))
                         (big-fill-area this-chunk (side-offset-area (make-area (make-point 1 2) (make-point 1 7))) (tile 'glass))
-                        (big-put-tile this-chunk (side-offset-pos (make-point 6 15)) (single-marker (list 'light 1.4)))
-                        (big-put-tile this-chunk (side-offset-pos (make-point 4 5)) (single-marker (list 'light 1.2)))
-                        (big-put-tile this-chunk (side-offset-pos (make-point 6 11)) (single-marker (list 'light 0.7)))
-                        (big-put-tile this-chunk (side-offset-pos (make-point 3 11)) (single-marker (list 'light 0.6)))
-                        (big-put-tile this-chunk (side-offset-pos (make-point 8 10)) (single-marker (list 'light 0.7)))
+                        (big-put-tile this-chunk (side-offset-pos (make-point 6 15)) (single-marker (list 'light (light-intensity 1.4))))
+                        (big-put-tile this-chunk (side-offset-pos (make-point 4 5)) (single-marker (list 'light (light-intensity 1.2))))
+                        (big-put-tile this-chunk (side-offset-pos (make-point 6 11)) (single-marker (list 'light (light-intensity 0.7))))
+                        (big-put-tile this-chunk (side-offset-pos (make-point 3 11)) (single-marker (list 'light (light-intensity 0.6))))
+                        (big-put-tile this-chunk (side-offset-pos (make-point 8 10)) (single-marker (list 'light (light-intensity 0.7))))
                         (big-put-tile
                             this-chunk
                             (side-offset-pos (make-point 5 11))
-                            (single-marker (list 'door side-up 'metal 1)))
+                            (single-marker (list 'door side-up 'wood 1)))
                         (big-put-tile
                             this-chunk
                             (side-offset-pos (make-point 6 9))
-                            (single-marker (list 'door side-left 'metal 1)))
+                            (single-marker (list 'door side-left 'wood 1)))
                         (big-put-tile
                             this-chunk
                             (side-offset-pos (make-point 6 13))
-                            (single-marker (list 'door side-left 'metal 1)))
+                            (single-marker (list 'door side-left 'wood 1)))
                         (big-put-tile
                             this-chunk
                             (side-offset-pos (make-point 8 13))
-                            (single-marker (list 'door side-left 'metal 1)))
+                            (single-marker (list 'door side-left 'wood 1)))
                         (generate-kitchen
                             this-room-seed
                             (list
@@ -528,17 +540,17 @@
                         (big-fill-area this-chunk (side-offset-area (make-area (make-point 1 2) (make-point 1 5))) (tile 'glass))
                         (big-fill-area this-chunk (side-offset-area (make-area (make-point 1 9) (make-point 1 3))) (tile 'glass))
                         (big-fill-area this-chunk (side-offset-area (make-area (make-point 1 13) (make-point 1 3))) (tile 'glass))
-                        (big-put-tile this-chunk (side-offset-pos (make-point 5 12)) (single-marker (list 'light 1.4)))
-                        (big-put-tile this-chunk (side-offset-pos (make-point 3 3)) (single-marker (list 'light 0.9)))
-                        (big-put-tile this-chunk (side-offset-pos (make-point 6 5)) (single-marker (list 'light 0.8 '(0.5 0.5 0.0))))
+                        (big-put-tile this-chunk (side-offset-pos (make-point 5 12)) (single-marker (list 'light (light-intensity 1.4))))
+                        (big-put-tile this-chunk (side-offset-pos (make-point 3 3)) (single-marker (list 'light (light-intensity 0.9))))
+                        (big-put-tile this-chunk (side-offset-pos (make-point 6 5)) (single-marker (list 'light (light-intensity 0.8) '(0.5 0.5 0.0))))
                         (big-put-tile
                             this-chunk
                             (side-offset-pos (make-point 4 6))
-                            (single-marker (list 'door side-up 'metal 1)))
+                            (single-marker (list 'door side-up 'wood 1)))
                         (big-put-tile
                             this-chunk
                             (side-offset-pos (make-point 3 7))
-                            (single-marker (list 'door side-left 'metal 1)))
+                            (single-marker (list 'door side-left 'wood 1)))
                         (generate-kitchen
                             this-room-seed
                             (list
@@ -561,23 +573,70 @@
                                 (cons side-down (side-offset-area (make-area (make-point 3 16) (make-point 6 1))))
                                 (cons (flip-right side-right) (side-offset-area (make-area (make-point 8 9) (make-point 1 7)))))
                             (side-offset-area (make-area (make-point 3 9) (make-point 5 7)))))
+                    ((= variant 3)
+                        (big-put-tile this-chunk (side-offset-pos (make-point 8 10)) wall-tile)
+                        (big-fill-area this-chunk (side-offset-area (make-area (make-point 6 4) (make-point 1 4))) wall-tile)
+                        (big-fill-area this-chunk (side-offset-area (make-area (make-point 6 9) (make-point 1 8))) wall-tile)
+                        (big-fill-area this-chunk (side-offset-area (make-area (make-point 2 11) (make-point 3 1))) wall-tile)
+                        (big-fill-area this-chunk (side-offset-area (make-area (make-point 1 4) (make-point 1 5))) (tile 'glass))
+                        (big-fill-area this-chunk (side-offset-area (make-area (make-point 1 13) (make-point 1 3))) (tile 'glass))
+                        (big-put-tile this-chunk (side-offset-pos (make-point 7 13)) (single-marker (list 'light (light-intensity 0.9))))
+                        (big-put-tile this-chunk (side-offset-pos (make-point 4 3)) (single-marker (list 'light (light-intensity 0.8))))
+                        (big-put-tile this-chunk (side-offset-pos (make-point 3 7)) (single-marker (list 'light (light-intensity 0.9) '(0.5 0.0 0.0))))
+                        (big-put-tile this-chunk (side-offset-pos (make-point 3 14)) (single-marker (list 'light (light-intensity 0.9) '(0.5 0.0 0.0))))
+                        (big-put-tile
+                            this-chunk
+                            (side-offset-pos (make-point 7 10))
+                            (single-marker (list 'door side-left 'wood 1)))
+                        (big-put-tile
+                            this-chunk
+                            (side-offset-pos (make-point 5 11))
+                            (single-marker (list 'door side-left 'wood 1)))
+                        (big-put-tile
+                            this-chunk
+                            (side-offset-pos (make-point 6 8))
+                            (single-marker (list 'door side-up 'wood 1)))
+                        (generate-kitchen
+                            this-room-seed
+                            (list
+                                (cons (flip-right side-left) (side-offset-area (make-area (make-point 2 12) (make-point 1 5))))
+                                (cons side-up (side-offset-area (make-area (make-point 3 12) (make-point 2 1))))
+                                (cons (flip-right side-right) (side-offset-area (make-area (make-point 5 13) (make-point 1 4))))
+                                (cons side-down (side-offset-area (make-area (make-point 3 16) (make-point 2 1)))))
+                            (side-offset-area (make-area (make-point 3 13) (make-point 2 3))))
+                        (generate-bathroom
+                            this-room-seed
+                            (list
+                                (cons (flip-right side-left) (side-offset-area (make-area (make-point 7 12) (make-point 1 5))))
+                                (cons (flip-right side-right) (side-offset-area (make-area (make-point 8 11) (make-point 1 6)))))
+                            '())
+                        (generate-main-room
+                            this-room-seed
+                            (list
+                                (cons (flip-right side-left) (side-offset-area (make-area (make-point 2 2) (make-point 1 9))))
+                                (cons (flip-right side-right) (side-offset-area (make-area (make-point 6 2) (make-point 1 2))))
+                                (cons side-down (side-offset-area (make-area (make-point 3 10) (make-point 2 1))))
+                                (cons side-up (side-offset-area (make-area (make-point 3 2) (make-point 3 1))))
+                                (cons (flip-right side-right) (side-offset-area (make-area (make-point 5 9) (make-point 1 1))))
+                                (cons (flip-right side-right) (side-offset-area (make-area (make-point 5 3) (make-point 1 5)))))
+                            (side-offset-area (make-area (make-point 3 3) (make-point 2 7)))))
                     (else
                         (big-fill-area this-chunk (side-offset-area (make-area (make-point 2 7) (make-point 7 1))) wall-tile)
                         (big-fill-area this-chunk (side-offset-area (make-area (make-point 2 13) (make-point 4 1))) wall-tile)
                         (big-fill-area this-chunk (side-offset-area (make-area (make-point 5 14) (make-point 1 3))) wall-tile)
                         (big-fill-area this-chunk (side-offset-area (make-area (make-point 1 9) (make-point 1 3))) (tile 'glass))
                         (big-fill-area this-chunk (side-offset-area (make-area (make-point 3 1) (make-point 3 1))) (tile 'glass))
-                        (big-put-tile this-chunk (side-offset-pos (make-point 6 11)) (single-marker (list 'light 1.4 '(0.5 0.0 0.0))))
-                        (big-put-tile this-chunk (side-offset-pos (make-point 3 15)) (single-marker (list 'light 0.6)))
-                        (big-put-tile this-chunk (side-offset-pos (make-point 4 5)) (single-marker (list 'light 1.0 '(0.0 0.5 0.0))))
+                        (big-put-tile this-chunk (side-offset-pos (make-point 6 11)) (single-marker (list 'light (light-intensity 1.4) '(0.5 0.0 0.0))))
+                        (big-put-tile this-chunk (side-offset-pos (make-point 3 15)) (single-marker (list 'light (light-intensity 0.6))))
+                        (big-put-tile this-chunk (side-offset-pos (make-point 4 5)) (single-marker (list 'light (light-intensity 1.0) '(0.0 0.5 0.0))))
                         (big-put-tile
                             this-chunk
                             (side-offset-pos (make-point 5 (if (random-bool-seeded this-room-seed) 15 16)))
-                            (single-marker (list 'door side-down 'metal 1)))
+                            (single-marker (list 'door side-down 'wood 1)))
                         (big-put-tile
                             this-chunk
                             (side-offset-pos (make-point (+ 3 (random-integer-seeded this-room-seed 5)) 7))
-                            (single-marker (list 'door side-left 'metal 1)))
+                            (single-marker (list 'door side-left 'wood 1)))
                         (generate-kitchen
                             this-room-seed
                             (list
@@ -615,11 +674,11 @@
                         (big-fill-area this-chunk (make-area (make-point 7 18) (make-point 1 4)) wall-tile)
                         (big-fill-area this-chunk (make-area (make-point 16 18) (make-point 1 4)) wall-tile)
                         (big-fill-area this-chunk (make-area (make-point 9 22) (make-point 6 1)) (tile 'glass))
-                        (big-put-tile this-chunk (make-point 7 (if (random-bool) 19 20)) (single-marker (list 'door side-down 'metal 1)))
-                        (big-put-tile this-chunk (make-point 16 (if (random-bool) 19 20)) (single-marker (list 'door side-down 'metal 1)))
-                        (big-put-tile this-chunk (make-point 11 19) (single-marker (list 'light 1.0 '(0.5 0.0 0.0))))
-                        (big-put-tile this-chunk (make-point 4 20) (single-marker (list 'light 0.8 '(0.5 0.0 0.0))))
-                        (big-put-tile this-chunk (make-point 19 20) (single-marker (list 'light 0.8 '(0.5 0.0 0.0))))
+                        (big-put-tile this-chunk (make-point 7 (if (random-bool) 19 20)) (single-marker (list 'door side-down 'wood 1)))
+                        (big-put-tile this-chunk (make-point 16 (if (random-bool) 19 20)) (single-marker (list 'door side-down 'wood 1)))
+                        (big-put-tile this-chunk (make-point 11 19) (single-marker (list 'light (light-intensity 1.0) '(0.5 0.0 0.0))))
+                        (big-put-tile this-chunk (make-point 4 20) (single-marker (list 'light (light-intensity 0.8) '(0.5 0.0 0.0))))
+                        (big-put-tile this-chunk (make-point 19 20) (single-marker (list 'light (light-intensity 0.8) '(0.5 0.0 0.0))))
                         (generate-main-room
                             this-room-seed
                             (list
@@ -654,19 +713,19 @@
                         (big-fill-area this-chunk (make-area (make-point 10 20) (make-point 7 1)) wall-tile)
                         (big-fill-area this-chunk (make-area (make-point 17 18) (make-point 1 3)) wall-tile)
                         (big-fill-area this-chunk (make-area (make-point 11 22) (make-point 5 1)) (tile 'glass))
-                        (big-put-tile this-chunk (make-point 12 18) (single-marker (list 'light 1.0)))
-                        (big-put-tile this-chunk (make-point 11 21) (single-marker (list 'light 0.6)))
-                        (big-put-tile this-chunk (make-point 14 21) (single-marker (list 'light 0.6)))
-                        (big-put-tile this-chunk (make-point 5 18) (single-marker (list 'light 1.2)))
-                        (big-put-tile this-chunk (make-point 19 19) (single-marker (list 'light 0.9 '(0.5 0.5 0.0))))
-                        (big-put-tile this-chunk (make-point 9 21) (single-marker (list 'door side-down 'metal 1)))
-                        (big-put-tile this-chunk (make-point 17 21) (single-marker (list 'door side-down 'metal 1)))
+                        (big-put-tile this-chunk (make-point 12 18) (single-marker (list 'light (light-intensity 1.0))))
+                        (big-put-tile this-chunk (make-point 11 21) (single-marker (list 'light (light-intensity 0.6))))
+                        (big-put-tile this-chunk (make-point 14 21) (single-marker (list 'light (light-intensity 0.6))))
+                        (big-put-tile this-chunk (make-point 5 18) (single-marker (list 'light (light-intensity 1.2))))
+                        (big-put-tile this-chunk (make-point 19 19) (single-marker (list 'light (light-intensity 0.9) '(0.5 0.5 0.0))))
+                        (big-put-tile this-chunk (make-point 9 21) (single-marker (list 'door side-down 'wood 1)))
+                        (big-put-tile this-chunk (make-point 17 21) (single-marker (list 'door side-down 'wood 1)))
                         (let ((door-offset (random-integer-seeded this-room-seed 3)))
                             (begin
                                 (big-put-tile
                                     this-chunk
                                     (make-point (+ door-offset 12) 20)
-                                    (single-marker (list 'door side-left 'metal 1)))
+                                    (single-marker (list 'door side-left 'wood 1)))
                                 (generate-main-room
                                     this-room-seed
                                     (list
@@ -697,12 +756,12 @@
                         (big-fill-area this-chunk (make-area (make-point 10 19) (make-point 6 1)) wall-tile)
                         (big-fill-area this-chunk (make-area (make-point 18 22) (make-point 2 1)) (tile 'glass))
                         (big-fill-area this-chunk (make-area (make-point 11 22) (make-point 3 1)) (tile 'glass))
-                        (big-put-tile this-chunk (make-point 11 17) (single-marker (list 'light 0.7 '(0.5 0.5 0.0))))
-                        (big-put-tile this-chunk (make-point 12 21) (single-marker (list 'light 0.7)))
-                        (big-put-tile this-chunk (make-point 5 19) (single-marker (list 'light 1.0)))
-                        (big-put-tile this-chunk (make-point 18 19) (single-marker (list 'light 1.0 '(0.5 0.5 0.0))))
-                        (big-put-tile this-chunk (make-point 15 18) (single-marker (list 'door side-down 'metal 1)))
-                        (big-put-tile this-chunk (make-point 9 21) (single-marker (list 'door side-down 'metal 1)))
+                        (big-put-tile this-chunk (make-point 11 17) (single-marker (list 'light (light-intensity 0.7) '(0.5 0.5 0.0))))
+                        (big-put-tile this-chunk (make-point 12 21) (single-marker (list 'light (light-intensity 0.7))))
+                        (big-put-tile this-chunk (make-point 5 19) (single-marker (list 'light (light-intensity 1.0))))
+                        (big-put-tile this-chunk (make-point 18 19) (single-marker (list 'light (light-intensity 1.0) '(0.5 0.5 0.0))))
+                        (big-put-tile this-chunk (make-point 15 18) (single-marker (list 'door side-down 'wood 1)))
+                        (big-put-tile this-chunk (make-point 9 21) (single-marker (list 'door side-down 'wood 1)))
                         (generate-main-room
                             this-room-seed
                             (list
@@ -739,8 +798,9 @@
                 (big-put-tile this-chunk (make-point 11 0) (single-marker (list 'door side-left 'metal 2)))))
         (big-put-tile this-chunk (make-point 8 4) (tile 'concrete))
         (big-put-tile this-chunk (make-point 15 4) (tile 'concrete))
-        (big-put-tile this-chunk (make-point 11 5) (single-marker (list 'light 1.5 '(0.5 0.0 0.0))))
-        (big-put-tile this-chunk (make-point 11 11) (single-marker (list 'light 1.5 '(0.5 0.0 0.0))))
+        (big-put-tile this-chunk (make-point 11 5) (single-marker (list 'light (light-intensity 1.5) '(0.5 0.0 0.0))))
+        (big-put-tile this-chunk (make-point 11 11) (single-marker (list 'light (light-intensity 1.5) '(0.5 0.0 0.0))))
+        (big-put-tile this-chunk (make-point 11 2) (single-marker (list 'light (light-intensity 0.9) '(0.5 0.0 0.0))))
         (big-put-tile this-chunk (make-point 9 8) (single-marker (list 'door side-down 'metal 1)))
         (big-put-tile this-chunk (make-point 14 8) (single-marker (list 'door side-down 'metal 1)))
         (big-put-tile this-chunk (make-point (if (random-bool) 11 12) 16) (single-marker (list 'door side-right 'metal 1)))

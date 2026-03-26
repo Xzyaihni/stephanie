@@ -856,6 +856,41 @@ impl Symbols
     }
 }
 
+pub struct LispMemoryDebug<'a>
+{
+    display_primitives: bool,
+    memory: &'a LispMemory
+}
+
+impl Debug for LispMemoryDebug<'_>
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
+    {
+        let pv = |v: LispValue|
+        {
+            v.to_string(self.memory)
+        };
+
+        let stack = self.memory.stack.iter().copied().map(pv).collect::<Vec<_>>();
+        let registers = self.memory.registers.map(pv);
+
+        let block = MemoryBlockWith{memory: Some(self.memory), block: &self.memory.memory};
+
+        let mut s = f.debug_struct("MemoryBlock");
+
+        if self.display_primitives
+        {
+            s.field("primitives", &self.memory.primitives);
+        }
+
+        s.field("symbols", &self.memory.symbols)
+            .field("memory", &block)
+            .field("stack", &stack)
+            .field("registers", &registers)
+            .finish()
+    }
+}
+
 pub struct LispMemory
 {
     pub primitives: Rc<Primitives>,
@@ -870,22 +905,7 @@ impl Debug for LispMemory
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
     {
-        let pv = |v: LispValue|
-        {
-            v.to_string(self)
-        };
-
-        let stack = self.stack.iter().copied().map(pv).collect::<Vec<_>>();
-        let registers = self.registers.map(pv);
-
-        let block = MemoryBlockWith{memory: Some(self), block: &self.memory};
-        f.debug_struct("MemoryBlock")
-            .field("primitives", &self.primitives)
-            .field("symbols", &self.symbols)
-            .field("memory", &block)
-            .field("stack", &stack)
-            .field("registers", &registers)
-            .finish()
+        <LispMemoryDebug as Debug>::fmt(&LispMemoryDebug{display_primitives: false, memory: self}, f)
     }
 }
 
@@ -950,6 +970,8 @@ impl LispMemory
     pub fn clear(&mut self)
     {
         self.memory.clear();
+        self.stack.clear();
+        self.registers = [LispValue::new_empty_list(); Register::COUNT];
 
         self.initialize();
     }

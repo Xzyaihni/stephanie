@@ -457,6 +457,8 @@ impl ChunkGenerator
         marker: &mut impl FnMut(MarkerTile)
     ) -> Result<ChunksContainer<Tile>, ChunkGenerationError>
     {
+        this_chunk.memory_mut().clear();
+
         let tiles = {
             let define_symbol_with = |memory: &mut LispMemory, name, value|
             {
@@ -1366,13 +1368,11 @@ mod tests
 
         let mut generator = ChunkGenerator::new(Rc::new(tilemap), rules, parent_path).unwrap();
 
-        let empty = [];
         let info = ConditionalInfo{
             position: LocalPos::new(Pos3::repeat(0), Pos3::repeat(0)),
             height: 0,
             difficulty: 0.0,
-            rotation: TileRotation::Up,
-            tags: &empty
+            rotation: TileRotation::Up
         };
 
         let tiles = generator.generate_chunk(&info, "test_chunk", 0, &mut |_| {});
