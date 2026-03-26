@@ -420,7 +420,7 @@
                     a))
             (let
                 (
-                    (variant (random-integer-seeded (seed-with furnitures-seed (if is-right 777 888)) 3))
+                    (variant (random-integer-seeded (seed-with furnitures-seed (if is-right 777 888)) 4))
                     (this-room-seed (seed-with (seed-with furnitures-seed 11111) (if is-right 222 111))))
                 (cond
                     ((= variant 0)
@@ -520,6 +520,47 @@
                                 (cons side-up (side-offset-area (make-area (make-point 6 5) (make-point 2 1))))
                                 (cons side-down (side-offset-area (make-area (make-point 6 6) (make-point 2 1)))))
                             (side-offset-area (make-area (make-point 3 3) (make-point 3 5)))))
+                    ((= variant 2)
+                        (big-put-tile this-chunk (side-offset-pos (make-point 2 7)) wall-tile)
+                        (big-fill-area this-chunk (side-offset-area (make-area (make-point 4 7) (make-point 5 1))) wall-tile)
+                        (big-fill-area this-chunk (side-offset-area (make-area (make-point 4 4) (make-point 3 1))) wall-tile)
+                        (big-put-tile this-chunk (side-offset-pos (make-point 4 5)) wall-tile)
+                        (big-fill-area this-chunk (side-offset-area (make-area (make-point 1 2) (make-point 1 5))) (tile 'glass))
+                        (big-fill-area this-chunk (side-offset-area (make-area (make-point 1 9) (make-point 1 3))) (tile 'glass))
+                        (big-fill-area this-chunk (side-offset-area (make-area (make-point 1 13) (make-point 1 3))) (tile 'glass))
+                        (big-put-tile this-chunk (side-offset-pos (make-point 5 12)) (single-marker (list 'light 1.4)))
+                        (big-put-tile this-chunk (side-offset-pos (make-point 3 3)) (single-marker (list 'light 0.9)))
+                        (big-put-tile this-chunk (side-offset-pos (make-point 6 5)) (single-marker (list 'light 0.8 '(0.5 0.5 0.0))))
+                        (big-put-tile
+                            this-chunk
+                            (side-offset-pos (make-point 4 6))
+                            (single-marker (list 'door side-up 'metal 1)))
+                        (big-put-tile
+                            this-chunk
+                            (side-offset-pos (make-point 3 7))
+                            (single-marker (list 'door side-left 'metal 1)))
+                        (generate-kitchen
+                            this-room-seed
+                            (list
+                                (cons (flip-right side-left) (side-offset-area (make-area (make-point 2 2) (make-point 1 5))))
+                                (cons side-up (side-offset-area (make-area (make-point 3 2) (make-point 4 1))))
+                                (cons (flip-right side-right) (side-offset-area (make-area (make-point 3 4) (make-point 1 2))))
+                                (cons side-down (side-offset-area (make-area (make-point 3 3) (make-point 4 1)))))
+                            '())
+                        (generate-bathroom
+                            this-room-seed
+                            (list
+                                (cons side-up (side-offset-area (make-area (make-point 5 5) (make-point 4 1))))
+                                (cons side-down (side-offset-area (make-area (make-point 6 6) (make-point 3 1)))))
+                            '())
+                        (generate-main-room
+                            this-room-seed
+                            (list
+                                (cons (flip-right side-left) (side-offset-area (make-area (make-point 2 8) (make-point 1 9))))
+                                (cons side-up (side-offset-area (make-area (make-point 4 8) (make-point 4 1))))
+                                (cons side-down (side-offset-area (make-area (make-point 3 16) (make-point 6 1))))
+                                (cons (flip-right side-right) (side-offset-area (make-area (make-point 8 9) (make-point 1 7)))))
+                            (side-offset-area (make-area (make-point 3 9) (make-point 5 7)))))
                     (else
                         (big-fill-area this-chunk (side-offset-area (make-area (make-point 2 7) (make-point 7 1))) wall-tile)
                         (big-fill-area this-chunk (side-offset-area (make-area (make-point 2 13) (make-point 4 1))) wall-tile)
