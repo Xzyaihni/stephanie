@@ -1916,6 +1916,8 @@ mod tests
     {
         let lisp = Lisp::new_one(code).unwrap();
 
+        assert!(!lisp.program.code().commands_contains_outer());
+
         let value = lisp.run().unwrap_or_else(|err|
         {
             panic!("{err}")
