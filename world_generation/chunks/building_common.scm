@@ -148,15 +148,15 @@
                 (big-fill-area (filled-chunk (tile 'air)) (make-point (make-point 7 0) (make-point 10 5)) wall-tile))))
     ((= height 0)
         (put-floor (filled-chunk (tile 'concrete-path))))
-    ((= (remainder height 2) 0) (begin
+    ((= (remainder height 2) 0)
         (define this-chunk (put-floor (filled-chunk (tile 'air))))
         (let ((x (if (= (remainder height 4) 0) 9 14)))
             (big-put-tile
                 this-chunk
                 (make-point x 2)
                 (tile 'stairs-down rotation)))
-        this-chunk))
-    (else (begin
+        this-chunk)
+    (else
         (define furnitures-seed (seed-with (seed-with (assq 'building-seed (chunk-tags-at middle-position)) height) 2222))
         (define this-chunk (filled-chunk (tile 'air)))
         (define (decide-enemy type)
@@ -819,7 +819,7 @@
             ((eq? part 'bl) (generate-left-room) (generate-bottom-room))
             ((eq? part 'b) (generate-bottom-room) (generate-left-room) (generate-right-room))
             ((eq? part 'br) (generate-right-room) (generate-bottom-room)))
-        this-chunk)))
+        this-chunk))
 
 ))
 

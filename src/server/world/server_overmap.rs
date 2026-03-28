@@ -307,7 +307,7 @@ impl<S: SaveLoad<WorldChunksBlock>> ServerOvermap<S>
     {
         if let Some(local_pos) = self.to_local(worldchunk_pos(pos))
         {
-            self.generate_existing_chunk(local_pos, marker)
+            crate::debug_time_this!{"generate-existing-chunk", self.generate_existing_chunk(local_pos, marker)}
         } else
         {
             eprintln!(

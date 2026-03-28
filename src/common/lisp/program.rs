@@ -37,10 +37,9 @@ pub const QUOTE_PRIMITIVE: &str = "quote";
 pub const MAKE_VECTOR_PRIMITIVE: &str = "make-vector";
 pub const VECTOR_SET_PRIMITIVE: &str = "vector-set!";
 
-pub type LoadHandler = Option<(SymbolId, usize, Box<dyn Fn(&str) -> Option<String>>)>;
-
 pub type OnApply = Rc<dyn Fn(&mut LispMemory, CodePosition, Register) -> Result<(), Error>>;
-pub type OnEval = Rc<dyn Fn(&LoadHandler, &mut LispMemory, AstPos) -> Result<InterRepr, ErrorPos>>;
+pub type OnEval = Rc<dyn Fn(&mut InterpretState, &mut LispMemory, AstPos) -> Result<InterRepr, ErrorPos>>;
+pub type OnEvalState = Rc<dyn Fn(&mut InterpretState, &mut LispMemory) -> Result<(), ErrorPos>>;
 
 #[derive(Debug, Clone, Copy)]
 pub enum ArgsCount
@@ -143,10 +142,17 @@ fn simple_apply(f: impl Fn(PrimitiveArgs) -> Result<LispValue, Error> + 'static)
 }
 
 #[derive(Clone)]
+pub enum EvalKind
+{
+    Full(OnEval),
+    State(OnEvalState)
+}
+
+#[derive(Clone)]
 pub struct PrimitiveProcedureInfo
 {
     args_count: ArgsCount,
-    on_eval: Option<OnEval>,
+    on_eval: Option<EvalKind>,
     on_apply: Option<(Effect, OnApply)>
 }
 
@@ -161,7 +167,21 @@ impl PrimitiveProcedureInfo
     {
         Self{
             args_count: args_count.into(),
-            on_eval: Some(on_eval),
+            on_eval: Some(EvalKind::Full(on_eval)),
+            on_apply: Some((effect, simple_apply(on_apply)))
+        }
+    }
+
+    pub fn new_state(
+        args_count: impl Into<ArgsCount>,
+        effect: Effect,
+        on_eval_state: OnEvalState,
+        on_apply: impl Fn(PrimitiveArgs) -> Result<LispValue, Error> + 'static
+    ) -> Self
+    {
+        Self{
+            args_count: args_count.into(),
+            on_eval: Some(EvalKind::State(on_eval_state)),
             on_apply: Some((effect, simple_apply(on_apply)))
         }
     }
@@ -173,7 +193,7 @@ impl PrimitiveProcedureInfo
     {
         Self{
             args_count: args_count.into(),
-            on_eval: Some(on_eval),
+            on_eval: Some(EvalKind::Full(on_eval)),
             on_apply: None
         }
     }
@@ -302,40 +322,40 @@ impl Default for Primitives
 
         let (indices, primitives): (HashMap<String, _>, Vec<_>) = [
             (BEGIN_PRIMITIVE,
-                PrimitiveProcedureInfo::new_eval(ArgsCount::Min(1), Rc::new(|load_handler, memory, args|
+                PrimitiveProcedureInfo::new_eval(ArgsCount::Min(1), Rc::new(|interpret_state, memory, args|
                 {
-                    Ok(InterRepr::Sequence(InterReprPos::parse_args(load_handler, memory, args)?))
+                    Ok(InterRepr::Sequence(InterReprPos::parse_args(interpret_state, memory, args)?))
                 }))),
             (QUOTE_PRIMITIVE,
-                PrimitiveProcedureInfo::new_eval(1, Rc::new(|_load_handler, _memory, args|
+                PrimitiveProcedureInfo::new_eval(1, Rc::new(|_interpret_state, _memory, args|
                 {
                     Ok(InterRepr::Quoted(args.car()))
                 }))),
             ("if",
-                PrimitiveProcedureInfo::new_eval(2..=3, Rc::new(|load_handler, memory, args|
+                PrimitiveProcedureInfo::new_eval(2..=3, Rc::new(|interpret_state, memory, args|
                 {
-                    InterRepr::parse_if(load_handler, memory, args)
+                    InterRepr::parse_if(interpret_state, memory, args)
                 }))),
             ("cond",
-                PrimitiveProcedureInfo::new_eval(ArgsCount::Min(2), Rc::new(|load_handler, memory, args|
+                PrimitiveProcedureInfo::new_eval(ArgsCount::Min(2), Rc::new(|interpret_state, memory, args|
                 {
-                    fn parse_clause(load_handler: &LoadHandler, memory: &mut LispMemory, clause: AstPos) -> Result<(InterReprPos, InterReprPos), ErrorPos>
+                    fn parse_clause(interpret_state: &mut InterpretState, memory: &mut LispMemory, clause: AstPos) -> Result<(InterReprPos, InterReprPos), ErrorPos>
                     {
                         if !clause.is_list() || clause.is_null()
                         {
                             return Err(ErrorPos{position: clause.position, value: Error::ExpectedList});
                         }
 
-                        let check = InterReprPos::parse(load_handler, memory, clause.car())?;
+                        let check = InterReprPos::parse(interpret_state, memory, clause.car())?;
 
                         let tail = clause.cdr();
                         let tail_position = tail.position;
-                        let then = InterRepr::Sequence(InterReprPos::parse_args(load_handler, memory, tail)?);
+                        let then = InterRepr::Sequence(InterReprPos::parse_args(interpret_state, memory, tail)?);
 
                         Ok((check, then.with_position(tail_position)))
                     }
 
-                    fn parse_rest(load_handler: &LoadHandler, memory: &mut LispMemory, clauses: AstPos) -> Result<InterReprPos, ErrorPos>
+                    fn parse_rest(interpret_state: &mut InterpretState, memory: &mut LispMemory, clauses: AstPos) -> Result<InterReprPos, ErrorPos>
                     {
                         if !clauses.is_list() || clauses.is_null()
                         {
@@ -344,7 +364,12 @@ impl Default for Primitives
 
                         let this = clauses.car();
                         let this_position = this.position;
-                        let (check, then) = parse_clause(load_handler, memory, this)?;
+
+                        let restore_position = interpret_state.cond_begin_env();
+
+                        let (check, then) = parse_clause(interpret_state, memory, this)?;
+
+                        interpret_state.cond_end_env(restore_position);
 
                         let rest = clauses.cdr();
 
@@ -355,7 +380,7 @@ impl Default for Primitives
                             InterRepr::Value(LispValue::new_empty_list()).with_position(rest.position)
                         } else
                         {
-                            parse_rest(load_handler, memory, rest)?
+                            parse_rest(interpret_state, memory, rest)?
                         };
 
                         Ok(InterRepr::If{
@@ -365,7 +390,7 @@ impl Default for Primitives
                         }.with_position(this_position))
                     }
 
-                    parse_rest(load_handler, memory, args).map(|x| x.value)
+                    parse_rest(interpret_state, memory, args).map(|x| x.value)
                 }))),
             ("cons",
                 PrimitiveProcedureInfo::new_simple(2, Effect::Pure, |mut args|
@@ -464,12 +489,12 @@ impl Default for Primitives
                 Ok(is_equal.into())
             })),
             ("lambda",
-                PrimitiveProcedureInfo::new_eval(ArgsCount::Min(2), Rc::new(|load_handler, memory, args|
+                PrimitiveProcedureInfo::new_eval(ArgsCount::Min(2), Rc::new(|interpret_state, memory, args|
                 {
-                    InterRepr::parse_lambda(load_handler, memory, "<lambda>".to_owned(), args)
+                    InterRepr::parse_lambda(interpret_state, memory, "<lambda>".to_owned(), args)
                 }))),
             ("define",
-                PrimitiveProcedureInfo::new_eval(ArgsCount::Min(2), Rc::new(|load_handler, memory, args: AstPos|
+                PrimitiveProcedureInfo::new_eval(ArgsCount::Min(2), Rc::new(|interpret_state, memory, args: AstPos|
                 {
                     let first = args.car();
 
@@ -485,19 +510,36 @@ impl Default for Primitives
                         }
 
                         let name = InterReprPos::parse_symbol(memory, &first.car())?;
+
+                        interpret_state.compile_env_add(name, None);
+
                         let lambdas_body = AstPos::cons(first.cdr(), args.cdr());
 
                         let lambda_name = memory.get_symbol(name);
-                        let lambda = InterRepr::parse_lambda(load_handler, memory, lambda_name, lambdas_body)?
+                        let lambda = InterRepr::parse_lambda(interpret_state, memory, lambda_name, lambdas_body)?
                             .with_position(position);
 
                         (name, lambda)
                     } else
                     {
                         let name = InterReprPos::parse_symbol(memory, &first)?;
-                        let args = InterReprPos::parse_args(load_handler, memory, args.cdr())?;
+                        let args = InterReprPos::parse_args(interpret_state, memory, args.cdr())?;
 
-                        (name, args.into_iter().next().unwrap())
+                        let value = args.into_iter().next().unwrap();
+
+                        {
+                            let value = if let InterRepr::Value(simple_value) = value.value
+                            {
+                                Some(simple_value)
+                            } else
+                            {
+                                None
+                            };
+
+                            interpret_state.compile_env_add(name, value);
+                        }
+
+                        (name, value)
                     };
 
                     Ok(InterRepr::Define{
@@ -506,18 +548,23 @@ impl Default for Primitives
                     })
                 }))),
             ("let",
-                PrimitiveProcedureInfo::new_eval(2, Rc::new(|load_handler, memory, args|
+                PrimitiveProcedureInfo::new_eval(2, Rc::new(|interpret_state, memory, args|
                 {
-                    InterRepr::parse_let(load_handler, memory, args)
+                    InterRepr::parse_let(interpret_state, memory, args)
                 }))),
             ("eval",
-                PrimitiveProcedureInfo::new_simple(1, Effect::Pure, |mut args|
+                PrimitiveProcedureInfo::new_state(1, Effect::Pure, Rc::new(|interpret_state: &mut InterpretState, _memory|
+                {
+                    interpret_state.eval_encountered = true;
+
+                    Ok(())
+                }), |mut args|
                 {
                     let value = args.next().unwrap().as_symbol_id()?;
 
                     let memory = args.memory;
 
-                    if let Some(x) = memory.lookup_symbol(value)
+                    if let Some(x) = memory.lookup_symbol(memory.get_register(Register::Environment), value)
                     {
                         Ok(x)
                     } else
@@ -808,7 +855,8 @@ enum Command
     Pop(Register),
     PutValue{value: LispValue, register: Register},
     Move{target: Register, source: Register},
-    Lookup{id: SymbolId, register: Register},
+    Lookup{location: LexicalAddress, register: Register},
+    LookupOuter{id: SymbolId, register: Register},
     Define{id: SymbolId, register: Register},
     CreateChildEnvironment,
     PutLabel{target: Register, label: Label},
@@ -834,6 +882,7 @@ impl Command
         {
             Self::PutValue{register, ..}
             | Self::Lookup{register, ..}
+            | Self::LookupOuter{register, ..}
             | Self::PutLabel{target: register, ..}
             | Self::Move{target: register, ..}
             | Self::Pop(register)
@@ -874,7 +923,8 @@ impl Command
             Self::Pop(register) => CommandRaw::Pop(register),
             Self::PutValue{value, register} => CommandRaw::PutValue{value, register},
             Self::Move{target, source} => CommandRaw::Move{target, source},
-            Self::Lookup{id, register} => CommandRaw::Lookup{id, register},
+            Self::Lookup{location, register} => CommandRaw::Lookup{location, register},
+            Self::LookupOuter{id, register} => CommandRaw::LookupOuter{id, register},
             Self::Define{id, register} => CommandRaw::Define{id, register},
             Self::CreateChildEnvironment => CommandRaw::CreateChildEnvironment,
             Self::PutLabel{target, label} =>
@@ -1113,11 +1163,12 @@ pub enum LambdaParams
 impl LambdaParams
 {
     pub fn parse(
+        interpret_state: &mut InterpretState,
         memory: &mut LispMemory,
         ast: AstPos
     ) -> Result<Self, ErrorPos>
     {
-        match &ast.value
+        let this = match &ast.value
         {
             Ast::Allocated(_) => Err(ErrorPos{position: ast.position, value: Error::ExpectedParams}),
             Ast::Value(_) =>
@@ -1126,7 +1177,11 @@ impl LambdaParams
             },
             Ast::List{..} => Ok(Self::Normal(Self::parse_list(memory, ast)?)),
             Ast::EmptyList => Ok(Self::Normal(Vec::new()))
-        }
+        }?;
+
+        this.add_to_compile_env(interpret_state);
+
+        Ok(this)
     }
 
     pub fn parse_list(memory: &mut LispMemory, ast: AstPos) -> Result<Vec<WithPosition<SymbolId>>, ErrorPos>
@@ -1145,6 +1200,24 @@ impl LambdaParams
             Ast::EmptyList => Ok(Vec::new()),
             Ast::Value(_)
             | Ast::Allocated(_) => unreachable!("malformed ast")
+        }
+    }
+
+    fn add_to_compile_env(&self, interpret_state: &mut InterpretState)
+    {
+        match self
+        {
+            Self::Variadic(param) =>
+            {
+                interpret_state.compile_env_add(param.value, None);
+            },
+            Self::Normal(params) =>
+            {
+                params.iter().for_each(|param|
+                {
+                    interpret_state.compile_env_add(param.value, None);
+                });
+            }
         }
     }
 
@@ -1242,19 +1315,19 @@ pub enum InterRepr
     Define{name: SymbolId, body: Box<InterReprPos>},
     Lambda{name: String, params: LambdaParams, body: Box<InterReprPos>},
     Quoted(AstPos),
-    Lookup(SymbolId),
+    Lookup(SymbolId, Option<LexicalAddress>),
     Value(LispValue)
 }
 
 impl InterReprPos
 {
-    pub fn parse_symbol(memory: &mut LispMemory, ast: &AstPos) -> Result<SymbolId, ErrorPos>
+    fn parse_symbol(memory: &mut LispMemory, ast: &AstPos) -> Result<SymbolId, ErrorPos>
     {
         let position = ast.position;
         Self::parse_primitive_value(memory, ast).and_then(|x| x.as_symbol_id().with_position(position))
     }
 
-    pub fn parse_primitive_value(memory: &mut LispMemory, ast: &AstPos) -> Result<LispValue, ErrorPos>
+    fn parse_primitive_value(memory: &mut LispMemory, ast: &AstPos) -> Result<LispValue, ErrorPos>
     {
         if let Ast::Value(ref x) = ast.value
         {
@@ -1265,13 +1338,13 @@ impl InterReprPos
         }
     }
 
-    pub fn parse_primitive_text(memory: &mut LispMemory, text: &str) -> Result<LispValue, Error>
+    fn parse_primitive_text(memory: &mut LispMemory, text: &str) -> Result<LispValue, Error>
     {
         Ok(memory.new_primitive_value(Ast::parse_primitive(text)?))
     }
 
-    pub fn parse(
-        load_handler: &LoadHandler,
+    fn parse(
+        interpret_state: &mut InterpretState,
         memory: &mut LispMemory,
         ast: AstPos
     ) -> Result<Self, ErrorPos>
@@ -1289,7 +1362,57 @@ impl InterReprPos
                         InterRepr::Value(LispValue::new_primitive_procedure(primitive_id))
                     } else
                     {
-                        InterRepr::Lookup(id)
+                        #[derive(Debug)]
+                        enum FoundValue
+                        {
+                            Address(LexicalAddress),
+                            Value(LispValue)
+                        }
+
+                        let current_env_pos = &interpret_state.current_env_position;
+                        let current_env = current_env_pos.pos.depth;
+
+                        dbg!(id, memory.get_symbol(id), &interpret_state.debug_with_memory(memory));
+                        let found = iter::once(current_env_pos.pos)
+                            .chain(current_env_pos.indices.iter().copied().rev())
+                            .find_map(|EnvPosition{depth: env_depth, current_index: lambda_index}|
+                            {
+                                let from_start = current_env - env_depth;
+
+                                let this_env = &interpret_state.compile_env[env_depth][lambda_index];
+
+                                let found_position = this_env.iter().rposition(|(key, _)|
+                                {
+                                    id == *key
+                                });
+
+                                found_position.map(|symbol_index|
+                                {
+                                    if let Some(value) = this_env[symbol_index].1
+                                    {
+                                        FoundValue::Value(value)
+                                    } else
+                                    {
+                                        FoundValue::Address(LexicalAddress{
+                                            up_env: from_start,
+                                            index: symbol_index
+                                        })
+                                    }
+                                })
+                            });
+                        dbg!(&found);
+
+                        if let Some(found) = found
+                        {
+                            match found
+                            {
+                                FoundValue::Address(location) => InterRepr::Lookup(id, Some(location)),
+                                FoundValue::Value(value) => InterRepr::Value(value)
+                            }
+                        } else
+                        {
+                            InterRepr::Lookup(id, None)
+                        }
                     }
                 } else
                 {
@@ -1304,7 +1427,7 @@ impl InterReprPos
             Ast::EmptyList => Ok(InterRepr::Value(LispValue::new_empty_list()).with_position(ast.position)),
             Ast::List{car, cdr} =>
             {
-                let op = Self::parse(load_handler, memory, *car)?;
+                let op = Self::parse(interpret_state, memory, *car)?;
 
                 if let InterRepr::Value(value) = op.value
                 {
@@ -1313,28 +1436,41 @@ impl InterReprPos
                         let primitive = memory.primitives.get(id).clone();
                         if let Some(on_eval) = &primitive.on_eval
                         {
-                            let args = *cdr;
-
-                            let args_count = args.list_length();
-                            if !primitive.args_count.contains(args_count)
+                            match on_eval
                             {
-                                return Err(Error::WrongArgumentsCount{
-                                    proc: memory.primitives.name_by_index(id).to_owned(),
-                                    expected: primitive.args_count.to_string(),
-                                    got: args_count
-                                }).with_position(ast.position);
-                            }
+                                EvalKind::Full(on_eval) =>
+                                {
+                                    let args = *cdr;
 
-                            return on_eval(load_handler, memory, args).map(|x| x.with_position(ast.position));
+                                    let args_count = args.list_length();
+                                    if !primitive.args_count.contains(args_count)
+                                    {
+                                        return Err(Error::WrongArgumentsCount{
+                                            proc: memory.primitives.name_by_index(id).to_owned(),
+                                            expected: primitive.args_count.to_string(),
+                                            got: args_count
+                                        }).with_position(ast.position);
+                                    }
+
+                                    return on_eval(interpret_state, memory, args).map(|x| x.with_position(ast.position));
+                                },
+                                EvalKind::State(on_eval_state) =>
+                                {
+                                    on_eval_state(interpret_state, memory)?;
+                                }
+                            }
                         }
                     }
                 }
 
-                let args = Self::parse_args(load_handler, memory, *cdr)?;
+                let args = Self::parse_args(interpret_state, memory, *cdr)?;
 
-                if let Some((load_symbol, source_id, load_handler_fn)) = load_handler.as_ref()
+                if let InterpretState{
+                    load_handler: Some((load_symbol, source_id, interpret_state_fn)),
+                    ..
+                } = interpret_state
                 {
-                    if let InterRepr::Lookup(this_lookup) = *op
+                    if let InterRepr::Lookup(this_lookup, None) = *op
                     {
                         if this_lookup == *load_symbol
                         {
@@ -1366,7 +1502,7 @@ impl InterReprPos
                                 return Err(Error::Custom("expected filepath string".to_owned())).with_position(ast.position);
                             };
 
-                            let loaded_code = if let Some(x) = load_handler_fn(&filename)
+                            let loaded_code = if let Some(x) = interpret_state_fn(&filename)
                             {
                                 x
                             } else
@@ -1377,7 +1513,7 @@ impl InterReprPos
                             let loaded_ast = Parser::parse(*source_id, &[&loaded_code])?;
 
                             return InterReprPos::parse(
-                                load_handler,
+                                interpret_state,
                                 memory,
                                 loaded_ast
                             );
@@ -1390,8 +1526,8 @@ impl InterReprPos
         }
     }
 
-    pub fn parse_args(
-        load_handler: &LoadHandler,
+    fn parse_args(
+        interpret_state: &mut InterpretState,
         memory: &mut LispMemory,
         ast: AstPos
     ) -> Result<Vec<Self>, ErrorPos>
@@ -1403,9 +1539,7 @@ impl InterReprPos
             Ast::EmptyList => Ok(Vec::new()),
             Ast::List{car, cdr} =>
             {
-                let tail = Self::parse_args(load_handler, memory, *cdr)?;
-
-                Ok(iter::once(Self::parse(load_handler, memory, *car)?).chain(tail).collect())
+                Ok(iter::once(Self::parse(interpret_state, memory, *car)?).chain(Self::parse_args(interpret_state, memory, *cdr)?).collect())
             }
         }
     }
@@ -1529,11 +1663,14 @@ impl InterReprPos
                     CompiledPart::new()
                 }.with_proceed(proceed)
             },
-            InterRepr::Lookup(id) =>
+            InterRepr::Lookup(id, location) =>
             {
                 if let Some(register) = target
                 {
-                    CompiledPart::from_commands(vec![Command::Lookup{id, register}.with_position(self.position)])
+                    let command = location.map(|location| Command::Lookup{location, register})
+                        .unwrap_or(Command::LookupOuter{id, register});
+
+                    CompiledPart::from_commands(vec![command.with_position(self.position)])
                         .with_requires(RegisterStates::one(Register::Environment))
                 } else
                 {
@@ -1854,18 +1991,23 @@ impl InterReprPos
 
 impl InterRepr
 {
-    pub fn parse_if(
-        load_handler: &LoadHandler,
+    fn parse_if(
+        interpret_state: &mut InterpretState,
         memory: &mut LispMemory,
         ast: AstPos
     ) -> Result<Self, ErrorPos>
     {
-        let args = InterReprPos::parse_args(load_handler, memory, ast)?;
+        let args = InterReprPos::parse_args(interpret_state, memory, ast)?;
 
         let mut args = args.into_iter();
 
         let check = Box::new(args.next().unwrap());
+
+        let restore_position = interpret_state.cond_begin_env();
+
         let then_body = Box::new(args.next().unwrap());
+
+        interpret_state.cond_end_env(restore_position);
 
         let else_body = Box::new(args.next().unwrap_or_else(||
         {
@@ -1875,8 +2017,8 @@ impl InterRepr
         Ok(Self::If{check, then: then_body, else_body})
     }
 
-    pub fn parse_let(
-        load_handler: &LoadHandler,
+    fn parse_let(
+        interpret_state: &mut InterpretState,
         memory: &mut LispMemory,
         ast: AstPos
     ) -> Result<Self, ErrorPos>
@@ -1884,8 +2026,6 @@ impl InterRepr
         let position = ast.position;
 
         let params_ast = ast.car();
-        let body = InterReprPos::parse_args(load_handler, memory, ast.cdr())?
-            .into_iter().next().unwrap();
 
         let mut params = Vec::new();
         let mut args = Vec::new();
@@ -1921,12 +2061,21 @@ impl InterRepr
 
             params.push(param);
 
-            args.push(InterReprPos::parse(load_handler, memory, arg)?);
+            args.push(InterReprPos::parse(interpret_state, memory, arg)?);
 
             Ok(())
         })?;
 
         let params = LambdaParams::Normal(params);
+
+        let restore_position = interpret_state.lambda_begin_env();
+
+        params.add_to_compile_env(interpret_state);
+
+        let body = InterReprPos::parse_args(interpret_state, memory, ast.cdr())?
+            .into_iter().next().unwrap();
+
+        interpret_state.lambda_end_env(restore_position);
 
         let lambda = Self::Lambda{name: "<lambda>".to_owned(), params, body: Box::new(body)}
             .with_position(position);
@@ -1934,8 +2083,8 @@ impl InterRepr
         Ok(Self::Apply{op: Box::new(lambda), args})
     }
 
-    pub fn parse_lambda(
-        load_handler: &LoadHandler,
+    fn parse_lambda(
+        interpret_state: &mut InterpretState,
         memory: &mut LispMemory,
         name: String,
         ast: AstPos
@@ -1947,12 +2096,154 @@ impl InterRepr
 
         let bodies_position = cdr.position;
 
-        let bodies = InterReprPos::parse_args(load_handler, memory, cdr)?;
+        let restore_position = interpret_state.lambda_begin_env();
+
+        let params = LambdaParams::parse(interpret_state, memory, params)?;
+
+        let bodies = InterReprPos::parse_args(interpret_state, memory, cdr)?;
         let body = InterRepr::Sequence(bodies).with_position(bodies_position);
 
-        let params = LambdaParams::parse(memory, params)?;
+        interpret_state.lambda_end_env(restore_position);
 
         Ok(Self::Lambda{name, params, body: Box::new(body)})
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct LexicalAddress
+{
+    pub up_env: usize,
+    pub index: usize
+}
+
+#[derive(Debug, Clone, Copy)]
+struct EnvPosition
+{
+    depth: usize,
+    current_index: usize
+}
+
+#[derive(Debug, Clone)]
+pub struct CompileEnvPosition
+{
+    pos: EnvPosition,
+    indices: Vec<EnvPosition>
+}
+
+struct InterpretStateDebugWithMemory<'a>
+{
+    memory: &'a LispMemory,
+    state: &'a InterpretState
+}
+
+impl Debug for InterpretStateDebugWithMemory<'_>
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
+    {
+        let compile_env: Vec<_> = self.state.compile_env.iter().map(|x| -> Vec<_>
+        {
+            x.iter().map(|x| -> Vec<_>
+            {
+                x.iter().map(|(key, value)|
+                {
+                    let name = self.memory.get_symbol(*key);
+
+                    let x = if let Some(value) = value
+                    {
+                        format!("{name} -> {}", value.to_string(self.memory))
+                    } else
+                    {
+                        name
+                    };
+
+                    DebugRaw(x)
+                }).collect()
+            }).collect()
+        }).collect();
+
+        f.debug_struct("InterpretState")
+            .field("eval_encountered", &self.state.eval_encountered)
+            .field("current_env_position", &self.state.current_env_position)
+            .field("compile_env", &compile_env)
+            .finish()
+    }
+}
+
+pub struct InterpretState
+{
+    pub eval_encountered: bool,
+    pub current_env_position: CompileEnvPosition,
+    pub compile_env: Vec<Vec<Vec<(SymbolId, Option<LispValue>)>>>,
+    pub load_handler: Option<(SymbolId, usize, Box<dyn Fn(&str) -> Option<String>>)>
+}
+
+impl InterpretState
+{
+    fn debug_with_memory<'a>(&'a self, memory: &'a LispMemory) -> InterpretStateDebugWithMemory<'a>
+    {
+        InterpretStateDebugWithMemory{
+            memory,
+            state: self
+        }
+    }
+
+    fn compile_env_add(&mut self, name: SymbolId, value: Option<LispValue>)
+    {
+        let p = self.current_env_position.pos;
+
+        let this_env = &mut self.compile_env[p.depth][p.current_index];
+
+        if let Some(found_index) = this_env.iter().position(|(key, _)| *key == name)
+        {
+            this_env[found_index].1 = value;
+        } else
+        {
+            this_env.push((name, value));
+        }
+    }
+
+    #[must_use = "env position must be restored"]
+    fn cond_begin_env(&mut self) -> CompileEnvPosition
+    {
+        let previous_env_position = self.current_env_position.clone();
+
+        self.current_env_position.indices.push(self.current_env_position.pos);
+        self.compile_env[self.current_env_position.pos.depth].push(Vec::new());
+
+        self.current_env_position.pos.current_index = self.compile_env[self.current_env_position.pos.depth].len() - 1;
+
+        previous_env_position
+    }
+
+    fn cond_end_env(&mut self, previous_position: CompileEnvPosition)
+    {
+        self.lambda_end_env(previous_position)
+    }
+
+    #[must_use = "env position must be restored"]
+    fn lambda_begin_env(&mut self) -> CompileEnvPosition
+    {
+        let previous_env_position = self.current_env_position.clone();
+
+        self.current_env_position.indices.push(self.current_env_position.pos);
+        self.current_env_position.pos.depth += 1;
+
+        if self.current_env_position.pos.depth == self.compile_env.len()
+        {
+            self.compile_env.push(vec![Vec::new()]);
+        } else
+        {
+            self.compile_env[self.current_env_position.pos.depth].push(Vec::new());
+        }
+
+        self.current_env_position.pos.current_index = self.compile_env[self.current_env_position.pos.depth].len() - 1;
+
+        previous_env_position
+    }
+
+    fn lambda_end_env(&mut self, previous_position: CompileEnvPosition)
+    {
+        self.current_env_position = previous_position;
     }
 }
 
@@ -1967,7 +2258,10 @@ struct CompileState<'a>
 
 impl<'a> CompileState<'a>
 {
-    pub fn new(memory: &'a mut LispMemory, type_checks: bool) -> Self
+    pub fn new(
+        memory: &'a mut LispMemory,
+        type_checks: bool
+    ) -> Self
     {
         Self{
             memory,
@@ -2056,7 +2350,8 @@ enum CommandRaw
     Pop(Register),
     PutValue{value: LispValue, register: Register},
     Move{target: Register, source: Register},
-    Lookup{id: SymbolId, register: Register},
+    Lookup{location: LexicalAddress, register: Register},
+    LookupOuter{id: SymbolId, register: Register},
     Define{id: SymbolId, register: Register},
     CreateChildEnvironment,
     Jump(usize),
@@ -2101,9 +2396,9 @@ impl Debug for CommandRawDisplay<'_, '_>
                     .field("register", register)
                     .finish()
             },
-            CommandRaw::Lookup{id, register} =>
+            CommandRaw::LookupOuter{id, register} =>
             {
-                f.debug_struct("Lookup")
+                f.debug_struct("LookupOuter")
                     .field("id", &DebugRaw(LispValue::new_symbol_raw(*id).to_string(self.memory)))
                     .field("register", register)
                     .finish()
@@ -2264,9 +2559,13 @@ impl CompiledProgram
                 {
                     memory.pop_stack_register(*register);
                 },
-                CommandRaw::Lookup{id, register} =>
+                CommandRaw::Lookup{location, register} =>
                 {
-                    if let Some(value) = memory.lookup_symbol(*id)
+                    memory.set_register(*register, memory.lookup_location(*location));
+                },
+                CommandRaw::LookupOuter{id, register} =>
+                {
+                    if let Some(value) = memory.lookup_symbol_outer(*id)
                     {
                         memory.set_register(*register, value);
                     } else
@@ -2444,12 +2743,25 @@ impl Program
 
         let ast = Parser::parse(0, code)?;
 
-        let ir = InterReprPos::parse(
-            &load_handler.map(|x|
+        let mut interpret_state = InterpretState{
+            eval_encountered: false,
+            current_env_position: CompileEnvPosition{
+                pos: EnvPosition{
+                    depth: 0,
+                    current_index: 0
+                },
+                indices: Vec::new()
+            },
+            compile_env: vec![vec![Vec::new()]],
+            load_handler: load_handler.map(|x|
             {
                 let load_symbol = memory.new_symbol_id("load");
                 (load_symbol, code.len(), x)
-            }),
+            })
+        };
+
+        let ir = InterReprPos::parse(
+            &mut interpret_state,
             &mut memory,
             ast
         )?;

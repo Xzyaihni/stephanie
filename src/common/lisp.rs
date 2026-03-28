@@ -25,7 +25,7 @@ pub use program::{
     ArgsCount
 };
 
-use program::{PrimitiveType, CodePosition};
+use program::{PrimitiveType, CodePosition, LexicalAddress};
 
 mod program;
 
@@ -106,7 +106,7 @@ pub type LispVector = Vec<LispValue>;
 pub type LispVectorRef<'a> = &'a [LispValue];
 pub type LispVectorMut<'a> = &'a mut [LispValue];
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct LispList<T=LispValue>
 {
     pub car: T,
@@ -955,8 +955,13 @@ impl LispMemory
 
     pub fn create_env(&mut self, parent: impl Into<LispValue>) -> Result<LispValue, Error>
     {
-        self.set_register(Register::Value, ());
         self.set_register(Register::Temporary, parent);
+
+        self.set_register(Register::Value, ());
+
+        self.cons(Register::Value, Register::Value, Register::Value)?;
+
+        self.set_car(self.get_register(Register::Value).as_list_id().unwrap(), LispValue::from(0));
 
         self.cons(Register::Temporary, Register::Value, Register::Temporary)?;
 
@@ -979,6 +984,8 @@ impl LispMemory
     fn initialize(&mut self)
     {
         let env = self.create_env(()).expect("must have enough memory for default env");
+        let env = self.create_env(env).expect("must have enough memory for default env");
+
         self.set_register(Register::Environment, env);
     }
 
@@ -994,8 +1001,10 @@ impl LispMemory
         self.symbols.get_by_name(name)
     }
 
-    fn set_top_level_env(&mut self)
+    fn set_top_level_env(&mut self) -> Result<(), Error>
     {
+        let mut has_stack = false;
+
         loop
         {
             let parent = self.get_register(Register::Environment)
@@ -1004,22 +1013,32 @@ impl LispMemory
 
             if parent.is_null()
             {
+                self.pop_stack_register(Register::Environment);
+
                 break;
             }
 
+            if has_stack
+            {
+                self.pop_stack();
+            }
+
+            self.push_stack_register(Register::Environment)?;
+            has_stack = true;
+
             self.set_register(Register::Environment, parent);
         }
+
+        Ok(())
     }
 
     pub fn defined_values(&mut self) -> Result<Vec<(SymbolId, LispValue)>, Error>
     {
         let restore = self.with_saved_registers([Register::Environment]);
 
-        self.set_top_level_env();
+        self.set_top_level_env()?;
 
-        let mappings = self.get_register(Register::Environment)
-            .as_list(self).unwrap().cdr
-            .as_list(self).unwrap().car
+        let mappings = self.get_cdr(self.get_env_pair(self.get_register(Register::Environment)).car.as_list_id().unwrap())
             .as_pairs_list(self).unwrap();
 
         let values: Vec<_> = mappings.into_iter().map(|value|
@@ -1037,14 +1056,44 @@ impl LispMemory
     {
         let symbol = self.new_symbol(key);
 
+        self.push_stack_register(Register::Environment)?;
+
+        loop
+        {
+            let parent = self.get_register(Register::Environment)
+                .as_list(self).unwrap().cdr
+                .as_list(self).unwrap().cdr;
+
+            if parent.is_null()
+            {
+                break;
+            }
+
+            self.set_register(Register::Environment, parent);
+        }
+
         self.set_register(Register::Value, value);
-        self.define_symbol(symbol.as_symbol_id().expect("must be a symbol"), Register::Value)
+        let define_result = self.define_symbol(symbol.as_symbol_id().expect("must be a symbol"), Register::Value);
+
+        self.pop_stack_register(Register::Environment);
+
+        define_result
     }
 
-    pub fn define_symbol(&mut self, key: SymbolId, value: Register) -> Result<(), Error>
+    fn define_symbol(&mut self, key: SymbolId, value: Register) -> Result<(), Error>
     {
-        if let Some(id) = self.lookup_in_env_id::<false>(
-            self.get_register(Register::Environment),
+        let mappings_info = |this: &Self|
+        {
+            this.get_env_pair(this.get_register(Register::Environment)).car.as_list_id().unwrap()
+        };
+
+        let mappings_id = |this: &Self|
+        {
+            this.get_cdr(mappings_info(this))
+        };
+
+        if let Some(id) = self.lookup_symbol_mappings(
+            mappings_id(self),
             key
         )
         {
@@ -1052,19 +1101,18 @@ impl LispMemory
             return Ok(());
         }
 
-        let mappings_id = |this: &Self|
-        {
-            let pair = this.get_register(Register::Environment)
-                .as_list(this).unwrap().cdr;
-
-            pair.as_list_id().unwrap()
-        };
-
         let other_register = if value == Register::Value { Register::Temporary } else { Register::Value };
         self.set_register(other_register, LispValue::new_symbol_raw(key));
         self.cons(Register::Value, other_register, value)?;
 
-        let tail = self.get_car(mappings_id(self));
+        let tail = {
+            let mappings_info = mappings_info(self);
+
+            let amount = self.get_car(mappings_info).as_integer().unwrap();
+            self.set_car(mappings_info, LispValue::from(amount + 1));
+
+            self.get_cdr(mappings_info)
+        };
 
         self.set_register(Register::Temporary, tail);
 
@@ -1072,7 +1120,8 @@ impl LispMemory
 
         let new_env = self.get_register(Register::Value);
 
-        self.set_car(mappings_id(self), new_env);
+        // getting it again because gc mightve moved it
+        self.set_cdr(mappings_info(self), new_env);
 
         Ok(())
     }
@@ -1101,66 +1150,106 @@ impl LispMemory
         }
     }
 
-    pub fn lookup(&self, name: &str) -> Option<LispValue>
+    pub fn lookup_location(&self, mut location: LexicalAddress) -> LispValue
     {
-        let symbol = self.symbols.get_by_name(name)?;
-        self.lookup_symbol(symbol)
+        eprintln!("get {location:?} in {}", self.get_register(Register::Environment).to_string(self));
+        let mut pair = self.get_env_pair(self.get_register(Register::Environment));
+
+        while location.up_env != 0
+        {
+            pair = self.get_env_pair(pair.cdr);
+
+            location.up_env -= 1;
+        }
+
+        let env_info = pair.car.as_list_id().unwrap();
+
+        let mut remaining_index = self.get_car(env_info).as_integer().unwrap() as usize - 1 - location.index;
+        let mut mapping = self.get_cdr(env_info);
+
+        while remaining_index != 0
+        {
+            mapping = mapping.as_list(self).expect("env must be a list").cdr;
+
+            remaining_index -= 1;
+        }
+
+        eprintln!("got {}", self.get_cdr(self.get_car(mapping.as_list_id().unwrap()).as_list_id().unwrap()).to_string(self));
+        self.get_cdr(self.get_car(mapping.as_list_id().unwrap()).as_list_id().unwrap())
     }
 
-    pub fn lookup_symbol(&self, symbol: SymbolId) -> Option<LispValue>
-    {
-        self.lookup_in_env::<true>(self.get_register(Register::Environment), symbol)
-    }
-
-    fn lookup_in_env<const CHECK_PARENT: bool>(
+    fn lookup_symbol(
         &self,
         env: LispValue,
         symbol: SymbolId
     ) -> Option<LispValue>
-    {
-        let id = self.lookup_in_env_id::<CHECK_PARENT>(env, symbol);
-
-        id.map(|id| self.get_cdr(id))
-    }
-
-    fn lookup_in_env_id<const CHECK_PARENT: bool>(
-        &self,
-        env: LispValue,
-        symbol: SymbolId
-    ) -> Option<u32>
     {
         if env.is_null()
         {
             return None;
         }
 
-        let pair = env.as_list(self).expect("env must be a list").cdr
-            .as_list(self).expect("env cdr must be a list");
+        let pair = self.get_env_pair(env);
 
-        let parent = pair.cdr;
-        let mut maybe_mappings = pair.car;
+        if let Some(found) = self.lookup_symbol_mappings(self.get_cdr(pair.car.as_list_id().unwrap()), symbol)
+        {
+            Some(self.get_cdr(found))
+        } else
+        {
+            self.lookup_symbol(pair.cdr, symbol)
+        }
+    }
 
-        let id = loop
+    fn lookup_symbol_outer(
+        &self,
+        symbol: SymbolId
+    ) -> Option<LispValue>
+    {
+        let mut previous_pair = self.get_env_pair(self.get_register(Register::Environment));
+        let mut pair = self.get_env_pair(previous_pair.cdr);
+
+        while !pair.cdr.is_null()
+        {
+            previous_pair = pair;
+            pair = self.get_env_pair(pair.cdr);
+        }
+
+        let pair_lookup = |p: LispList| -> Option<LispValue>
+        {
+            Some(self.get_cdr(self.lookup_symbol_mappings(self.get_cdr(p.car.as_list_id().unwrap()), symbol)?))
+        };
+
+        pair_lookup(previous_pair).or_else(|| pair_lookup(pair))
+    }
+
+    fn get_env_pair(&self, env: LispValue) -> LispList
+    {
+        env.as_list(self).expect("env must be a list").cdr
+            .as_list(self).expect("env cdr must be a list")
+    }
+
+    fn lookup_symbol_mappings(
+        &self,
+        mut maybe_mappings: LispValue,
+        symbol: SymbolId
+    ) -> Option<u32>
+    {
+        loop
         {
             if maybe_mappings.is_null()
             {
-                return CHECK_PARENT.then(||
-                {
-                    self.lookup_in_env_id::<CHECK_PARENT>(parent, symbol)
-                }).flatten();
+                return None;
             }
 
             let mappings = maybe_mappings.as_list(self).expect("env must be a list");
 
-            if let Some(x) = self.lookup_pair(*mappings.car(), symbol)
+            if let Some(x) = self.lookup_pair(mappings.car, symbol)
             {
-                break x;
+                return Some(x);
             }
 
-            maybe_mappings = *mappings.cdr();
-        };
-
-        Some(id)
+            maybe_mappings = mappings.cdr;
+        }
     }
 
     fn lookup_pair(&self, pair: LispValue, symbol: SymbolId) -> Option<u32>
@@ -1965,6 +2054,56 @@ mod tests
     }
 
     #[test]
+    fn bunch_of_stuff()
+    {
+        let code = "
+            (define (func-one x) (+ x 100))
+            (define (func-two x) (+ x 101))
+            (define (func-three x) (+ x 102))
+            (define (func-four x) (+ x 103))
+            (define (func-five x) (+ x 104))
+
+            (func-four (+ 229 a))
+        ";
+
+        let mut lisp = Lisp::new_one(code).unwrap();
+
+        lisp.memory_mut().define("a", 1.into()).unwrap();
+        lisp.memory_mut().define("b", 2.into()).unwrap();
+        lisp.memory_mut().define("c", 3.into()).unwrap();
+        lisp.memory_mut().define("d", 4.into()).unwrap();
+
+        let value = lisp.run()
+            .unwrap()
+            .as_integer()
+            .unwrap();
+
+        assert!(value == 333, "{value}");
+    }
+
+    #[test]
+    fn double_outside()
+    {
+        let code = "
+            (* outside-value 2)
+        ";
+
+        let mut lisp = Lisp::new_one(code).unwrap();
+
+        for outside_value in [123, 333, 444, 12, 2, 5]
+        {
+            lisp.memory_mut().define("outside-value", outside_value.into()).unwrap();
+
+            let value = lisp.run()
+                .unwrap()
+                .as_integer()
+                .unwrap();
+
+            assert!(value == outside_value * 2, "{value}");
+        }
+    }
+
+    #[test]
     fn derivative()
     {
         let code = "
@@ -2502,6 +2641,20 @@ mod tests
     }
 
     #[test]
+    fn call_eval()
+    {
+        let code = "
+            (define indirect 'coolfunc)
+
+            (define (coolfunc x) (+ x 5))
+
+            ((eval indirect) 3)
+        ";
+
+        simple_integer_test(code, 8);
+    }
+
+    #[test]
     fn char()
     {
         let code = "
@@ -2737,6 +2890,34 @@ mod tests
                 false
             }
         });
+    }
+
+    #[test]
+    fn inner_define()
+    {
+        let code = "
+            (define (a x)
+                (define (b y)
+                    (if (= y 0) 0 (+ (b (- y 1)) x)))
+                (b 4))
+
+            (a 6)
+        ";
+
+        simple_integer_test(code, 6 + 6 + 6 + 6);
+    }
+
+    #[test]
+    fn define_value()
+    {
+        let code = "
+            (define a 5)
+            (define b 3)
+
+            (+ a b)
+        ";
+
+        simple_integer_test(code, 8);
     }
 
     #[test]
