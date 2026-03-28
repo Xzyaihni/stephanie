@@ -1594,7 +1594,8 @@ impl InterReprPos
 
                 let found = iter::once(current_env_pos.pos)
                     .chain(current_env_pos.indices.iter().copied().rev())
-                    .find_map(|EnvPosition{depth: env_depth, current_index: lambda_index, offset}|
+                    .enumerate()
+                    .find_map(|(nest_index, EnvPosition{depth: env_depth, lambda_index})|
                     {
                         let from_start = current_env_depth - env_depth;
 
@@ -1614,7 +1615,7 @@ impl InterReprPos
                             {
                                 FoundValue::Address(LexicalAddress{
                                     up_env: from_start,
-                                    index: offset + symbol_index
+                                    index: current_env_pos.offset(interpret_state, nest_index) + symbol_index
                                 })
                             }
                         })
@@ -2187,8 +2188,7 @@ pub struct LexicalAddress
 struct EnvPosition
 {
     depth: usize,
-    current_index: usize,
-    offset: usize
+    lambda_index: usize
 }
 
 #[derive(Debug, Clone)]
@@ -2205,11 +2205,41 @@ impl Default for CompileEnvPosition
         Self{
             pos: EnvPosition{
                 depth: 0,
-                current_index: 0,
-                offset: 0
+                lambda_index: 0
             },
             indices: Vec::new()
         }
+    }
+}
+
+impl CompileEnvPosition
+{
+    fn offset(&self, interpret_state: &InterpretState, nest_index: usize) -> usize
+    {
+        let current_pos = iter::once(self.pos).chain(self.indices.iter().copied().rev()).nth(nest_index);
+
+        let first_depth = if let Some(x) = current_pos
+        {
+            x.depth
+        } else
+        {
+            return 0;
+        };
+
+        let env = &interpret_state.compile_env[first_depth];
+
+        let mut offset = 0;
+        for x in self.indices.iter().copied().rev().skip(nest_index)
+        {
+            if x.depth != first_depth
+            {
+                break;
+            }
+
+            offset += env[x.lambda_index].len();
+        }
+
+        offset
     }
 }
 
@@ -2293,7 +2323,7 @@ impl InterpretState
     {
         let p = self.current_env_position.pos;
 
-        let this_env = &mut self.compile_env[p.depth][p.current_index];
+        let this_env = &mut self.compile_env[p.depth][p.lambda_index];
 
         if let Some(found_index) = this_env.iter().position(|(key, _)| *key == name)
         {
@@ -2323,12 +2353,7 @@ impl InterpretState
         self.current_env_position.indices.push(self.current_env_position.pos);
         self.compile_env[self.current_env_position.pos.depth].push(Vec::new());
 
-        {
-            let p = self.current_env_position.pos;
-            self.current_env_position.pos.offset += self.compile_env[p.depth][p.current_index].len();
-        }
-
-        self.current_env_position.pos.current_index = self.compile_env[self.current_env_position.pos.depth].len() - 1;
+        self.current_env_position.pos.lambda_index = self.compile_env[self.current_env_position.pos.depth].len() - 1;
 
         previous_env_position
     }
@@ -2345,7 +2370,6 @@ impl InterpretState
 
         self.current_env_position.indices.push(self.current_env_position.pos);
         self.current_env_position.pos.depth += 1;
-        self.current_env_position.pos.offset = 0;
 
         if self.current_env_position.pos.depth == self.compile_env.len()
         {
@@ -2355,7 +2379,7 @@ impl InterpretState
             self.compile_env[self.current_env_position.pos.depth].push(Vec::new());
         }
 
-        self.current_env_position.pos.current_index = self.compile_env[self.current_env_position.pos.depth].len() - 1;
+        self.current_env_position.pos.lambda_index = self.compile_env[self.current_env_position.pos.depth].len() - 1;
 
         previous_env_position
     }
@@ -2889,9 +2913,7 @@ impl Program
             ast
         )?;
 
-        interpret_state.current_env_position = CompileEnvPosition::default();
-
-        ir.parse_addresses(&mut interpret_state);
+        ir.parse_addresses(&interpret_state);
 
         let code = {
             let type_checks = type_checks && DebugConfig::is_disabled(DebugTool::LispDisableChecks);
