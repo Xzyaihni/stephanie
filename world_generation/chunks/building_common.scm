@@ -581,6 +581,7 @@
                         (big-fill-area this-chunk (side-offset-area (make-area (make-point 1 4) (make-point 1 5))) (tile 'glass))
                         (big-fill-area this-chunk (side-offset-area (make-area (make-point 1 13) (make-point 1 3))) (tile 'glass))
                         (big-put-tile this-chunk (side-offset-pos (make-point 7 13)) (single-marker (list 'light (light-intensity 0.9))))
+                        (big-put-tile this-chunk (side-offset-pos (make-point 7 8)) (single-marker (list 'light (light-intensity 0.9))))
                         (big-put-tile this-chunk (side-offset-pos (make-point 4 3)) (single-marker (list 'light (light-intensity 0.8))))
                         (big-put-tile this-chunk (side-offset-pos (make-point 3 7)) (single-marker (list 'light (light-intensity 0.9) '(0.5 0.0 0.0))))
                         (big-put-tile this-chunk (side-offset-pos (make-point 3 14)) (single-marker (list 'light (light-intensity 0.9) '(0.5 0.0 0.0))))
