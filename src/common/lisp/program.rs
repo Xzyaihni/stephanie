@@ -1372,10 +1372,9 @@ impl InterReprPos
                         let current_env_pos = &interpret_state.current_env_position;
                         let current_env = current_env_pos.pos.depth;
 
-                        dbg!(id, memory.get_symbol(id), &interpret_state.debug_with_memory(memory));
                         let found = iter::once(current_env_pos.pos)
                             .chain(current_env_pos.indices.iter().copied().rev())
-                            .find_map(|EnvPosition{depth: env_depth, current_index: lambda_index}|
+                            .find_map(|EnvPosition{depth: env_depth, current_index: lambda_index, offset}|
                             {
                                 let from_start = current_env - env_depth;
 
@@ -1395,12 +1394,11 @@ impl InterReprPos
                                     {
                                         FoundValue::Address(LexicalAddress{
                                             up_env: from_start,
-                                            index: symbol_index
+                                            index: offset + symbol_index
                                         })
                                     }
                                 })
                             });
-                        dbg!(&found);
 
                         if let Some(found) = found
                         {
@@ -2120,7 +2118,8 @@ pub struct LexicalAddress
 struct EnvPosition
 {
     depth: usize,
-    current_index: usize
+    current_index: usize,
+    offset: usize
 }
 
 #[derive(Debug, Clone)]
@@ -2130,6 +2129,7 @@ pub struct CompileEnvPosition
     indices: Vec<EnvPosition>
 }
 
+#[allow(dead_code)]
 struct InterpretStateDebugWithMemory<'a>
 {
     memory: &'a LispMemory,
@@ -2179,6 +2179,7 @@ pub struct InterpretState
 
 impl InterpretState
 {
+    #[allow(dead_code)]
     fn debug_with_memory<'a>(&'a self, memory: &'a LispMemory) -> InterpretStateDebugWithMemory<'a>
     {
         InterpretStateDebugWithMemory{
@@ -2210,6 +2211,11 @@ impl InterpretState
         self.current_env_position.indices.push(self.current_env_position.pos);
         self.compile_env[self.current_env_position.pos.depth].push(Vec::new());
 
+        {
+            let p = self.current_env_position.pos;
+            self.current_env_position.pos.offset += self.compile_env[p.depth][p.current_index].len();
+        }
+
         self.current_env_position.pos.current_index = self.compile_env[self.current_env_position.pos.depth].len() - 1;
 
         previous_env_position
@@ -2227,6 +2233,7 @@ impl InterpretState
 
         self.current_env_position.indices.push(self.current_env_position.pos);
         self.current_env_position.pos.depth += 1;
+        self.current_env_position.pos.offset = 0;
 
         if self.current_env_position.pos.depth == self.compile_env.len()
         {
@@ -2748,7 +2755,8 @@ impl Program
             current_env_position: CompileEnvPosition{
                 pos: EnvPosition{
                     depth: 0,
-                    current_index: 0
+                    current_index: 0,
+                    offset: 0
                 },
                 indices: Vec::new()
             },

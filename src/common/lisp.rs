@@ -1152,7 +1152,6 @@ impl LispMemory
 
     pub fn lookup_location(&self, mut location: LexicalAddress) -> LispValue
     {
-        eprintln!("get {location:?} in {}", self.get_register(Register::Environment).to_string(self));
         let mut pair = self.get_env_pair(self.get_register(Register::Environment));
 
         while location.up_env != 0
@@ -1174,7 +1173,6 @@ impl LispMemory
             remaining_index -= 1;
         }
 
-        eprintln!("got {}", self.get_cdr(self.get_car(mapping.as_list_id().unwrap()).as_list_id().unwrap()).to_string(self));
         self.get_cdr(self.get_car(mapping.as_list_id().unwrap()).as_list_id().unwrap())
     }
 
@@ -2890,6 +2888,75 @@ mod tests
                 false
             }
         });
+    }
+
+    #[test]
+    fn many_cond_defines()
+    {
+        let code = "
+            (define useless-value 99999)
+            (define unfun-value 333)
+            (define fun-value 10000)
+            (define (thingy me)
+                (cond
+                    ((eq? me 'thisy)
+                        (define fun-value 2345)
+                        (define (cool-func b) (+ b 1000))
+                        (cool-func fun-value))
+                    ((eq? me 'thaty)
+                        (define fun-value-one 11111)
+                        (define (cool-func b) (- fun-value-one b))
+                        (cool-func fun-value))
+                    (#t
+                        (define fun-value 1)
+                        (define (go a b c) (+ a b c))
+                        (go fun-value unfun-value -1))))
+
+            ;  3345            1111            333
+            (- (thingy 'thisy) (thingy 'thaty) (thingy 'omaga))
+        ";
+
+        simple_integer_test(code, 3345 - 1111 - 333);
+    }
+
+    #[test]
+    fn if_defines()
+    {
+        let code = "
+            (define (thingy b)
+                (if b
+                    (begin
+                        (define fun-value 2345)
+                        (define (cool-func b) (+ b 1000))
+                        (cool-func fun-value))
+                    (begin
+                        (define fun-value 11111)
+                        (define (cool-func b) (- fun-value b))
+                        (cool-func 10000))))
+
+            ;  3345        1111
+            (- (thingy #t) (thingy #f))
+        ";
+
+        simple_integer_test(code, 3345 - 1111);
+    }
+
+    #[test]
+    fn redefines()
+    {
+        let code = "
+            (define (cool) 666)
+            (define (cool) 777)
+            (define (cool) 888)
+            (define (cool) 999)
+
+            (define fun 2)
+            (define fun 1)
+
+            (- (cool) fun)
+        ";
+
+        simple_integer_test(code, 998);
     }
 
     #[test]
