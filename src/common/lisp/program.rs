@@ -1,6 +1,7 @@
 use std::{
     vec,
     iter,
+    convert,
     rc::Rc,
     io::{self, Write},
     fmt::{self, Debug, Display},
@@ -504,7 +505,7 @@ impl Default for Primitives
 
                     let position = args.position;
 
-                    let (name, value) = if is_procedure
+                    let (name, value, redefine) = if is_procedure
                     {
                         if first.is_null()
                         {
@@ -513,7 +514,7 @@ impl Default for Primitives
 
                         let name = InterReprPos::parse_symbol(memory, &first.car())?;
 
-                        interpret_state.compile_env_add(name, None);
+                        let redefine = interpret_state.compile_env_add(name, None);
 
                         let lambdas_body = AstPos::cons(first.cdr(), args.cdr());
 
@@ -521,7 +522,7 @@ impl Default for Primitives
                         let lambda = InterRepr::parse_lambda(interpret_state, memory, lambda_name, lambdas_body)?
                             .with_position(position);
 
-                        (name, lambda)
+                        (name, lambda, redefine)
                     } else
                     {
                         let name = InterReprPos::parse_symbol(memory, &first)?;
@@ -529,7 +530,7 @@ impl Default for Primitives
 
                         let value = args.into_iter().next().unwrap();
 
-                        {
+                        let redefine = {
                             let value = if let InterRepr::Value(simple_value) = value.value
                             {
                                 Some(simple_value)
@@ -538,14 +539,29 @@ impl Default for Primitives
                                 None
                             };
 
-                            interpret_state.compile_env_add(name, value);
-                        }
+                            interpret_state.compile_env_add(name, value)
+                        };
 
-                        (name, value)
+                        (name, value, redefine)
                     };
+
+                    {
+                        let name = memory.get_symbol(name);
+                        if memory.primitives.get_by_name(&name).is_some()
+                        {
+                            return Err(ErrorPos{
+                                position,
+                                value: Error::AttemptedShadowing(name)
+                            });
+                        }
+                    }
 
                     Ok(InterRepr::Define{
                         name,
+                        position: DefineEnvPosition{
+                            position: interpret_state.current_env_position.pos,
+                            redefine
+                        },
                         body: Box::new(value)
                     })
                 }))),
@@ -1321,7 +1337,7 @@ pub enum InterRepr
     Apply{op: Box<InterReprPos>, args: Vec<InterReprPos>},
     Sequence(Vec<InterReprPos>),
     If{check: Box<InterReprPos>, then: Box<InterReprPos>, else_body: Box<InterReprPos>},
-    Define{name: SymbolId, body: Box<InterReprPos>},
+    Define{name: SymbolId, position: DefineEnvPosition, body: Box<InterReprPos>},
     Lambda{name: String, params: LambdaParams, body: Box<InterReprPos>},
     Quoted(AstPos),
     Lookup(LookupStage),
@@ -1352,6 +1368,51 @@ impl InterReprPos
         Ok(memory.new_primitive_value(Ast::parse_primitive(text)?))
     }
 
+    fn parse_lookup(
+        interpret_state: &mut InterpretState,
+        id: SymbolId
+    ) -> InterRepr
+    {
+        let pos = interpret_state.current_env_position.clone();
+
+        let mut found = false;
+        for EnvPosition{
+            depth: env_depth,
+            lambda_index
+        } in iter::once(pos.pos).chain(pos.indices.iter().copied().rev())
+        {
+            let this_env = &mut interpret_state.compile_env[env_depth][lambda_index];
+
+            let found_position = this_env.iter().rposition(|(key, _)|
+            {
+                id == *key
+            });
+
+            if let Some(symbol_index) = found_position
+            {
+                let this_symbol = &mut this_env[symbol_index].1;
+
+                if let Some(value) = this_symbol.value
+                {
+                    return InterRepr::Value(value);
+                }
+
+                this_symbol.looked_up = true;
+
+                found = true;
+
+                break;
+            }
+        }
+
+        if !found
+        {
+            interpret_state.outer_lookups.push(id);
+        }
+
+        InterRepr::Lookup(LookupStage::Processed{symbol: id, pos})
+    }
+
     fn parse(
         interpret_state: &mut InterpretState,
         memory: &mut LispMemory,
@@ -1371,8 +1432,7 @@ impl InterReprPos
                         InterRepr::Value(LispValue::new_primitive_procedure(primitive_id))
                     } else
                     {
-                        let pos = interpret_state.current_env_position.clone();
-                        InterRepr::Lookup(LookupStage::Processed{symbol: id, pos})
+                        Self::parse_lookup(interpret_state, id)
                     }
                 } else
                 {
@@ -1542,6 +1602,107 @@ impl InterReprPos
         }
     }
 
+    fn remove_unused_defines(
+        &mut self,
+        interpret_state: &mut InterpretState
+    ) -> bool
+    {
+        match &mut self.value
+        {
+            InterRepr::Apply{op, args} =>
+            {
+                op.remove_unused_defines(interpret_state);
+
+                args.iter_mut().for_each(|arg|
+                {
+                    arg.remove_unused_defines(interpret_state);
+                });
+            },
+            InterRepr::Sequence(sequence) =>
+            {
+                sequence.retain_mut(|value|
+                {
+                    let is_used = value.remove_unused_defines(interpret_state);
+
+                    is_used
+                });
+            },
+            InterRepr::If{check, then, else_body} =>
+            {
+                check.remove_unused_defines(interpret_state);
+                then.remove_unused_defines(interpret_state);
+                else_body.remove_unused_defines(interpret_state);
+            },
+            InterRepr::Define{name, position, body} =>
+            {
+                let p = position.position;
+
+                let result = interpret_state.compile_env[p.depth][p.lambda_index].iter().find_map(|(key, value)|
+                {
+                    (key == name).then(||
+                    {
+                        let this_looked_up = if position.redefine == value.redefines.len()
+                        {
+                            value.looked_up
+                        } else
+                        {
+                            value.redefines[position.redefine]
+                        };
+
+                        let is_unused = !this_looked_up;
+
+                        let replaced = value.value.is_some();
+                        let is_unused = is_unused || replaced;
+
+                        let any_looked_up = value.redefines.iter().copied().any(convert::identity) || value.looked_up;
+
+                        (is_unused, !any_looked_up)
+                    })
+                });
+
+                let is_removed = result.is_none();
+                let (is_unused, all_unused) = if p.depth == 0 && interpret_state.outer_lookups.contains(name)
+                {
+                    (false, false)
+                } else
+                {
+                    result.unwrap_or((true, true))
+                };
+
+                if is_unused
+                {
+                    if !is_removed
+                    {
+                        let env = &mut interpret_state.compile_env[p.depth][p.lambda_index];
+                        let index = env.iter().position(|(key, _value)|
+                        {
+                            key == name
+                        }).expect("must be defined");
+
+                        if all_unused
+                        {
+                            env.remove(index);
+                        }
+                    }
+
+                    return false;
+                } else
+                {
+                    body.remove_unused_defines(interpret_state);
+                }
+            },
+            InterRepr::Lambda{name: _, params: _, body} =>
+            {
+                body.remove_unused_defines(interpret_state);
+            },
+            InterRepr::Quoted(_) => (),
+            InterRepr::Lookup(_) => (),
+            InterRepr::Value(_) => ()
+        }
+
+        true
+    }
+
     fn parse_addresses(
         &mut self,
         interpret_state: &InterpretState
@@ -1571,7 +1732,7 @@ impl InterReprPos
                 then.parse_addresses(interpret_state);
                 else_body.parse_addresses(interpret_state);
             },
-            InterRepr::Define{name: _, body} =>
+            InterRepr::Define{name: _, position: _, body} =>
             {
                 body.parse_addresses(interpret_state);
             },
@@ -1583,13 +1744,6 @@ impl InterReprPos
             InterRepr::Lookup(LookupStage::Final{..}) => unreachable!(),
             InterRepr::Lookup(LookupStage::Processed{symbol: id, pos: current_env_pos}) =>
             {
-                #[derive(Debug)]
-                enum FoundValue
-                {
-                    Address(LexicalAddress),
-                    Value(LispValue)
-                }
-
                 let current_env_depth = current_env_pos.pos.depth;
 
                 let found = iter::once(current_env_pos.pos)
@@ -1601,37 +1755,21 @@ impl InterReprPos
 
                         let this_env = &interpret_state.compile_env[env_depth][lambda_index];
 
-                        let found_position = this_env.iter().rposition(|(key, _)|
+                        let found_index = this_env.iter().rposition(|(key, _)|
                         {
                             *id == *key
                         });
 
-                        found_position.map(|symbol_index|
+                        found_index.map(|symbol_index|
                         {
-                            if let Some(value) = this_env[symbol_index].1
-                            {
-                                FoundValue::Value(value)
-                            } else
-                            {
-                                FoundValue::Address(LexicalAddress{
-                                    up_env: from_start,
-                                    index: current_env_pos.offset(interpret_state, nest_index) + symbol_index
-                                })
+                            LexicalAddress{
+                                up_env: from_start,
+                                index: current_env_pos.offset(interpret_state, nest_index) + symbol_index
                             }
                         })
                     });
 
-                if let Some(found) = found
-                {
-                    self.value = match found
-                    {
-                        FoundValue::Address(location) => InterRepr::Lookup(LookupStage::Final{symbol: *id, location: Some(location)}),
-                        FoundValue::Value(value) => InterRepr::Value(value)
-                    };
-                } else
-                {
-                    self.value = InterRepr::Lookup(LookupStage::Final{symbol: *id, location: None});
-                }
+                self.value = InterRepr::Lookup(LookupStage::Final{symbol: *id, location: found});
             },
             InterRepr::Value(_) => ()
         }
@@ -1841,7 +1979,7 @@ impl InterReprPos
 
                 lambda.with_proceed(proceed)
             },
-            InterRepr::Define{name, body} =>
+            InterRepr::Define{name, position: _, body} =>
             {
                 let temp = if let Some(target) = target
                 {
@@ -2185,10 +2323,17 @@ pub struct LexicalAddress
 }
 
 #[derive(Debug, Clone, Copy)]
-struct EnvPosition
+pub struct EnvPosition
 {
     depth: usize,
     lambda_index: usize
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct DefineEnvPosition
+{
+    position: EnvPosition,
+    redefine: usize
 }
 
 #[derive(Debug, Clone)]
@@ -2254,6 +2399,11 @@ impl Debug for InterpretStateDebugWithMemory<'_>
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
     {
+        let outer_lookups: Vec<_> = self.state.outer_lookups.iter().map(|x|
+        {
+            DebugRaw(self.memory.map(|memory| memory.get_symbol(*x)).unwrap_or_else(|| x.to_string()))
+        }).collect();
+
         let compile_env: Vec<_> = self.state.compile_env.iter().map(|x| -> Vec<_>
         {
             x.iter().map(|x| -> Vec<_>
@@ -2264,6 +2414,11 @@ impl Debug for InterpretStateDebugWithMemory<'_>
                     {
                         key.to_string()
                     });
+
+                    let CompileSymbolState{looked_up, redefines, value} = value;
+
+                    let used_count: usize = *looked_up as usize + redefines.iter().map(|x| *x as usize).sum::<usize>();
+                    let max_used = redefines.len() + 1;
 
                     let x = if let Some(value) = value
                     {
@@ -2276,25 +2431,45 @@ impl Debug for InterpretStateDebugWithMemory<'_>
                         name
                     };
 
-                    DebugRaw(x)
+                    let encountered = if used_count == max_used
+                    {
+                        ""
+                    } else if used_count == 0
+                    {
+                        "(UNUSED) "
+                    } else
+                    {
+                        "(PARTIALLY UNUSED) "
+                    };
+
+                    DebugRaw(encountered.to_owned() + &x)
                 }).collect()
             }).collect()
         }).collect();
 
         f.debug_struct("InterpretState")
             .field("eval_encountered", &self.state.eval_encountered)
+            .field("outer_lookups", &outer_lookups)
             .field("current_env_position", &self.state.current_env_position)
             .field("compile_env", &compile_env)
             .finish()
     }
 }
 
+pub struct CompileSymbolState
+{
+    looked_up: bool,
+    redefines: Vec<bool>,
+    value: Option<LispValue>
+}
+
 pub struct InterpretState
 {
-    pub eval_encountered: bool,
-    pub current_env_position: CompileEnvPosition,
-    pub compile_env: Vec<Vec<Vec<(SymbolId, Option<LispValue>)>>>,
-    pub load_handler: Option<(SymbolId, usize, Box<dyn Fn(&str) -> Option<String>>)>
+    eval_encountered: bool,
+    outer_lookups: Vec<SymbolId>,
+    current_env_position: CompileEnvPosition,
+    compile_env: Vec<Vec<Vec<(SymbolId, CompileSymbolState)>>>,
+    load_handler: Option<(SymbolId, usize, Box<dyn Fn(&str) -> Option<String>>)>
 }
 
 impl Debug for InterpretState
@@ -2319,7 +2494,7 @@ impl InterpretState
         }
     }
 
-    fn compile_env_add(&mut self, name: SymbolId, value: Option<LispValue>)
+    fn compile_env_add(&mut self, name: SymbolId, value: Option<LispValue>) -> usize
     {
         let p = self.current_env_position.pos;
 
@@ -2327,10 +2502,20 @@ impl InterpretState
 
         if let Some(found_index) = this_env.iter().position(|(key, _)| *key == name)
         {
-            this_env[found_index].1 = value;
+            let this_symbol = &mut this_env[found_index].1;
+
+            this_symbol.redefines.push(this_symbol.looked_up);
+            let redefine = this_symbol.redefines.len();
+
+            this_symbol.looked_up = false;
+            this_symbol.value = value;
+
+            redefine
         } else
         {
-            this_env.push((name, value));
+            this_env.push((name, CompileSymbolState{looked_up: false, redefines: Vec::new(), value}));
+
+            0
         }
     }
 
@@ -2665,6 +2850,21 @@ impl CompiledProgram
         })
     }
 
+    #[cfg(test)]
+    pub fn commands_define_count(&self) -> usize
+    {
+        self.commands.iter().filter(|x|
+        {
+            if let CommandRaw::Define{..} = x
+            {
+                true
+            } else
+            {
+                false
+            }
+        }).count()
+    }
+
     fn run(&self, memory: &mut LispMemory) -> Result<(), ErrorPos>
     {
         let mut i = 0;
@@ -2898,6 +3098,7 @@ impl Program
 
         let mut interpret_state = InterpretState{
             eval_encountered: false,
+            outer_lookups: Vec::new(),
             current_env_position: CompileEnvPosition::default(),
             compile_env: vec![vec![Vec::new()]],
             load_handler: load_handler.map(|x|
@@ -2912,6 +3113,11 @@ impl Program
             &mut memory,
             ast
         )?;
+
+        if !interpret_state.eval_encountered
+        {
+            ir.remove_unused_defines(&mut interpret_state);
+        }
 
         ir.parse_addresses(&interpret_state);
 

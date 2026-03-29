@@ -2730,6 +2730,31 @@ mod tests
     }
 
     #[test]
+    fn call_before_define()
+    {
+        let code = "
+            (define (one) (two))
+            (define (two) 5)
+
+            (one)
+        ";
+
+        let lisp = Lisp::new_one(code).unwrap();
+
+        let value = lisp.run().unwrap_or_else(|err|
+        {
+            panic!("{err}")
+        });
+
+        let value = value.as_integer().unwrap_or_else(|err|
+        {
+            panic!("{err} ({value})")
+        });
+
+        assert_eq!(value, 5);
+    }
+
+    #[test]
     fn predicates_stuff()
     {
         let code = "
@@ -2878,6 +2903,7 @@ mod tests
     {
         let code = "
             (define + 1)
+            (+)
         ";
 
         assert_error(code, |err|
@@ -2958,7 +2984,22 @@ mod tests
             (- (cool) fun)
         ";
 
-        simple_integer_test(code, 998);
+        let lisp = Lisp::new_one(code).unwrap();
+
+        assert!(!lisp.program.code().commands_contains_outer());
+        assert!(lisp.program.code().commands_define_count() == 1);
+
+        let value = lisp.run().unwrap_or_else(|err|
+        {
+            panic!("{err}")
+        });
+
+        let value = value.as_integer().unwrap_or_else(|err|
+        {
+            panic!("{err} ({value})")
+        });
+
+        assert_eq!(value, 998);
     }
 
     #[test]
