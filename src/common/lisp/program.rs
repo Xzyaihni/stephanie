@@ -5,7 +5,7 @@ use std::{
     rc::Rc,
     io::{self, Write},
     fmt::{self, Debug, Display},
-    collections::HashMap,
+    collections::{VecDeque, HashMap},
     ops::{RangeInclusive, Add, Sub, Mul, Div, Rem, Index, IndexMut}
 };
 
@@ -1644,39 +1644,38 @@ impl InterReprPos
 
     fn remove_unused_defines(
         &mut self,
-        interpret_state: &mut InterpretState,
-        removed_any: &mut bool
+        interpret_state: &mut InterpretState
     ) -> bool
     {
         match &mut self.value
         {
             InterRepr::Apply{op, args} =>
             {
-                op.remove_unused_defines(interpret_state, removed_any);
+                op.remove_unused_defines(interpret_state);
 
                 args.iter_mut().for_each(|arg|
                 {
-                    arg.remove_unused_defines(interpret_state, removed_any);
+                    arg.remove_unused_defines(interpret_state);
                 });
             },
             InterRepr::Sequence(sequence) =>
             {
                 sequence.retain_mut(|value|
                 {
-                    let is_used = value.remove_unused_defines(interpret_state, removed_any);
+                    let is_used = value.remove_unused_defines(interpret_state);
 
                     is_used
                 });
             },
             InterRepr::If{check, then, else_body} =>
             {
-                check.remove_unused_defines(interpret_state, removed_any);
-                then.remove_unused_defines(interpret_state, removed_any);
-                else_body.remove_unused_defines(interpret_state, removed_any);
+                check.remove_unused_defines(interpret_state);
+                then.remove_unused_defines(interpret_state);
+                else_body.remove_unused_defines(interpret_state);
             },
             InterRepr::Define{name, position, body} =>
             {
-                body.remove_unused_defines(interpret_state, removed_any);
+                body.remove_unused_defines(interpret_state);
 
                 let p = position.position;
 
@@ -1728,14 +1727,12 @@ impl InterReprPos
                         }
                     }
 
-                    *removed_any = true;
-
                     return false;
                 }
             },
             InterRepr::Lambda{name: _, params: _, body} =>
             {
-                body.remove_unused_defines(interpret_state, removed_any);
+                body.remove_unused_defines(interpret_state);
             },
             InterRepr::Quoted(_) => (),
             InterRepr::Lookup(_) => (),
@@ -1749,21 +1746,37 @@ impl InterReprPos
         &'a self,
         interpret_state: &mut InterpretState,
         lambda_defines: &mut HashMap<EnvPosition, Vec<LambdaDefineInfo<'a>>>,
-        possibly_op: u32
+        explore_queue: &mut VecDeque<(u32, &'a Self)>,
+        possibly_op: u32,
+        args_skipped: bool
     ) -> bool
     {
         match &self.value
         {
             InterRepr::Apply{op, args} =>
             {
-                let op_skipped = op.mark_lookups(interpret_state, lambda_defines, possibly_op + 1);
+                let mut this_explore_queue = VecDeque::new();
 
-                args.iter().fold(op_skipped, |any_skipped, arg|
+                let args_skipped = args.iter().fold(false, |any_skipped, arg|
                 {
-                    let this_skipped = arg.mark_lookups(interpret_state, lambda_defines, possibly_op + 1);
+                    let this_skipped = arg.mark_lookups(interpret_state, lambda_defines, &mut this_explore_queue, possibly_op + 1, false);
 
                     any_skipped || this_skipped
-                })
+                });
+
+                let op_skipped = op.mark_lookups(interpret_state, lambda_defines, &mut this_explore_queue, possibly_op + 1, args_skipped);
+
+                let any_skipped = op_skipped || args_skipped;
+
+                if any_skipped
+                {
+                    while let Some((this_possibly_op, this_next)) = this_explore_queue.pop_front()
+                    {
+                        this_next.mark_lookups(interpret_state, lambda_defines, &mut this_explore_queue, this_possibly_op, false);
+                    }
+                }
+
+                any_skipped
             },
             InterRepr::Sequence(sequence) =>
             {
@@ -1771,16 +1784,22 @@ impl InterReprPos
                 sequence.iter().enumerate().fold(false, |any_skipped, (index, value)|
                 {
                     let is_last = index == last_index;
-                    let this_skipped = value.mark_lookups(interpret_state, lambda_defines, if is_last { possibly_op } else { 0 });
+                    let this_skipped = value.mark_lookups(
+                        interpret_state,
+                        lambda_defines,
+                        explore_queue,
+                        if is_last { possibly_op } else { 0 },
+                        if is_last { args_skipped } else { false }
+                    );
 
                     any_skipped || this_skipped
                 })
             },
             InterRepr::If{check, then, else_body} =>
             {
-                let check_skipped = check.mark_lookups(interpret_state, lambda_defines, 0);
-                let then_skipped = then.mark_lookups(interpret_state, lambda_defines, possibly_op);
-                let else_skipped = else_body.mark_lookups(interpret_state, lambda_defines, possibly_op);
+                let check_skipped = check.mark_lookups(interpret_state, lambda_defines, explore_queue, 0, false);
+                let then_skipped = then.mark_lookups(interpret_state, lambda_defines, explore_queue, possibly_op, args_skipped);
+                let else_skipped = else_body.mark_lookups(interpret_state, lambda_defines, explore_queue, possibly_op, args_skipped);
 
                 check_skipped || then_skipped || else_skipped
             },
@@ -1788,7 +1807,7 @@ impl InterReprPos
             {
                 let p = position.position;
 
-                let this_info = || LambdaDefineInfo{id: *name, position: self.position, last_possibly_op: 0, value: body};
+                let this_info = || LambdaDefineInfo{id: *name, position: self.position, last_possibly_op: 0, last_lookup_position: None, value: body};
                 if let Some(these_lambdas) = lambda_defines.get_mut(&p)
                 {
                     let defined_before = these_lambdas.iter().any(|x|
@@ -1805,13 +1824,13 @@ impl InterReprPos
                     lambda_defines.insert(p, vec![this_info()]);
                 }
 
-                body.mark_lookups(interpret_state, lambda_defines, 0)
+                body.mark_lookups(interpret_state, lambda_defines, explore_queue, 0, false)
             },
             InterRepr::Lambda{name: _, params: _, body} =>
             {
                 if possibly_op > 0
                 {
-                    body.mark_lookups(interpret_state, lambda_defines, possibly_op.saturating_sub(1))
+                    body.mark_lookups(interpret_state, lambda_defines, explore_queue, possibly_op.saturating_sub(1), args_skipped)
                 } else
                 {
                     true
@@ -1831,15 +1850,20 @@ impl InterReprPos
                         {
                             if let Some(index) = these_lambdas.iter().rposition(|LambdaDefineInfo{id: key, ..}| *id == *key)
                             {
-                                if possibly_op > these_lambdas[index].last_possibly_op
+                                let last_possibly_op = these_lambdas[index].last_possibly_op;
+                                if possibly_op > last_possibly_op
                                 {
-                                    these_lambdas[index].last_possibly_op = possibly_op;
-                                    these_lambdas[index].value.mark_lookups(interpret_state, lambda_defines, possibly_op);
+                                    let same_call = these_lambdas[index].last_lookup_position == Some(self.position);
 
-                                    return Some(false);
+                                    these_lambdas[index].last_lookup_position = Some(self.position);
+                                    these_lambdas[index].last_possibly_op = possibly_op;
+
+                                    explore_queue.push_back((possibly_op, these_lambdas[index].value));
+
+                                    return Some(if !args_skipped && same_call { false } else { true });
                                 } else
                                 {
-                                    return Some(true);
+                                    return Some(false);
                                 }
                             }
                         }
@@ -2473,6 +2497,7 @@ struct LambdaDefineInfo<'a>
     id: SymbolId,
     position: CodePosition,
     last_possibly_op: u32,
+    last_lookup_position: Option<CodePosition>,
     value: &'a Box<InterReprPos>
 }
 
@@ -3306,19 +3331,11 @@ impl Program
 
         if !interpret_state.eval_encountered
         {
-            loop
-            {
-                interpret_state.clear_lookups();
-                ir.mark_lookups(&mut interpret_state, &mut HashMap::new(), 0);
+            interpret_state.clear_lookups();
 
-                let mut removed_any = false;
-                ir.remove_unused_defines(&mut interpret_state, &mut removed_any);
+            ir.mark_lookups(&mut interpret_state, &mut HashMap::new(), &mut VecDeque::new(), 0, false);
 
-                if !removed_any
-                {
-                    break;
-                }
-            }
+            ir.remove_unused_defines(&mut interpret_state);
         }
 
         ir.parse_addresses(&interpret_state);

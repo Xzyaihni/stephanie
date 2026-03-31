@@ -2495,6 +2495,21 @@ mod tests
     }
 
     #[test]
+    fn confusing_recursion()
+    {
+        let code = "
+            (define (a x)
+                (if (> x 0)
+                    (lambda () (a (- x 1)))
+                    666))
+
+            ((((a 3))))
+        ";
+
+        simple_integer_test(code, 666);
+    }
+
+    #[test]
     fn nested_call_useless()
     {
         let code = "
