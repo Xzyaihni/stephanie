@@ -1171,7 +1171,7 @@ impl CompiledPart
 
 pub type InterReprPos = WithPosition<InterRepr>;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum LambdaParams
 {
     Variadic(WithPosition<SymbolId>),
@@ -1324,14 +1324,14 @@ impl LambdaParams
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum LookupStage
 {
     Processed{symbol: SymbolId, pos: CompileEnvPosition},
     Final{symbol: SymbolId, location: Option<LexicalAddress>}
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum InterRepr
 {
     Apply{op: Box<InterReprPos>, args: Vec<InterReprPos>},
@@ -1368,6 +1368,75 @@ impl InterReprPos
         Ok(memory.new_primitive_value(Ast::parse_primitive(text)?))
     }
 
+    fn compile_env_lookup_with<T>(
+        pos: &CompileEnvPosition,
+        mut try_at: impl FnMut(EnvPosition) -> Option<T>
+    ) -> Option<T>
+    {
+        for env_position in iter::once(pos.pos).chain(pos.indices.iter().copied().rev())
+        {
+            let result = try_at(env_position);
+
+            if result.is_some()
+            {
+                return result;
+            }
+        }
+
+        None
+    }
+
+    fn compile_env_lookup(
+        interpret_state: &mut InterpretState,
+        id: SymbolId,
+        pos: &CompileEnvPosition
+    ) -> Option<LispValue>
+    {
+        enum FoundResult
+        {
+            Value(LispValue),
+            Lookup
+        }
+
+        let found: Option<FoundResult> = Self::compile_env_lookup_with(pos, |EnvPosition{depth, lambda_index}|
+        {
+            let this_env = &mut interpret_state.compile_env[depth][lambda_index];
+
+            let found_position = this_env.iter().rposition(|(key, _)|
+            {
+                id == *key
+            });
+
+            found_position.map(|symbol_index|
+            {
+                let this_symbol = &mut this_env[symbol_index].1;
+
+                if let Some(value) = this_symbol.value
+                {
+                    return FoundResult::Value(value);
+                }
+
+                this_symbol.looked_up = true;
+
+                FoundResult::Lookup
+            })
+        });
+
+        let is_found = match found
+        {
+            None => false,
+            Some(FoundResult::Lookup) => true,
+            Some(FoundResult::Value(value)) => return Some(value)
+        };
+
+        if !is_found
+        {
+            interpret_state.outer_lookups.push(id);
+        }
+
+        None
+    }
+
     fn parse_lookup(
         interpret_state: &mut InterpretState,
         id: SymbolId
@@ -1375,42 +1444,13 @@ impl InterReprPos
     {
         let pos = interpret_state.current_env_position.clone();
 
-        let mut found = false;
-        for EnvPosition{
-            depth: env_depth,
-            lambda_index
-        } in iter::once(pos.pos).chain(pos.indices.iter().copied().rev())
+        Self::compile_env_lookup(interpret_state, id, &pos).map(|value|
         {
-            let this_env = &mut interpret_state.compile_env[env_depth][lambda_index];
-
-            let found_position = this_env.iter().rposition(|(key, _)|
-            {
-                id == *key
-            });
-
-            if let Some(symbol_index) = found_position
-            {
-                let this_symbol = &mut this_env[symbol_index].1;
-
-                if let Some(value) = this_symbol.value
-                {
-                    return InterRepr::Value(value);
-                }
-
-                this_symbol.looked_up = true;
-
-                found = true;
-
-                break;
-            }
-        }
-
-        if !found
+            InterRepr::Value(value)
+        }).unwrap_or_else(||
         {
-            interpret_state.outer_lookups.push(id);
-        }
-
-        InterRepr::Lookup(LookupStage::Processed{symbol: id, pos})
+            InterRepr::Lookup(LookupStage::Processed{symbol: id, pos})
+        })
     }
 
     fn parse(
@@ -1604,37 +1644,40 @@ impl InterReprPos
 
     fn remove_unused_defines(
         &mut self,
-        interpret_state: &mut InterpretState
+        interpret_state: &mut InterpretState,
+        removed_any: &mut bool
     ) -> bool
     {
         match &mut self.value
         {
             InterRepr::Apply{op, args} =>
             {
-                op.remove_unused_defines(interpret_state);
+                op.remove_unused_defines(interpret_state, removed_any);
 
                 args.iter_mut().for_each(|arg|
                 {
-                    arg.remove_unused_defines(interpret_state);
+                    arg.remove_unused_defines(interpret_state, removed_any);
                 });
             },
             InterRepr::Sequence(sequence) =>
             {
                 sequence.retain_mut(|value|
                 {
-                    let is_used = value.remove_unused_defines(interpret_state);
+                    let is_used = value.remove_unused_defines(interpret_state, removed_any);
 
                     is_used
                 });
             },
             InterRepr::If{check, then, else_body} =>
             {
-                check.remove_unused_defines(interpret_state);
-                then.remove_unused_defines(interpret_state);
-                else_body.remove_unused_defines(interpret_state);
+                check.remove_unused_defines(interpret_state, removed_any);
+                then.remove_unused_defines(interpret_state, removed_any);
+                else_body.remove_unused_defines(interpret_state, removed_any);
             },
             InterRepr::Define{name, position, body} =>
             {
+                body.remove_unused_defines(interpret_state, removed_any);
+
                 let p = position.position;
 
                 let result = interpret_state.compile_env[p.depth][p.lambda_index].iter().find_map(|(key, value)|
@@ -1685,15 +1728,14 @@ impl InterReprPos
                         }
                     }
 
+                    *removed_any = true;
+
                     return false;
-                } else
-                {
-                    body.remove_unused_defines(interpret_state);
                 }
             },
             InterRepr::Lambda{name: _, params: _, body} =>
             {
-                body.remove_unused_defines(interpret_state);
+                body.remove_unused_defines(interpret_state, removed_any);
             },
             InterRepr::Quoted(_) => (),
             InterRepr::Lookup(_) => (),
@@ -1701,6 +1743,116 @@ impl InterReprPos
         }
 
         true
+    }
+
+    fn mark_lookups<'a>(
+        &'a self,
+        interpret_state: &mut InterpretState,
+        lambda_defines: &mut HashMap<EnvPosition, Vec<LambdaDefineInfo<'a>>>,
+        possibly_op: u32
+    ) -> bool
+    {
+        match &self.value
+        {
+            InterRepr::Apply{op, args} =>
+            {
+                let op_skipped = op.mark_lookups(interpret_state, lambda_defines, possibly_op + 1);
+
+                args.iter().fold(op_skipped, |any_skipped, arg|
+                {
+                    let this_skipped = arg.mark_lookups(interpret_state, lambda_defines, possibly_op + 1);
+
+                    any_skipped || this_skipped
+                })
+            },
+            InterRepr::Sequence(sequence) =>
+            {
+                let last_index = sequence.len().saturating_sub(1);
+                sequence.iter().enumerate().fold(false, |any_skipped, (index, value)|
+                {
+                    let is_last = index == last_index;
+                    let this_skipped = value.mark_lookups(interpret_state, lambda_defines, if is_last { possibly_op } else { 0 });
+
+                    any_skipped || this_skipped
+                })
+            },
+            InterRepr::If{check, then, else_body} =>
+            {
+                let check_skipped = check.mark_lookups(interpret_state, lambda_defines, 0);
+                let then_skipped = then.mark_lookups(interpret_state, lambda_defines, possibly_op);
+                let else_skipped = else_body.mark_lookups(interpret_state, lambda_defines, possibly_op);
+
+                check_skipped || then_skipped || else_skipped
+            },
+            InterRepr::Define{name, position, body} =>
+            {
+                let p = position.position;
+
+                let this_info = || LambdaDefineInfo{id: *name, position: self.position, last_possibly_op: 0, value: body};
+                if let Some(these_lambdas) = lambda_defines.get_mut(&p)
+                {
+                    let defined_before = these_lambdas.iter().any(|x|
+                    {
+                        body.position == x.position
+                    });
+
+                    if !defined_before
+                    {
+                        these_lambdas.push(this_info());
+                    }
+                } else
+                {
+                    lambda_defines.insert(p, vec![this_info()]);
+                }
+
+                body.mark_lookups(interpret_state, lambda_defines, 0)
+            },
+            InterRepr::Lambda{name: _, params: _, body} =>
+            {
+                if possibly_op > 0
+                {
+                    body.mark_lookups(interpret_state, lambda_defines, possibly_op.saturating_sub(1))
+                } else
+                {
+                    true
+                }
+            },
+            InterRepr::Quoted(_) => false,
+            InterRepr::Lookup(LookupStage::Final{..}) => unreachable!(),
+            InterRepr::Lookup(LookupStage::Processed{symbol: id, pos}) =>
+            {
+                Self::compile_env_lookup(interpret_state, *id, pos);
+
+                if possibly_op > 0
+                {
+                    Self::compile_env_lookup_with(pos, |this_pos|
+                    {
+                        if let Some(these_lambdas) = &mut lambda_defines.get_mut(&this_pos)
+                        {
+                            if let Some(index) = these_lambdas.iter().rposition(|LambdaDefineInfo{id: key, ..}| *id == *key)
+                            {
+                                if possibly_op > these_lambdas[index].last_possibly_op
+                                {
+                                    these_lambdas[index].last_possibly_op = possibly_op;
+                                    these_lambdas[index].value.mark_lookups(interpret_state, lambda_defines, possibly_op);
+
+                                    return Some(false);
+                                } else
+                                {
+                                    return Some(true);
+                                }
+                            }
+                        }
+
+                        None
+                    }).unwrap_or(false)
+                } else
+                {
+                    true
+                }
+            },
+            InterRepr::Value(_) => false
+        }
     }
 
     fn parse_addresses(
@@ -2315,6 +2467,15 @@ impl InterRepr
     }
 }
 
+#[derive(Debug, Clone)]
+struct LambdaDefineInfo<'a>
+{
+    id: SymbolId,
+    position: CodePosition,
+    last_possibly_op: u32,
+    value: &'a Box<InterReprPos>
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct LexicalAddress
 {
@@ -2322,7 +2483,7 @@ pub struct LexicalAddress
     pub index: usize
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct EnvPosition
 {
     depth: usize,
@@ -2463,13 +2624,23 @@ pub struct CompileSymbolState
     value: Option<LispValue>
 }
 
+impl CompileSymbolState
+{
+    fn clear_lookups(&mut self)
+    {
+        self.looked_up = false;
+    }
+}
+
 pub struct InterpretState
 {
     eval_encountered: bool,
     outer_lookups: Vec<SymbolId>,
     current_env_position: CompileEnvPosition,
     compile_env: Vec<Vec<Vec<(SymbolId, CompileSymbolState)>>>,
-    load_handler: Option<(SymbolId, usize, Box<dyn Fn(&str) -> Option<String>>)>
+    load_handler: Option<(SymbolId, usize, Box<dyn Fn(&str) -> Option<String>>)>,
+    #[cfg(debug_assertions)]
+    defined_symbols: Option<super::Symbols>
 }
 
 impl Debug for InterpretState
@@ -2492,6 +2663,18 @@ impl InterpretState
             memory: Some(memory),
             state: self
         }
+    }
+
+    fn clear_lookups(&mut self)
+    {
+        self.outer_lookups.clear();
+        self.compile_env.iter_mut().for_each(|x|
+        {
+            x.iter_mut().for_each(|x|
+            {
+                x.iter_mut().for_each(|x| x.1.clear_lookups());
+            });
+        });
     }
 
     fn compile_env_add(&mut self, name: SymbolId, value: Option<LispValue>) -> usize
@@ -3105,7 +3288,9 @@ impl Program
             {
                 let load_symbol = memory.new_symbol_id("load");
                 (load_symbol, code.len(), x)
-            })
+            }),
+            #[cfg(debug_assertions)]
+            defined_symbols: None
         };
 
         let mut ir = InterReprPos::parse(
@@ -3114,9 +3299,26 @@ impl Program
             ast
         )?;
 
+        #[cfg(debug_assertions)]
+        {
+            interpret_state.defined_symbols = Some(memory.symbols());
+        }
+
         if !interpret_state.eval_encountered
         {
-            ir.remove_unused_defines(&mut interpret_state);
+            loop
+            {
+                interpret_state.clear_lookups();
+                ir.mark_lookups(&mut interpret_state, &mut HashMap::new(), 0);
+
+                let mut removed_any = false;
+                ir.remove_unused_defines(&mut interpret_state, &mut removed_any);
+
+                if !removed_any
+                {
+                    break;
+                }
+            }
         }
 
         ir.parse_addresses(&interpret_state);

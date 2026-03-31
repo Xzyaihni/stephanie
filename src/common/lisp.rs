@@ -989,6 +989,12 @@ impl LispMemory
         self.set_register(Register::Environment, env);
     }
 
+    #[cfg(debug_assertions)]
+    pub fn symbols(&self) -> Symbols
+    {
+        self.symbols.clone()
+    }
+
     pub fn iter_values(&self) -> impl Iterator<Item=LispValue> + '_
     {
         self.memory.iter_values()
@@ -2486,6 +2492,39 @@ mod tests
         let value = output.as_vector().unwrap();
 
         compare_integer_vec(value, vec![amount, amount, amount, amount, amount + 1]);
+    }
+
+    #[test]
+    fn nested_call_useless()
+    {
+        let code = "
+            (define (inner a) (+ a 10))
+
+            (define (outer) inner)
+
+            (define (mega-nest) outer)
+
+            (mega-nest)
+
+            (((mega-nest)) 1)
+        ";
+
+        simple_integer_test(code, 11);
+    }
+
+    #[test]
+    fn named_function_in_apply_arg()
+    {
+        let code = "
+            (define (caller a)
+                (a 5))
+
+            (define (z x) (* x 3))
+
+            (caller (lambda (value) (z (- value 4))))
+        ";
+
+        simple_integer_test(code, 3);
     }
 
     #[test]

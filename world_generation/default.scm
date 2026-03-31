@@ -3,6 +3,19 @@
 
 (define tile-id car)
 
+(define make-point cons)
+(define point-x car)
+(define point-y cdr)
+
+(define make-area cons)
+(define area-start car)
+(define area-size cdr)
+
+(define side-up 0)
+(define side-right 1)
+(define side-left 2)
+(define side-down 3)
+
 (define (single-marker x)
     (cons 'marker (cons x '())))
 
@@ -29,9 +42,6 @@
 (define (index-of point)
     (+ (* size-x (point-y point)) (point-x point)))
 
-(define make-point cons)
-(define point-x car)
-(define point-y cdr)
 (define (point-add a b) (make-point (+ (point-x a) (point-x b)) (+ (point-y a) (point-y b))))
 (define (point-sub a b) (point-add a (make-point (* (point-x b) -1) (* (point-y b) -1))))
 
@@ -43,9 +53,6 @@
         (remainder index width)
         (/ index width)))
 
-(define make-area cons)
-(define area-start car)
-(define area-size cdr)
 (define (area-end area) (point-add (area-start area) (point-sub (area-size area) (make-point 1 1))))
 (define (area-area area) (let ((size (area-size area))) (* (point-x size) (point-y size))))
 
@@ -75,11 +82,6 @@
         (make-point
             (random-integer-between (point-x start) (+ (point-x end) 1))
             (random-integer-between (point-y start) (+ (point-y end) 1)))))
-
-(define side-up 0)
-(define side-right 1)
-(define side-left 2)
-(define side-down 3)
 
 (define (side-combine a b)
     (cond
