@@ -337,7 +337,7 @@ impl ChunkGenerator
 
             primitives.add(
                 "chunk-at",
-                PrimitiveProcedureInfo::new_simple(1, Effect::Pure, move |mut args|
+                PrimitiveProcedureInfo::new_simple(1, Effect::Impure, move |mut args|
                 {
                     let world_chunk = {
                         let overmaps_world_chunks = overmaps_world_chunks.borrow();
@@ -368,7 +368,7 @@ impl ChunkGenerator
 
         primitives.add(
             "chunk-tags-at",
-            PrimitiveProcedureInfo::new_simple(1, Effect::Pure, move |mut args|
+            PrimitiveProcedureInfo::new_simple(1, Effect::Impure, move |mut args|
             {
                 let overmaps_world_chunks = overmaps_world_chunks.borrow();
 
