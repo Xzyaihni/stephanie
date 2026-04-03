@@ -534,7 +534,7 @@ mod tests
     use std::collections::HashMap;
 
     use crate::{
-        common::{TileMap, world::TileRotation},
+        common::{TileMap, tilemap::TileLoot, world::TileRotation},
         server::world::SERVER_OVERMAP_SIZE_Z
     };
 
@@ -580,7 +580,13 @@ mod tests
 
         let tiles = "info/tiles.json";
 
-        let tilemap = TileMap::parse(tiles, "textures/tiles/").unwrap().tilemap;
+        let tilemap = TileMap::parse(
+            TileLoot{
+                client: &mut Vec::new()
+            },
+            tiles,
+            "textures/tiles/"
+        ).unwrap().tilemap;
 
         let world_generator = Rc::new(RefCell::new(
             WorldGenerator::new(saver, Rc::new(tilemap), "world_generation/").unwrap()
@@ -626,7 +632,13 @@ mod tests
 
         let tiles = "info/tiles.json";
 
-        let tilemap = TileMap::parse(tiles, "textures/tiles/").unwrap().tilemap;
+        let tilemap = TileMap::parse(
+            TileLoot{
+                client: &mut Vec::new()
+            },
+            tiles,
+            "textures/tiles/"
+        ).unwrap().tilemap;
 
         let world_generator = Rc::new(RefCell::new(
             WorldGenerator::new(saver, Rc::new(tilemap), "world_generation_test/").unwrap()

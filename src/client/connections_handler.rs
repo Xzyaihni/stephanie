@@ -1,6 +1,5 @@
 use crate::common::{
-    MessageSerError,
-    MessageDeError,
+    MessageError,
     BufferSender,
     EntityPasser,
     MessagePasser,
@@ -25,12 +24,12 @@ impl ConnectionsHandler
         Self{message_buffer, message_passer}
     }
 
-    pub fn send_blocking(&mut self, message: &Message) -> Result<(), MessageSerError>
+    pub fn send_blocking(&mut self, message: &Message) -> Result<(), MessageError>
     {
         self.message_passer.send_one(message)
     }
 
-    pub fn receive_blocking(&mut self) -> Result<Option<Message>, MessageDeError>
+    pub fn receive_blocking(&mut self) -> Result<Option<Message>, MessageError>
     {
         self.message_passer.receive_one()
     }
@@ -56,7 +55,7 @@ impl EntityPasser for ConnectionsHandler
 
 impl BufferSender for ConnectionsHandler
 {
-    fn send_buffered(&mut self) -> Result<(), MessageSerError>
+    fn send_buffered(&mut self) -> Result<(), MessageError>
     {
         self.message_passer.send_many(self.message_buffer.buffered())?;
 

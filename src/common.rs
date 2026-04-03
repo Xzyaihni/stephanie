@@ -56,7 +56,7 @@ pub use utility::*;
 pub use sides::{Side1d, Side2d, Side3d};
 
 pub use drug::Drug;
-pub use loot::{Loot, LootState};
+pub use loot::{ClientLoot, ServerLoot};
 pub use item::{Item, ItemRarity, ItemBuff};
 pub use items_info::{ItemUsage, ItemInfo, ItemId, ItemTag, ItemsInfo, Ranged};
 pub use crafting::Crafts;
@@ -192,10 +192,8 @@ pub mod light;
 pub mod systems;
 
 
-pub type MessageSerError = bincode::error::EncodeError;
-pub type MessageDeError = bincode::error::DecodeError;
-
-pub const BINCODE_CONFIG: bincode::config::Configuration = bincode::config::standard();
+pub type MessageSerError = serde_bare::error::Error;
+pub type MessageDeError = MessageSerError;
 
 #[macro_export]
 macro_rules! get_time_this
@@ -585,6 +583,45 @@ pub trait EntitiesController
     fn container_mut(&mut self) -> &mut Self::Container;
 }
 
+
+pub type MessageError = MessageSerError;
+/*#[derive(Debug)]
+pub enum MessageError
+{
+    MessageSerError(MessageSerError),
+    Io(io::Error)
+}
+
+impl fmt::Display for MessageError
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
+    {
+        let s = match self
+        {
+            Self::MessageSerError(x) => x.to_string(),
+            Self::Io(x) => x.to_string()
+        };
+
+        write!(f, "{s}")
+    }
+}
+
+impl From<MessageSerError> for MessageError
+{
+    fn from(err: MessageSerError) -> Self
+    {
+        MessageError::MessageSerError(err)
+    }
+}
+
+impl From<io::Error> for MessageError
+{
+    fn from(err: io::Error) -> Self
+    {
+        MessageError::Io(err)
+    }
+}*/
+
 #[derive(Debug)]
 pub struct MessagePasser
 {
@@ -598,29 +635,27 @@ impl MessagePasser
         Self{stream}
     }
 
-    pub fn send_one(&mut self, message: &Message) -> Result<(), MessageSerError>
+    pub fn send_one(&mut self, message: &Message) -> Result<(), MessageError>
     {
         self.send_many(&vec![message.clone()])
     }
 
-    pub fn send_many(&mut self, messages: &Vec<Message>) -> Result<(), MessageSerError>
+    pub fn send_many(&mut self, messages: &Vec<Message>) -> Result<(), MessageError>
     {
         if messages.is_empty()
         {
             return Ok(());
         }
 
-        bincode::serde::encode_into_std_write(messages, &mut self.stream, BINCODE_CONFIG)?;
-
-        Ok(())
+        serde_bare::to_writer(&mut self.stream, messages)
     }
 
-    pub fn receive(&mut self) -> Result<Vec<Message>, MessageDeError>
+    pub fn receive(&mut self) -> Result<Vec<Message>, MessageError>
     {
-        bincode::serde::decode_from_std_read(&mut self.stream, BINCODE_CONFIG)
+        serde_bare::from_reader(&mut self.stream)
     }
 
-    pub fn receive_one(&mut self) -> Result<Option<Message>, MessageDeError>
+    pub fn receive_one(&mut self) -> Result<Option<Message>, MessageError>
     {
         self.receive().map(|messages|
         {

@@ -3,7 +3,9 @@
         "name": "crate",
         "symmetry": "Both",
         "container": true,
-        "health": 10.0
+        "health": 10.0,
+        "on_contents": "(standard-drops trash)",
+        "on_destroy": "(points-drops '((short_stick 2) (stick 2) (plank 3)) 4)"
     },
     {
         "name": "wood table",
@@ -27,7 +29,8 @@
         "symmetry": "Horizontal",
         "container": true,
         "colliding": false,
-        "health": 30.0
+        "health": 30.0,
+        "on_contents": "'(heal_pills)"
     },
     {
         "name": "sink",

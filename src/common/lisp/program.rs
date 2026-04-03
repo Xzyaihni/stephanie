@@ -1324,6 +1324,19 @@ impl LambdaParams
     }
 }
 
+type MarkStackFunc<'a> = Box<dyn FnOnce(
+    &mut Vec<MarkStackEntry<'a>>,
+    &mut InterpretState,
+    &mut HashMap<EnvPosition, Vec<LambdaDefineInfo<'a>>>,
+    &mut VecDeque<(u32, &'a InterReprPos)>,
+    bool
+) -> Option<bool> + 'a>;
+
+struct MarkStackEntry<'a>
+{
+    func: MarkStackFunc<'a>
+}
+
 #[derive(Debug, Clone)]
 pub enum LookupStage
 {
@@ -1744,138 +1757,207 @@ impl InterReprPos
 
     fn mark_lookups<'a>(
         &'a self,
-        interpret_state: &mut InterpretState,
-        lambda_defines: &mut HashMap<EnvPosition, Vec<LambdaDefineInfo<'a>>>,
-        explore_queue: &mut VecDeque<(u32, &'a Self)>,
-        possibly_op: u32,
-        args_skipped: bool
-    ) -> bool
+        call_stack: &mut Vec<MarkStackEntry<'a>>,
+        combine_any_skipped: bool
+    ) -> Option<bool>
     {
         match &self.value
         {
             InterRepr::Apply{op, args} =>
             {
-                let mut this_explore_queue = VecDeque::new();
-
-                let args_skipped = args.iter().fold(false, |any_skipped, arg|
-                {
-                    let this_skipped = arg.mark_lookups(interpret_state, lambda_defines, &mut this_explore_queue, possibly_op + 1, false);
-
-                    any_skipped || this_skipped
-                });
-
-                let op_skipped = op.mark_lookups(interpret_state, lambda_defines, &mut this_explore_queue, possibly_op + 1, args_skipped);
-
-                let any_skipped = op_skipped || args_skipped;
-
-                if any_skipped
-                {
-                    while let Some((this_possibly_op, this_next)) = this_explore_queue.pop_front()
+                call_stack.push(MarkStackEntry{
+                    func: Box::new(move |call_stack, _interpret_state, _lambda_defines, explore_queue, previous_skipped|
                     {
-                        this_next.mark_lookups(interpret_state, lambda_defines, &mut this_explore_queue, this_possibly_op, false);
-                    }
-                }
-
-                any_skipped
-            },
-            InterRepr::Sequence(sequence) =>
-            {
-                let last_index = sequence.len().saturating_sub(1);
-                sequence.iter().enumerate().fold(false, |any_skipped, (index, value)|
-                {
-                    let is_last = index == last_index;
-                    let this_skipped = value.mark_lookups(
-                        interpret_state,
-                        lambda_defines,
-                        explore_queue,
-                        if is_last { possibly_op } else { 0 },
-                        if is_last { args_skipped } else { false }
-                    );
-
-                    any_skipped || this_skipped
-                })
-            },
-            InterRepr::If{check, then, else_body} =>
-            {
-                let check_skipped = check.mark_lookups(interpret_state, lambda_defines, explore_queue, 0, false);
-                let then_skipped = then.mark_lookups(interpret_state, lambda_defines, explore_queue, possibly_op, args_skipped);
-                let else_skipped = else_body.mark_lookups(interpret_state, lambda_defines, explore_queue, possibly_op, args_skipped);
-
-                check_skipped || then_skipped || else_skipped
-            },
-            InterRepr::Define{name, position, body} =>
-            {
-                let p = position.position;
-
-                let this_info = || LambdaDefineInfo{id: *name, position: self.position, last_possibly_op: 0, last_lookup_position: None, value: body};
-                if let Some(these_lambdas) = lambda_defines.get_mut(&p)
-                {
-                    let defined_before = these_lambdas.iter().any(|x|
-                    {
-                        body.position == x.position
-                    });
-
-                    if !defined_before
-                    {
-                        these_lambdas.push(this_info());
-                    }
-                } else
-                {
-                    lambda_defines.insert(p, vec![this_info()]);
-                }
-
-                body.mark_lookups(interpret_state, lambda_defines, explore_queue, 0, false)
-            },
-            InterRepr::Lambda{name: _, params: _, body} =>
-            {
-                if possibly_op > 0
-                {
-                    body.mark_lookups(interpret_state, lambda_defines, explore_queue, possibly_op.saturating_sub(1), args_skipped)
-                } else
-                {
-                    true
-                }
-            },
-            InterRepr::Quoted(_) => false,
-            InterRepr::Lookup(LookupStage::Final{..}) => unreachable!(),
-            InterRepr::Lookup(LookupStage::Processed{symbol: id, pos}) =>
-            {
-                Self::compile_env_lookup(interpret_state, *id, pos);
-
-                if possibly_op > 0
-                {
-                    Self::compile_env_lookup_with(pos, |this_pos|
-                    {
-                        if let Some(these_lambdas) = &mut lambda_defines.get_mut(&this_pos)
+                        if previous_skipped
                         {
-                            if let Some(index) = these_lambdas.iter().rposition(|LambdaDefineInfo{id: key, ..}| *id == *key)
+                            while let Some((this_possibly_op, this_next)) = explore_queue.pop_front()
                             {
-                                let last_possibly_op = these_lambdas[index].last_possibly_op;
-                                if possibly_op > last_possibly_op
-                                {
-                                    let same_call = these_lambdas[index].last_lookup_position == Some(self.position);
-
-                                    these_lambdas[index].last_lookup_position = Some(self.position);
-                                    these_lambdas[index].last_possibly_op = possibly_op;
-
-                                    explore_queue.push_back((possibly_op, these_lambdas[index].value));
-
-                                    return Some(if !args_skipped && same_call { false } else { true });
-                                } else
-                                {
-                                    return Some(false);
-                                }
+                                this_next.mark_lookups(call_stack, false/*interpret_state, lambda_defines, explore_queue, this_possibly_op, false*/);
                             }
                         }
 
+                        Some(previous_skipped)
+                    })
+                });
+
+                call_stack.push(MarkStackEntry{
+                    func: Box::new(move |call_stack, _interpret_state, _lambda_defines, _explore_queue, previous_skipped|
+                    {
+                        op.mark_lookups(call_stack, previous_skipped/*interpret_state, lambda_defines, &mut this_explore_queue, possibly_op + 1, args_skipped*/)
+                    })
+                });
+
+                call_stack.push(MarkStackEntry{
+                    func: Box::new(move |call_stack, _interpret_state, _lambda_defines, explore_queue, _|
+                    {
+                        let get_rid_of_this = ();
+                        let previous = explore_queue.clone();
+                        *explore_queue = VecDeque::new();
+
+                        call_stack.extend(args.iter().enumerate().rev().map(|(index, arg)|
+                        {
+                            MarkStackEntry{
+                                func: Box::new(move |call_stack, _interpret_state, _lambda_defines, _explore_queue, previous_skipped|
+                                {
+                                    let is_combine_any_needed = (); // combine_any_skipped
+                                    arg.mark_lookups(call_stack, if index == 0 { false } else { previous_skipped }/*&mut this_explore_queue*//*, possibly_op + 1, false*/)
+                                })
+                            }
+                        }));
+
+                        *explore_queue = previous;
+
                         None
-                    }).unwrap_or(false)
+                    })
+                });
+
+                None
+            },
+            InterRepr::Sequence(sequence) =>
+            {
+                let len = sequence.len();
+                call_stack.extend(sequence.iter().rev().enumerate().map(|(index, value)|
+                {
+                    let is_last = index == 0;
+                    let is_first = (index + 1) == len;
+
+                    MarkStackEntry{
+                        func: Box::new(move |call_stack, _interpret_state, _lambda_defines, _explore_queue, previous_skipped|
+                        {
+                                /*explore_queue,
+                                if is_last { possibly_op } else { 0 },
+                                if is_last { args_skipped } else { false }*/
+                            let is_combine_any_needed = (); // combine_any_skipped
+                            value.mark_lookups(call_stack, if is_first { false } else { previous_skipped })
+                        })
+                    }
+                }));
+
+                None
+            },
+            InterRepr::If{check, then, else_body} =>
+            {
+                call_stack.push(MarkStackEntry{
+                    func: Box::new(move |call_stack, _interpret_state, _lambda_defines, _explore_queue, then_skipped|
+                    {
+                        else_body.mark_lookups(call_stack, then_skipped/*, possibly_op, args_skipped*/)
+                    })
+                });
+
+                call_stack.push(MarkStackEntry{
+                    func: Box::new(move |call_stack, _interpret_state, _lambda_defines, _explore_queue, check_skipped|
+                    {
+                        then.mark_lookups(call_stack, check_skipped/*, possibly_op, args_skipped*/)
+                    })
+                });
+
+                call_stack.push(MarkStackEntry{
+                    func: Box::new(move |call_stack, _interpret_state, _lambda_defines, _explore_queue, _previous_skipped|
+                    {
+                        check.mark_lookups(call_stack, combine_any_skipped/*, 0, false*/)
+                    })
+                });
+
+                None
+            },
+            InterRepr::Define{name, position, body} =>
+            {
+                call_stack.push(MarkStackEntry{
+                    func: Box::new(move |call_stack, _interpret_state, lambda_defines, _explore_queue, _previous_skipped|
+                    {
+                        let p = position.position;
+
+                        let this_info = || LambdaDefineInfo{id: *name, position: self.position, last_possibly_op: 0, last_lookup_position: None, value: body};
+                        if let Some(these_lambdas) = lambda_defines.get_mut(&p)
+                        {
+                            let defined_before = these_lambdas.iter().any(|x|
+                            {
+                                body.position == x.position
+                            });
+
+                            if !defined_before
+                            {
+                                these_lambdas.push(this_info());
+                            }
+                        } else
+                        {
+                            lambda_defines.insert(p, vec![this_info()]);
+                        }
+
+                        body.mark_lookups(call_stack, false/*interpret_state, lambda_defines, explore_queue, 0, false*/)
+                    })
+                });
+
+                None
+            },
+            InterRepr::Lambda{name: _, params: _, body} =>
+            {
+                let do_the_check = ();
+                if true// possibly_op > 0
+                {
+                    call_stack.push(MarkStackEntry{
+                        func: Box::new(move |call_stack, _interpret_state, _lambda_defines, _explore_queue, _previous_skipped|
+                        {
+                            body.mark_lookups(call_stack, false/*interpret_state, lambda_defines, explore_queue, possibly_op.saturating_sub(1), args_skipped*/)
+                        })
+                    });
+
+                    None
                 } else
                 {
-                    true
+                    Some(true)
                 }
             },
-            InterRepr::Value(_) => false
+            InterRepr::Quoted(_) => Some(combine_any_skipped),
+            InterRepr::Lookup(LookupStage::Final{..}) => unreachable!(),
+            InterRepr::Lookup(LookupStage::Processed{symbol: id, pos}) =>
+            {
+                call_stack.push(MarkStackEntry{
+                    func: Box::new(move |_call_stack, interpret_state, lambda_defines, explore_queue, _previous_skipped|
+                    {
+                        Self::compile_env_lookup(interpret_state, *id, pos);
+
+                        let do_check = ();
+                        if true//possibly_op > 0
+                        {
+                            Some(Self::compile_env_lookup_with(pos, |this_pos|
+                            {
+                                if let Some(these_lambdas) = &mut lambda_defines.get_mut(&this_pos)
+                                {
+                                    if let Some(index) = these_lambdas.iter().rposition(|LambdaDefineInfo{id: key, ..}| *id == *key)
+                                    {
+                                        let args_skipped = false; let fix_me = ();
+                                        let possibly_op = 100; let fix_me = ();
+                                        let last_possibly_op = these_lambdas[index].last_possibly_op;
+                                        if possibly_op > last_possibly_op
+                                        {
+                                            let same_call = these_lambdas[index].last_lookup_position == Some(self.position);
+
+                                            these_lambdas[index].last_lookup_position = Some(self.position);
+                                            these_lambdas[index].last_possibly_op = possibly_op;
+
+                                            explore_queue.push_back((possibly_op, these_lambdas[index].value));
+
+                                            return Some(if !args_skipped && same_call { false } else { true });
+                                        } else
+                                        {
+                                            return Some(false);
+                                        }
+                                    }
+                                }
+
+                                None
+                            }).unwrap_or(false))
+                        } else
+                        {
+                            Some(true)
+                        }
+                    })
+                });
+
+                None
+            },
+            InterRepr::Value(_) => Some(combine_any_skipped)
         }
     }
 
@@ -3333,7 +3415,30 @@ impl Program
         {
             interpret_state.clear_lookups();
 
-            ir.mark_lookups(&mut interpret_state, &mut HashMap::new(), &mut VecDeque::new(), 0, false);
+            {
+                let mut call_stack = Vec::new();
+
+                let mut lambda_defines = HashMap::new();
+                let mut explore_queue = VecDeque::new();
+
+                // &mut interpret_state, &mut lambda_defines, &mut explore_queue, 0, false
+                /*
+                possibly_op: u32,
+                args_skipped: bool*/
+
+                let mut last_any_skipped = ir.mark_lookups(&mut call_stack, false);
+
+                while let Some(next_call) = call_stack.pop()
+                {
+                    last_any_skipped = (next_call.func)(
+                        &mut call_stack,
+                        &mut interpret_state,
+                        &mut lambda_defines,
+                        &mut explore_queue,
+                        last_any_skipped.unwrap_or(false)
+                    );
+                }
+            }
 
             ir.remove_unused_defines(&mut interpret_state);
         }

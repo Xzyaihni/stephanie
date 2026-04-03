@@ -32,7 +32,7 @@
 
 (define (either a b) (if (random-bool) a b))
 
-(define (trash) '(rock bottle short_stick stick branch duct_tape))
+(define trash '(rock bottle short_stick stick branch duct_tape))
 
 (define (standard-drops items)
     (maybe-multiple (lambda () (any-of items)) (drop-rate 1 3) 3))
@@ -66,7 +66,7 @@
     (cond
         ((eq? state 'create) (if ((drop-rate 1 6))
                 '(lamp)
-                (standard-drops '(bottle duct_tape heal_pills))))
+                (standard-drops (cons 'heal_pills trash))))
         ((eq? state 'equip) '())))
 
 (define (runner)
@@ -89,30 +89,6 @@
     (cond
         ((eq? state 'create) '(heal_pills))
         ((eq? state 'equip) '())))
-
-(define (crate)
-    (cond
-        ((eq? state 'create) (standard-drops (trash)))
-        ((eq? state 'destroy) (points-drops '((short_stick 2) (stick 2) (plank 3)) 4))))
-
-(define (sink)
-    (cond
-        ((eq? state 'create) '(bottle))
-        ((eq? state 'destroy) (points-drops '((short_stick 1) (pipe 2) (ceramic_shard 2) (plank 3)) 4))))
-
-(define (cabinet)
-    (cond
-        ((eq? state 'create) '(heal_pills))
-        ((eq? state 'destroy) (standard-drops '(metal_shard glass_shard)))))
-
-(define (safe)
-    (cond
-        ((eq? state 'create)
-            (and-maybe
-                (append '(bullet bullet) (maybe-multiple (lambda () 'bullet) (drop-rate 1 3) 3))
-                (drop-rate 1 3)
-                'glock))
-        ((eq? state 'destroy) (standard-drops '(metal_shard)))))
 
 (define (wood_chair) (points-drops '((short_stick 1) (stick 2) (plank 3)) 3))
 (define (wood_table) (points-drops '((stick 2) (plank 3)) 6))

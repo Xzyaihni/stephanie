@@ -1,5 +1,6 @@
 use std::{
     f32,
+    borrow::Cow,
     ops::ControlFlow,
     cell::RefCell
 };
@@ -21,6 +22,7 @@ use crate::{
         random_rotation,
         angle_to_direction_3d,
         aabb_bounds,
+        loot,
         damage::*,
         damaging::*,
         character::*,
@@ -34,8 +36,7 @@ use crate::{
         systems::{raycast_system, collider_system, player_system},
         ENTITY_SCALE,
         SCREENSHAKE_DISTANCE,
-        Loot,
-        LootState,
+        ClientLoot,
         SpatialGrid,
         EntityInfo,
         Transform,
@@ -56,7 +57,7 @@ const HIGHLIGHT_DURATION: f32 = 0.2;
 fn damage_common_health(
     entities: &ClientEntities,
     textures: &CommonTextures,
-    loot: &Loot,
+    loot: &ClientLoot,
     do_screenshake: impl FnOnce(f32),
     entity: Entity,
     damage: f32
@@ -88,7 +89,7 @@ fn damage_common_health(
 pub fn fall_damage(
     entities: &ClientEntities,
     textures: &CommonTextures,
-    loot: &Loot,
+    loot: &ClientLoot,
     entity: Entity,
     damage: f32
 )
@@ -149,7 +150,7 @@ pub fn damager<'a, 'b, 'c>(
     world: &'b mut World,
     space: &'a SpatialGrid,
     entities: &'a ClientEntities,
-    loot: &'a Loot,
+    loot: &'a ClientLoot,
     passer: &'c mut ConnectionsHandler,
     textures: &'a CommonTextures
 ) -> impl FnMut(DamagingResult) + use<'a, 'b, 'c>
@@ -329,10 +330,7 @@ pub fn damager<'a, 'b, 'c>(
                 {
                     let previous_tile = *tile;
                     let tilemap = world.tilemap();
-                    tile.damage(tilemap, damage.data).then(||
-                    {
-                        tilemap.info(previous_tile).name.clone()
-                    })
+                    tile.damage(tilemap, damage.data).then_some(previous_tile)
                 }).unwrap_or_default();
 
                 let transform = Transform{
@@ -346,7 +344,7 @@ pub fn damager<'a, 'b, 'c>(
                     player.screenshake.set(WEAK_SCREENSHAKE);
                 }
 
-                if let Some(name) = destroyed
+                if let Some(tile_id) = destroyed
                 {
                     player_system::players_near(entities, tile_pos.entity_position(), SCREENSHAKE_DISTANCE).for_each(|(_, player)|
                     {
@@ -354,7 +352,10 @@ pub fn damager<'a, 'b, 'c>(
                     });
 
                     destroy_tile_dependent(entities, textures, space, loot, tile_pos);
-                    spawn_items(entities, textures, loot, &transform, &name);
+                    spawn_items(entities, textures, &transform, &loot.tile_generator(tile_id).on_destroy, ||
+                    {
+                        world.tilemap()[tile_id].name.clone().into()
+                    });
                 }
 
                 create_particles(
@@ -650,7 +651,7 @@ pub fn update(
     entities: &mut ClientEntities,
     space: &SpatialGrid,
     world: &mut World,
-    loot: &Loot,
+    loot: &ClientLoot,
     passer: &mut ConnectionsHandler,
     textures: &CommonTextures
 )
@@ -808,15 +809,21 @@ pub fn spawn_item(entities: &ClientEntities, textures: &CommonTextures, transfor
     entities.add_watcher(entity, item_disappear_watcher(textures));
 }
 
-fn spawn_items(entities: &ClientEntities, textures: &CommonTextures, loot: &Loot, transform: &Transform, name: &str)
+fn spawn_items<'a>(
+    entities: &ClientEntities,
+    textures: &CommonTextures,
+    transform: &Transform,
+    loot: &loot::Generator,
+    name: impl Fn() -> Cow<'a, str>
+)
 {
-    loot.create(LootState::Destroy, name).into_iter().for_each(|item|
+    loot.create(&entities.infos().items_info, name).into_iter().for_each(|item|
     {
         spawn_item(entities, textures, transform, &item)
     });
 }
 
-fn destroy_entity(entities: &ClientEntities, textures: &CommonTextures, loot: &Loot, entity: Entity)
+fn destroy_entity(entities: &ClientEntities, textures: &CommonTextures, loot: &ClientLoot, entity: Entity)
 {
     entities.remove_deferred(entity);
 
@@ -830,16 +837,28 @@ fn destroy_entity(entities: &ClientEntities, textures: &CommonTextures, loot: &L
         });
     }
 
-    let name = some_or_return!(entities.named(entity));
+    let generator = if let Some(furniture_id) = entities.furniture(entity)
+    {
+        &loot.furniture_generator(*furniture_id).on_destroy
+    } else
+    {
+        return;
+    };
 
-    spawn_items(entities, textures, loot, &transform, &name);
+    spawn_items(
+        entities,
+        textures,
+        &transform,
+        generator,
+        || entities.named(entity).map(|x| x.clone().into()).unwrap_or_else(|| "entity loot".into())
+    );
 }
 
 fn destroy_tile_dependent(
     entities: &ClientEntities,
     textures: &CommonTextures,
     space: &SpatialGrid,
-    loot: &Loot,
+    loot: &ClientLoot,
     tile_pos: TilePos
 )
 {
@@ -990,7 +1009,7 @@ fn turn_towards_other(
 pub fn damage_entity(
     entities: &ClientEntities,
     textures: &CommonTextures,
-    loot: &Loot,
+    loot: &ClientLoot,
     entity: Entity,
     other_entity: Entity,
     damage: Damage

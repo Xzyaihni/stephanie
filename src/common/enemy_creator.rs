@@ -10,8 +10,7 @@ use crate::common::{
     render_info::*,
     physics::*,
     ENTITY_SCALE,
-    Loot,
-    LootState,
+    ServerLoot,
     Inventory,
     Anatomy,
     HumanAnatomy,
@@ -34,7 +33,7 @@ pub fn create(
     enemies_info: &EnemiesInfo,
     characters_info: &CharactersInfo,
     items_info: &ItemsInfo,
-    loot: &Loot,
+    loot: &ServerLoot,
     id: EnemyId,
     pos: Vector3<f32>
 ) -> EntityInfo
@@ -46,25 +45,32 @@ pub fn create(
     let anatomy = Anatomy::Human(HumanAnatomy::new(info.anatomy.clone()));
 
     let mut inventory = Inventory::new(BASE_INVENTORY_LIMIT);
-    loot.create(LootState::Create, &name).into_iter().for_each(|item| { inventory.push(items_info, item); });
-
     let mut character = Character::new(info.character, Faction::Zob);
-    loot.create(LootState::Equip, &name).into_iter().for_each(|item|
+
     {
-        let item_info = items_info.get(item.id);
+        let loot = loot.enemy_generator(id);
 
-        if let Some(clothing) = item_info.clothing.as_ref()
+        loot.on_contents.create(items_info, || { let s: &str = name.as_ref(); s.into() })
+            .into_iter()
+            .for_each(|item| { inventory.push(items_info, item); });
+
+        loot.on_equip.create(items_info, || { let s: &str = name.as_ref(); s.into() }).into_iter().for_each(|item|
         {
-            let slot = clothing.slot;
+            let item_info = items_info.get(item.id);
 
-            let id = inventory.push(items_info, item);
+            if let Some(clothing) = item_info.clothing.as_ref()
+            {
+                let slot = clothing.slot;
 
-            character.set_equip(slot, Some(id));
-        } else
-        {
-            eprintln!("cant equip {}", item_info.name);
-        }
-    });
+                let id = inventory.push(items_info, item);
+
+                character.set_equip(slot, Some(id));
+            } else
+            {
+                eprintln!("cant equip {}", item_info.name);
+            }
+        });
+    }
 
     let scale = characters_info.get(info.character).normal.scale;
 

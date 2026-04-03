@@ -15,6 +15,7 @@ use crate::common::{
     generic_info::*,
     characters_info::*,
     ItemsInfo,
+    loot::EnemyLootInfo,
     anatomy::HumanAnatomyInfo,
     enemy::EnemyBehavior
 };
@@ -33,7 +34,9 @@ struct EnemyInfoRaw
     lying_face_offset: Option<Vector2<i8>>,
     behavior: Option<EnemyBehavior>,
     body: Option<String>,
-    hand: Option<String>
+    hand: Option<String>,
+    on_contents: Option<String>,
+    on_equip: Option<String>
 }
 
 type EnemiesInfoRaw = Vec<EnemyInfoRaw>;
@@ -59,6 +62,7 @@ impl GenericItem for EnemyInfo
 impl EnemyInfo
 {
     fn from_raw(
+        loot: EnemyLoot,
         assets: &Assets,
         characters_info: &mut CharactersInfo,
         items_info: &ItemsInfo,
@@ -101,6 +105,11 @@ impl EnemyInfo
             lying: body_part("lying")
         });
 
+        loot.server.push(EnemyLootInfo{
+            on_contents: raw.on_contents,
+            on_equip: raw.on_equip
+        });
+
         Self{
             name: raw.name,
             anatomy: raw.anatomy,
@@ -112,6 +121,11 @@ impl EnemyInfo
 
 pub type EnemiesInfo = GenericInfo<EnemyId, EnemyInfo>;
 
+pub struct EnemyLoot<'a>
+{
+    pub server: &'a mut Vec<EnemyLootInfo<Option<String>>>
+}
+
 impl EnemiesInfo
 {
     pub fn empty() -> Self
@@ -120,6 +134,7 @@ impl EnemiesInfo
     }
 
     pub fn parse(
+        loot: EnemyLoot,
         assets: &Assets,
         characters_info: &mut CharactersInfo,
         items_info: &ItemsInfo,
@@ -133,7 +148,16 @@ impl EnemiesInfo
 
         let enemies: Vec<_> = enemies.into_iter().map(|info_raw|
         {
-            EnemyInfo::from_raw(assets, characters_info, items_info, &textures_root, info_raw)
+            EnemyInfo::from_raw(
+                EnemyLoot{
+                    server: loot.server
+                },
+                assets,
+                characters_info,
+                items_info,
+                &textures_root,
+                info_raw
+            )
         }).collect();
 
         GenericInfo::new(enemies)

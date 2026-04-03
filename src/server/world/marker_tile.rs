@@ -17,7 +17,7 @@ use crate::{
         rotate_point_z_3d,
         collider::*,
         door::*,
-        Loot,
+        ServerLoot,
         EntityInfo,
         Light,
         lisp::{self, *},
@@ -63,7 +63,7 @@ impl MarkerTile
                 ..
             }
         }: CreateInfos,
-        loot: &Loot,
+        loot: &ServerLoot,
         chunk_pos: Pos3<f32>
     ) -> Option<EntityInfo>
     {

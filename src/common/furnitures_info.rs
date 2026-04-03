@@ -10,6 +10,7 @@ use yanyaengine::Assets;
 use crate::common::{
     with_error,
     some_or_value,
+    loot::{loot_compile, ServerFurnitureLootInfo, ClientFurnitureLootInfo},
     generic_info::*,
     render_info::ZLevel,
     world::DirectionsGroup
@@ -28,7 +29,9 @@ struct FurnitureInfoRaw
     symmetry: Option<Symmetry>,
     hitbox: Option<f32>,
     hardness: Option<f32>,
-    health: Option<f32>
+    health: Option<f32>,
+    on_contents: Option<String>,
+    on_destroy: Option<String>
 }
 
 type FurnituresInfoRaw = Vec<FurnitureInfoRaw>;
@@ -59,6 +62,7 @@ impl GenericItem for FurnitureInfo
 impl FurnitureInfo
 {
     fn from_raw(
+        loot: FurnitureLoot,
         assets: &Assets,
         textures_root: &Path,
         raw: FurnitureInfoRaw
@@ -114,6 +118,14 @@ impl FurnitureInfo
             Symmetry::All => DirectionsGroup::repeat(t(""))
         };
 
+        loot.server.push(ServerFurnitureLootInfo{
+            on_contents: raw.on_contents
+        });
+
+        loot.client.push(ClientFurnitureLootInfo{
+            on_destroy: raw.on_destroy.map(|s| loot_compile(&s)).unwrap_or_default()
+        });
+
         Self{
             name: raw.name,
             z: raw.z.unwrap_or(ZLevel::Hips),
@@ -130,6 +142,12 @@ impl FurnitureInfo
 
 pub type FurnituresInfo = GenericInfo<FurnitureId, FurnitureInfo>;
 
+pub struct FurnitureLoot<'a, 'b>
+{
+    pub server: &'a mut Vec<ServerFurnitureLootInfo<Option<String>>>,
+    pub client: &'b mut Vec<ClientFurnitureLootInfo>
+}
+
 impl FurnituresInfo
 {
     pub fn empty() -> Self
@@ -138,6 +156,7 @@ impl FurnituresInfo
     }
 
     pub fn parse(
+        loot: FurnitureLoot,
         assets: &Assets,
         textures_root: PathBuf,
         info: PathBuf
@@ -149,7 +168,15 @@ impl FurnituresInfo
 
         let furnitures: Vec<_> = furnitures.into_iter().map(|info_raw|
         {
-            FurnitureInfo::from_raw(assets, &textures_root, info_raw)
+            FurnitureInfo::from_raw(
+                FurnitureLoot{
+                    server: loot.server,
+                    client: loot.client
+                },
+                assets,
+                &textures_root,
+                info_raw
+            )
         }).collect();
 
         GenericInfo::new(furnitures)

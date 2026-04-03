@@ -57,6 +57,10 @@ use crate::{
         FurnituresInfo,
         CharactersInfo,
         Crafts,
+        loot::*,
+        tilemap::TileLoot,
+        furnitures_info::FurnitureLoot,
+        enemies_info::EnemyLoot,
         items_info::TextureCreator,
         door::{door_scale, door_texture, DoorMaterial},
         sender_loop::{waiting_loop, DELTA_TIME}
@@ -324,6 +328,7 @@ pub struct App
     scene: Scene,
     data_infos: DataInfos,
     tilemap: TileMapWithTextures,
+    server_loot_info: ServerLootInfo,
     exit: bool,
     server_handle: Option<JoinHandle<()>>,
     slow_mode: <SlowMode as SlowModeTrait>::State
@@ -369,7 +374,12 @@ impl YanyaApp for App
 
         let mut characters_info = CharactersInfo::new();
 
+        let mut server_enemy_loot_info = Vec::new();
+
         let enemies_info = EnemiesInfo::parse(
+            EnemyLoot{
+                server: &mut server_enemy_loot_info
+            },
             &partial_info.object_info.assets.lock(),
             &mut characters_info,
             &items_info,
@@ -382,11 +392,23 @@ impl YanyaApp for App
             panic!("enemy named `me` is required, cant get player character id")
         })).character;
 
+        let mut server_furniture_loot_info = Vec::new();
+        let mut client_furniture_loot_info = Vec::new();
+
         let furnitures_info = FurnituresInfo::parse(
+            FurnitureLoot{
+                server: &mut server_furniture_loot_info,
+                client: &mut client_furniture_loot_info
+            },
             &partial_info.object_info.assets.lock(),
             "furniture".into(),
             "info/furnitures.json".into()
         );
+
+        let server_loot_info = ServerLootInfo{
+            furniture: server_furniture_loot_info,
+            enemy: server_enemy_loot_info
+        };
 
         let crafts = Crafts::parse(&items_info, "info/crafts.json".into());
 
@@ -399,7 +421,21 @@ impl YanyaApp for App
             player_character
         };
 
-        let tilemap = TileMap::parse("info/tiles.json", "textures/tiles/").unwrap();
+        let mut tile_loot_info = Vec::new();
+
+        let tilemap = TileMap::parse(
+            TileLoot{
+                client: &mut tile_loot_info
+            },
+            "info/tiles.json",
+            "textures/tiles/"
+        ).unwrap();
+
+        let client_loot = ClientLoot{
+            furniture: client_furniture_loot_info,
+            tile: tile_loot_info,
+            empty: TileLootInfo::default()
+        };
 
         let sliced_textures = {
             let mut assets = partial_info.object_info.assets.lock();
@@ -436,7 +472,8 @@ impl YanyaApp for App
             app_info,
             sliced_textures,
             tilemap: tilemap.clone(),
-            data_infos: data_infos.clone()
+            data_infos: data_infos.clone(),
+            loot: client_loot
         };
 
         DebugConfig::on_start();
@@ -454,6 +491,7 @@ impl YanyaApp for App
             scene,
             data_infos,
             tilemap,
+            server_loot_info,
             exit: false,
             server_handle: None,
             slow_mode: Default::default()
@@ -495,6 +533,7 @@ impl YanyaApp for App
                         let listen_outside = false;
 
                         let tilemap = self.tilemap.clone();
+                        let server_loot = self.server_loot_info.clone();
                         let data_infos = self.data_infos.clone();
 
                         let world_name = client_info.name.world_name();
@@ -505,9 +544,22 @@ impl YanyaApp for App
 
                             let listen_address = format!("{}:{port}", if listen_outside { "0.0.0.0" } else { "127.0.0.1" });
 
+                            let server_loot = {
+                                let c = |s: Option<String>| -> Generator
+                                {
+                                    s.map(|s| loot_compile(&s)).unwrap_or_default()
+                                };
+
+                                ServerLoot{
+                                    furniture: server_loot.furniture.into_iter().map(|x| x.map(c)).collect(),
+                                    enemy: server_loot.enemy.into_iter().map(|x| x.map(c)).collect()
+                                }
+                            };
+
                             let x = Server::new(
                                 tilemap,
                                 data_infos,
+                                server_loot,
                                 world_name,
                                 &listen_address,
                                 16

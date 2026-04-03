@@ -23,6 +23,7 @@ use yanyaengine::object::{
 use crate::common::{
     WeightedPicker,
     generic_info::load_texture_path,
+    loot::{loot_compile, TileLootInfo},
     world::{Tile, TileExisting}
 };
 
@@ -57,7 +58,8 @@ pub struct TileInfoRaw
     pub special: Option<SpecialTile>,
     pub colliding: Option<bool>,
     pub transparent: Option<bool>,
-    pub texture: Option<String>
+    pub texture: Option<String>,
+    pub on_destroy: Option<String>
 }
 
 impl TileInfoRaw
@@ -116,10 +118,15 @@ pub struct TileInfo
 impl TileInfo
 {
     fn from_raw(
+        loot: TileLoot,
         textures: &[(u32, SimpleImage)],
         tile_raw: TileInfoRaw
     ) -> Self
     {
+        loot.client.push(TileLootInfo{
+            on_destroy: tile_raw.on_destroy.map(|s| loot_compile(&s)).unwrap_or_default()
+        });
+
         let mut this = TileInfo{
             name: tile_raw.name,
             connecting: tile_raw.connecting,
@@ -242,6 +249,11 @@ impl From<io::Error> for TileMapError
     }
 }
 
+pub struct TileLoot<'a>
+{
+    pub client: &'a mut Vec<TileLootInfo>
+}
+
 #[derive(Debug, Clone)]
 pub struct TileMap
 {
@@ -253,6 +265,7 @@ pub struct TileMap
 impl TileMap
 {
     pub fn parse(
+        loot: TileLoot,
         tiles_path: &str,
         textures_root: &str
     ) -> Result<TileMapWithTextures, TileMapError>
@@ -372,7 +385,13 @@ impl TileMap
 
         let tiles = tiles.into_iter().zip(textures.iter()).map(|(tile_raw, textures)|
         {
-            TileInfo::from_raw(textures, tile_raw)
+            TileInfo::from_raw(
+                TileLoot{
+                    client: loot.client
+                },
+                textures,
+                tile_raw
+            )
         }).collect();
 
         let air = TileInfo{

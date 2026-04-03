@@ -1340,7 +1340,7 @@ impl<'a> WaveCollapser<'a>
 #[cfg(test)]
 mod tests
 {
-    use crate::common::world::TileRotation;
+    use crate::common::{tilemap::TileLoot, world::TileRotation};
 
     use super::*;
 
@@ -1348,7 +1348,13 @@ mod tests
     #[test]
     fn generating()
     {
-        let tilemap = TileMap::parse("info/tiles.json", "textures/tiles/").unwrap().tilemap;
+        let tilemap = TileMap::parse(
+            TileLoot{
+                client: &mut Vec::new()
+            },
+            "info/tiles.json",
+            "textures/tiles/"
+        ).unwrap().tilemap;
 
         let get_tile = |name|
         {

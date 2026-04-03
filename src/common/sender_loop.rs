@@ -6,11 +6,11 @@ use std::{
 
 use parking_lot::Mutex;
 
-use crate::common::MessageSerError;
+use crate::common::MessageError;
 
 pub trait BufferSender
 {
-    fn send_buffered(&mut self) -> Result<(), MessageSerError>;
+    fn send_buffered(&mut self) -> Result<(), MessageError>;
 }
 
 const TICK_COUNT: usize = 30;

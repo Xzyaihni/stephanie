@@ -1,40 +1,43 @@
 use std::{
     fs,
-    cell::RefCell,
-    path::PathBuf,
-    sync::Arc
+    borrow::Cow,
+    path::PathBuf
 };
 
 use crate::{
     server::world::ParseError,
     common::{
+        some_or_return,
+        with_error,
         lisp::{self, *},
         Item,
-        ItemsInfo
+        ItemsInfo,
+        EnemyId,
+        FurnitureId,
+        world::Tile
     }
 };
 
-use strum::IntoStaticStr;
 
-
-#[derive(Debug, Clone, Copy, IntoStaticStr)]
-pub enum LootState
+pub fn loot_compile(code: &str) -> Generator
 {
-    Create,
-    Destroy,
-    Equip
+    with_error(Generator::new(code)).unwrap_or_default()
 }
 
 #[derive(Clone)]
-pub struct Loot
+pub struct Generator(Option<Lisp>);
+
+impl Default for Generator
 {
-    info: Arc<ItemsInfo>,
-    creator: RefCell<Lisp>
+    fn default() -> Self
+    {
+        Self::new_empty()
+    }
 }
 
-impl Loot
+impl Generator
 {
-    pub fn new(info: Arc<ItemsInfo>, filename: &str) -> Result<Self, ParseError>
+    pub fn new(code: &str) -> Result<Self, ParseError>
     {
         let load = |filename|
         {
@@ -43,61 +46,28 @@ impl Loot
         };
 
         let standard = load("lisp/standard.scm")?;
-        let code = load(filename)?;
+        let loot_standard = load("lisp/loot.scm")?;
 
-        let creator = RefCell::new(Lisp::new(&[&standard, &code])
-            .map_err(|err| ParseError::new_named(PathBuf::from(filename), err))?);
-
-        Ok(Self{info, creator})
+        Ok(Self(Some(Lisp::new(&[&standard, &loot_standard, code]).map_err(ParseError::new)?)))
     }
 
-    fn parse_item(&self, value: OutputWrapperRef) -> Result<Item, lisp::Error>
+    pub fn new_empty() -> Self
     {
-        let name = value.as_symbol().map(|name|
-        {
-            name.chars().map(|c| if c == '_' { ' ' } else { c }).collect::<String>()
-        }).or_else(|_|
-        {
-            value.as_string()
-        })?;
-
-        let id = self.info.get_id(&name).ok_or_else(||
-        {
-            lisp::Error::Custom(format!("item named {name} not found"))
-        })?;
-
-        Ok(Item::new(&self.info, id))
+        Self(None)
     }
 
-    fn define_variables(memory: &mut LispMemory, state: LootState, name: &str) -> Result<(), lisp::Error>
+    pub fn create<'a>(&self, items_info: &ItemsInfo, name: impl Fn() -> Cow<'a, str>) -> Vec<Item>
     {
-        let name = memory.new_symbol(&name.replace(' ', "_"));
-        memory.define("name", name)?;
+        let lisp = some_or_return!(self.0.as_ref());
 
-        let state = memory.new_symbol(&<&str>::from(state).to_lowercase());
-        memory.define("state", state)
-    }
-
-    pub fn create(&self, state: LootState, name: &str) -> Vec<Item>
-    {
-        {
-            let mut creator = self.creator.borrow_mut();
-
-            if let Err(err) = Self::define_variables(creator.memory_mut(), state, name)
-            {
-                eprintln!("{name}: {err}");
-
-                return Vec::new();
-            }
-        }
-
-        let (memory, value) = match self.creator.borrow().run()
+        let (memory, value) = match lisp.run()
         {
             Ok(x) => x.destructure(),
             Err(err) =>
             {
-                let source = ["standard", "loot"][err.position.source];
-                eprintln!("{name}: (in {source}) {err}");
+                let name = name();
+                let source = ["standard", "loot", &name][err.position.source];
+                eprintln!("(in {source}) {err}");
 
                 return Vec::new();
             }
@@ -108,7 +78,7 @@ impl Loot
             Ok(x) => x,
             Err(err) =>
             {
-                eprintln!("{name}: {err}");
+                eprintln!("{}: {err}", &name());
 
                 return Vec::new();
             }
@@ -116,18 +86,130 @@ impl Loot
 
         items.into_iter().filter_map(move |item|
         {
-            let item = self.parse_item(OutputWrapperRef::new(&memory, item));
+            let item = Self::parse_item(items_info, OutputWrapperRef::new(&memory, item));
 
             match item
             {
                 Ok(x) => Some(x),
                 Err(err) =>
                 {
-                    eprintln!("{name}: {err}");
+                    eprintln!("{}: {err}", &name());
 
                     None
                 }
             }
         }).collect()
+    }
+
+    fn parse_item(items_info: &ItemsInfo, value: OutputWrapperRef) -> Result<Item, lisp::Error>
+    {
+        let name = value.as_symbol().map(|name|
+        {
+            name.chars().map(|c| if c == '_' { ' ' } else { c }).collect::<String>()
+        }).or_else(|_|
+        {
+            value.as_string()
+        })?;
+
+        let id = items_info.get_id(&name).ok_or_else(||
+        {
+            lisp::Error::Custom(format!("item named {name} not found"))
+        })?;
+
+        Ok(Item::new(items_info, id))
+    }
+}
+
+#[derive(Clone)]
+pub struct ServerFurnitureLootInfo<T>
+{
+    pub on_contents: T
+}
+
+impl<T> ServerFurnitureLootInfo<T>
+{
+    pub fn map<U>(self, mut f: impl FnMut(T) -> U) -> ServerFurnitureLootInfo<U>
+    {
+        ServerFurnitureLootInfo{
+            on_contents: f(self.on_contents)
+        }
+    }
+}
+
+#[derive(Clone)]
+pub struct ClientFurnitureLootInfo
+{
+    pub on_destroy: Generator
+}
+
+#[derive(Clone)]
+pub struct EnemyLootInfo<T>
+{
+    pub on_contents: T,
+    pub on_equip: T
+}
+
+impl<T> EnemyLootInfo<T>
+{
+    pub fn map<U>(self, mut f: impl FnMut(T) -> U) -> EnemyLootInfo<U>
+    {
+        EnemyLootInfo{
+            on_contents: f(self.on_contents),
+            on_equip: f(self.on_equip)
+        }
+    }
+}
+
+#[derive(Clone, Default)]
+pub struct TileLootInfo
+{
+    pub on_destroy: Generator
+}
+
+#[derive(Clone)]
+pub struct ServerLootInfo
+{
+    pub furniture: Vec<ServerFurnitureLootInfo<Option<String>>>,
+    pub enemy: Vec<EnemyLootInfo<Option<String>>>
+}
+
+#[derive(Clone, Default)]
+pub struct ServerLoot
+{
+    pub furniture: Vec<ServerFurnitureLootInfo<Generator>>,
+    pub enemy: Vec<EnemyLootInfo<Generator>>
+}
+
+impl ServerLoot
+{
+    pub fn furniture_generator(&self, id: FurnitureId) -> &ServerFurnitureLootInfo<Generator>
+    {
+        &self.furniture[usize::from(id)]
+    }
+
+    pub fn enemy_generator(&self, id: EnemyId) -> &EnemyLootInfo<Generator>
+    {
+        &self.enemy[usize::from(id)]
+    }
+}
+
+#[derive(Clone)]
+pub struct ClientLoot
+{
+    pub furniture: Vec<ClientFurnitureLootInfo>,
+    pub tile: Vec<TileLootInfo>,
+    pub empty: TileLootInfo
+}
+
+impl ClientLoot
+{
+    pub fn furniture_generator(&self, id: FurnitureId) -> &ClientFurnitureLootInfo
+    {
+        &self.furniture[usize::from(id)]
+    }
+
+    pub fn tile_generator(&self, id: Tile) -> &TileLootInfo
+    {
+        id.id().map(|id| &self.tile[id]).unwrap_or(&self.empty)
     }
 }

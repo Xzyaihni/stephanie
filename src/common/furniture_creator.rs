@@ -12,8 +12,7 @@ use crate::common::{
     lazy_transform::*,
     collider::*,
     EntityInfo,
-    Loot,
-    LootState,
+    ServerLoot,
     FurnituresInfo,
     FurnitureInfo,
     FurnitureId,
@@ -115,7 +114,7 @@ pub fn furniture_position(
 pub fn create(
     furnitures_info: &FurnituresInfo,
     items_info: &ItemsInfo,
-    loot: &Loot,
+    loot: &ServerLoot,
     id: FurnitureId,
     rotation: TileRotation,
     pos: Vector3<f32>
@@ -138,7 +137,12 @@ pub fn create(
     let inventory = info.container.then(||
     {
         let mut inventory = Inventory::new(f32::INFINITY);
-        loot.create(LootState::Create, &info.name).into_iter().for_each(|item| { inventory.push(items_info, item); });
+        loot.furniture_generator(id).on_contents.create(items_info, || { let s: &str = info.name.as_ref(); s.into() })
+            .into_iter()
+            .for_each(|item|
+            {
+                inventory.push(items_info, item);
+            });
 
         inventory
     });

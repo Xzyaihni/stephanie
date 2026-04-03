@@ -20,7 +20,7 @@ use crate::{
         Entity,
         SpatialGrid,
         Joint,
-        Loot,
+        ClientLoot,
         EntityInfo,
         AnyEntities,
         Parent,
@@ -127,7 +127,7 @@ pub fn update(
     world: &World,
     space: &SpatialGrid,
     textures: &CommonTextures,
-    loot: &Loot
+    loot: &ClientLoot
 ) -> Vec<Contact>
 {
     macro_rules! maybe_colliding_info

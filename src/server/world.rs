@@ -16,7 +16,7 @@ use crate::{
         self,
         world_path,
         world_save_path,
-        Loot,
+        ServerLoot,
         TileMap,
         WorldChunkSaver,
         ChunkSaver,
@@ -148,7 +148,7 @@ pub struct World
     chunk_saver: ChunkSaver,
     pub entities_saver: EntitiesSaver,
     data_infos: DataInfos,
-    loot: Loot,
+    loot: Rc<ServerLoot>,
     overmaps: OvermapsType,
     client_indexers: HashMap<ConnectionId, EntitiesTracker>,
     pub time: f64
@@ -160,11 +160,10 @@ impl World
         message_handler: Arc<Mutex<ConnectionsHandler>>,
         tilemap: Rc<TileMap>,
         data_infos: DataInfos,
+        loot: Rc<ServerLoot>,
         world_name: String
     ) -> Result<Self, ParseError>
     {
-        let loot = Loot::new(data_infos.items_info.clone(), "items/loot.scm")?;
-
         let world_path = world_path(&world_name);
         let chunk_saver = ChunkSaver::new(world_path.join("chunks"), 100);
         let entities_saver = EntitiesSaver::new(world_path.join("entities"), 0);
@@ -595,6 +594,7 @@ mod tests
             CharactersInfo,
             CharacterId,
             Crafts,
+            tilemap::TileLoot,
             message::MessageBuffer
         }
     };
@@ -628,8 +628,13 @@ mod tests
                 host: true
             });
 
-            let tilemap = TileMap::parse("info/tiles.json", "textures/tiles/")
-                .unwrap();
+            let tilemap = TileMap::parse(
+                TileLoot{
+                    client: &mut Vec::new()
+                },
+                "info/tiles.json",
+                "textures/tiles/"
+            ).unwrap();
 
             let mut world = World::new(
                 passer.clone(),
@@ -642,6 +647,7 @@ mod tests
                     crafts: Arc::new(Crafts::empty()),
                     player_character: CharacterId::from(0)
                 },
+                Rc::new(ServerLoot::default()),
                 "default".to_owned()
             ).unwrap();
 

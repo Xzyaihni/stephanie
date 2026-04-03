@@ -40,8 +40,7 @@ use crate::{
         render_info::*,
         lazy_transform::*,
         physics::*,
-        MessageSerError,
-        MessageDeError,
+        MessageError,
         AnyEntities,
         TileMap,
         DataInfos,
@@ -60,6 +59,7 @@ use crate::{
         MessagePasser,
         ConnectionId,
         OnConnectInfo,
+        ServerLoot,
         inventory::BASE_INVENTORY_LIMIT,
         character::SpriteState,
         world::{TILE_SIZE, CHUNK_VISUAL_SIZE, Pos3},
@@ -78,8 +78,7 @@ use crate::common::message::DebugMessage;
 #[derive(Debug)]
 pub enum ConnectionError
 {
-    MessageSerError(MessageSerError),
-    MessageDeError(MessageDeError),
+    MessageError(MessageError),
     ReceiverError(TryRecvError),
     WrongConnectionMessage
 }
@@ -90,8 +89,7 @@ impl fmt::Display for ConnectionError
     {
         let s = match self
         {
-            Self::MessageSerError(x) => x.to_string(),
-            Self::MessageDeError(x) => x.to_string(),
+            Self::MessageError(x) => x.to_string(),
             Self::ReceiverError(x) => x.to_string(),
             Self::WrongConnectionMessage => "wrong connection message".to_owned()
         };
@@ -108,19 +106,11 @@ impl From<TryRecvError> for ConnectionError
     }
 }
 
-impl From<MessageSerError> for ConnectionError
+impl From<MessageError> for ConnectionError
 {
-    fn from(value: MessageSerError) -> Self
+    fn from(value: MessageError) -> Self
     {
-        ConnectionError::MessageSerError(value)
-    }
-}
-
-impl From<MessageDeError> for ConnectionError
-{
-    fn from(value: MessageDeError) -> Self
-    {
-        ConnectionError::MessageDeError(value)
+        ConnectionError::MessageError(value)
     }
 }
 
@@ -129,6 +119,7 @@ pub struct GameServer
     entities: Entities,
     data_infos: DataInfos,
     tilemap: Rc<TileMap>,
+    loot: Rc<ServerLoot>,
     world: Option<World>,
     world_name: String,
     sender: Sender<(ConnectionId, Message, Entity)>,
@@ -177,11 +168,14 @@ impl GameServer
     pub fn new(
         tilemap: TileMap,
         data_infos: DataInfos,
+        loot: ServerLoot,
         world_name: String,
         limit: usize
     ) -> Result<(Sender<TcpStream>, Self), ParseError>
     {
         let tilemap = Rc::new(tilemap);
+        let loot = Rc::new(loot);
+
         let entities = Entities::new(data_infos.clone());
         let connection_handler = Arc::new(Mutex::new(ConnectionsHandler::new(limit)));
 
@@ -189,6 +183,7 @@ impl GameServer
             connection_handler.clone(),
             tilemap.clone(),
             data_infos.clone(),
+            loot.clone(),
             world_name.clone()
         )?);
 
@@ -202,6 +197,7 @@ impl GameServer
             entities,
             data_infos,
             tilemap,
+            loot,
             world,
             world_name,
             sender,
@@ -237,6 +233,7 @@ impl GameServer
             self.connection_handler.clone(),
             self.tilemap.clone(),
             self.data_infos.clone(),
+            self.loot.clone(),
             self.world_name.clone()
         ).unwrap());
     }

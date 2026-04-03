@@ -18,7 +18,7 @@ pub enum SaveError
     Io(io::Error),
     Lzma(lzma::LzmaError),
     Json(serde_json::Error),
-    Bincode(bincode::error::EncodeError)
+    Ser(serde_bare::error::Error)
 }
 
 impl From<io::Error> for SaveError
@@ -45,11 +45,11 @@ impl From<serde_json::Error> for SaveError
     }
 }
 
-impl From<bincode::error::EncodeError> for SaveError
+impl From<serde_bare::error::Error> for SaveError
 {
-    fn from(value: bincode::error::EncodeError) -> Self
+    fn from(value: serde_bare::error::Error) -> Self
     {
-        Self::Bincode(value)
+        Self::Ser(value)
     }
 }
 
@@ -62,7 +62,7 @@ impl Display for SaveError
             Self::Io(x) => Display::fmt(x, f),
             Self::Lzma(x) => Display::fmt(x, f),
             Self::Json(x) => Display::fmt(x, f),
-            Self::Bincode(x) => Display::fmt(x, f)
+            Self::Ser(x) => Display::fmt(x, f)
         }
     }
 }
@@ -99,7 +99,7 @@ pub fn compressed_saver<T: Serialize>(value: T) -> impl FnOnce(File) -> Result<(
     {
         let mut lzma_writer = LzmaWriter::new_compressor(file, LZMA_PRESET)?;
 
-        bincode::serde::encode_into_std_write(value, &mut lzma_writer, crate::common::BINCODE_CONFIG)?;
+        serde_bare::to_writer(&mut lzma_writer, &value)?;
 
         lzma_writer.finish()?;
 
@@ -123,7 +123,8 @@ pub fn with_temp_save(path: PathBuf, saver: impl FnOnce(File) -> Result<(), Save
 pub enum LoadError
 {
     Lzma(lzma::LzmaError),
-    Bincode(bincode::error::DecodeError)
+    Ser(serde_bare::error::Error),
+    Io(io::Error)
 }
 
 impl From<lzma::LzmaError> for LoadError
@@ -134,11 +135,19 @@ impl From<lzma::LzmaError> for LoadError
     }
 }
 
-impl From<bincode::error::DecodeError> for LoadError
+impl From<serde_bare::error::Error> for LoadError
 {
-    fn from(value: bincode::error::DecodeError) -> Self
+    fn from(value: serde_bare::error::Error) -> Self
     {
-        Self::Bincode(value)
+        Self::Ser(value)
+    }
+}
+
+impl From<io::Error> for LoadError
+{
+    fn from(value: io::Error) -> Self
+    {
+        Self::Io(value)
     }
 }
 
@@ -149,14 +158,15 @@ impl Display for LoadError
         match self
         {
             Self::Lzma(x) => Display::fmt(x, f),
-            Self::Bincode(x) => Display::fmt(x, f)
+            Self::Ser(x) => Display::fmt(x, f),
+            Self::Io(x) => Display::fmt(x, f)
         }
     }
 }
 
 pub fn load_compressed<T: DeserializeOwned>(file: File) -> Result<T, LoadError>
 {
-    let mut lzma_reader = LzmaReader::new_decompressor(file)?;
+    let lzma_reader = LzmaReader::new_decompressor(file)?;
 
-    Ok(bincode::serde::decode_from_std_read(&mut lzma_reader, crate::common::BINCODE_CONFIG)?)
+    Ok(serde_bare::from_reader(lzma_reader)?)
 }

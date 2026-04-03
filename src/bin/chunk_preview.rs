@@ -84,6 +84,9 @@ use stephanie::{
         CharactersInfo,
         EnemiesInfo,
         furniture_creator,
+        tilemap::TileLoot,
+        furnitures_info::FurnitureLoot,
+        enemies_info::EnemyLoot,
         items_info::TextureCreator,
         colors::Lcha,
         world::{
@@ -506,7 +509,13 @@ impl AssetsDependent
     ) -> Self
     {
         let tilemap = {
-            let tilemap = with_error(TileMap::parse("info/tiles.json", "textures/tiles/"));
+            let tilemap = with_error(TileMap::parse(
+                TileLoot{
+                    client: &mut Vec::new()
+                },
+                "info/tiles.json",
+                "textures/tiles/"
+            ));
 
             tilemap.and_then(|tilemap|
             {
@@ -522,7 +531,16 @@ impl AssetsDependent
             })
         };
 
-        let furniture = FurnituresInfo::parse(&info.assets.lock(), "normal/furniture".into(), "info/furnitures.json".into());
+        let furniture = FurnituresInfo::parse(
+            FurnitureLoot{
+                server: &mut Vec::new(),
+                client: &mut Vec::new()
+            },
+            &info.assets.lock(),
+            "normal/furniture".into(),
+            "info/furnitures.json".into()
+        );
+
         let items = {
             let mut assets = info.assets.lock();
             let builder_wrapper = &mut info.builder_wrapper;
@@ -537,7 +555,16 @@ impl AssetsDependent
 
         let enemies = {
             let mut characters = CharactersInfo::new();
-            let enemies = EnemiesInfo::parse(&info.assets.lock(), &mut characters, &items, "normal/enemy".into(), "info/enemies.json".into());
+            let enemies = EnemiesInfo::parse(
+                EnemyLoot{
+                    server: &mut Vec::new()
+                },
+                &info.assets.lock(),
+                &mut characters,
+                &items,
+                "normal/enemy".into(),
+                "info/enemies.json".into()
+            );
 
             (characters, enemies)
         };
