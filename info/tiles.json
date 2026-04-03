@@ -2,7 +2,8 @@
     {
         "name": "asphalt",
         "textures": [1.0, 0.15, 0.05],
-        "health": 0.9
+        "health": 0.9,
+        "on_destroy": "(points-drops '((rock 1) (boulder 3)) (random-integer-between 2 5))"
     },
     {
         "name": "asphalt-line",
@@ -14,53 +15,65 @@
     },
     {
         "name": "grassie",
-        "health": 0.15
+        "health": 0.15,
+        "on_destroy": "(and-always (standard-drops '(rock)) 'grass)"
     },
     {
         "name": "concrete",
-        "connecting": "Edge"
+        "connecting": "Edge",
+        "on_destroy": "(points-drops '((rock 1) (boulder 3)) (random-integer-between 2 5))"
     },
     {
-        "name": "concrete-path"
+        "name": "concrete-path",
+        "on_destroy": "(points-drops '((rock 1) (boulder 3)) (random-integer-between 2 5))"
     },
     {
-        "name": "concrete-path-tiled"
+        "name": "concrete-path-tiled",
+        "on_destroy": "(points-drops '((rock 1) (boulder 3)) (random-integer-between 2 5))"
     },
     {
         "name": "brick-path",
-        "health": 0.9
+        "health": 0.9,
+        "on_destroy": "(points-drops '((rock 1) (boulder 3)) (random-integer-between 2 5))"
     },
     {
         "name": "wood",
-        "health": 0.1
+        "health": 0.1,
+        "on_destroy": "(points-drops '((short_stick 2) (stick 2) (plank 3)) 7)"
     },
     {
         "name": "soil",
-        "health": 0.2
+        "health": 0.2,
+        "on_destroy": "(standard-drops '(rock))"
     },
     {
         "name": "glass",
         "connecting": "Edge",
-        "health": 0.004
+        "health": 0.004,
+        "on_destroy": "(standard-drops '(glass_shard))"
     },
     {
         "name": "concrete-fence",
         "connecting": "Edge",
         "transparent": true,
-        "colliding": false
+        "colliding": false,
+        "on_destroy": "(points-drops '((rock 1) (boulder 3)) (random-integer-between 2 5))"
     },
     {
         "name": "metal-fence",
         "connecting": "Edge",
         "transparent": true,
-        "health": 0.2
+        "health": 0.2,
+        "on_destroy": "(standard-drops '(pipe metal_shard))"
     },
     {
         "name": "stairs-up",
-        "special": "StairsUp"
+        "special": "StairsUp",
+        "on_destroy": "(points-drops '((rock 1) (boulder 3)) (random-integer-between 2 5))"
     },
     {
         "name": "stairs-down",
-        "special": "StairsDown"
+        "special": "StairsDown",
+        "on_destroy": "(points-drops '((rock 1) (boulder 3)) (random-integer-between 2 5))"
     }
 ]

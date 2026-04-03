@@ -21,15 +21,14 @@ use crate::common::{
 };
 
 
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct EnemyInfoRaw
 {
     name: String,
-    #[serde(default)]
-    hairstyle: Hairstyle<String>,
-    #[serde(default)]
-    anatomy: HumanAnatomyInfo,
+    inherit: Option<String>,
+    hairstyle: Option<Hairstyle<String>>,
+    anatomy: Option<HumanAnatomyInfo>,
     face: Option<String>,
     lying_face_offset: Option<Vector2<i8>>,
     behavior: Option<EnemyBehavior>,
@@ -37,6 +36,20 @@ struct EnemyInfoRaw
     hand: Option<String>,
     on_contents: Option<String>,
     on_equip: Option<String>
+}
+
+impl EnemyInfoRaw
+{
+    fn combine(&self, other: &Self) -> Self
+    {
+        let mut this = self.clone();
+
+        this.name = other.name.clone();
+
+        inherit_with_fields!(this, other, hairstyle, anatomy, face, lying_face_offset, behavior, body, hand, on_contents, on_equip);
+
+        this
+    }
 }
 
 type EnemiesInfoRaw = Vec<EnemyInfoRaw>;
@@ -97,7 +110,7 @@ impl EnemyInfo
 
         let character = characters_info.push(CharacterInfo{
             hand,
-            hairstyle: raw.hairstyle.map(|x| load_texture(assets, textures_root, &x)),
+            hairstyle: raw.hairstyle.unwrap_or_default().map(|x| load_texture(assets, textures_root, &x)),
             face,
             lying_face_offset: raw.lying_face_offset.unwrap_or(vector![-6, 0]),
             normal: body_part("body"),
@@ -112,7 +125,7 @@ impl EnemyInfo
 
         Self{
             name: raw.name,
-            anatomy: raw.anatomy,
+            anatomy: raw.anatomy.unwrap_or_default(),
             behavior: raw.behavior.unwrap_or(EnemyBehavior::Melee),
             character
         }
@@ -144,7 +157,14 @@ impl EnemiesInfo
     {
         let info = some_or_value!(with_error(File::open(info)), Self::empty());
 
-        let enemies: EnemiesInfoRaw = some_or_value!(with_error(serde_json::from_reader(info)), Self::empty());
+        let mut enemies: EnemiesInfoRaw = some_or_value!(with_error(serde_json::from_reader(info)), Self::empty());
+
+        inherit_infos(
+            &mut enemies,
+            |this_info| this_info.inherit.as_ref(),
+            |this_info| &this_info.name,
+            |a, b| a.combine(b)
+        );
 
         let enemies: Vec<_> = enemies.into_iter().map(|info_raw|
         {

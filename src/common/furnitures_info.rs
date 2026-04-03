@@ -17,11 +17,12 @@ use crate::common::{
 };
 
 
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct FurnitureInfoRaw
 {
     name: String,
+    inherit: Option<String>,
     z: Option<ZLevel>,
     container: Option<bool>,
     attached: Option<bool>,
@@ -32,6 +33,20 @@ struct FurnitureInfoRaw
     health: Option<f32>,
     on_contents: Option<String>,
     on_destroy: Option<String>
+}
+
+impl FurnitureInfoRaw
+{
+    fn combine(&self, other: &Self) -> Self
+    {
+        let mut this = self.clone();
+
+        this.name = other.name.clone();
+
+        inherit_with_fields!(this, other, z, container, attached, colliding, symmetry, hitbox, hardness, health, on_contents, on_destroy);
+
+        this
+    }
 }
 
 type FurnituresInfoRaw = Vec<FurnitureInfoRaw>;
@@ -164,7 +179,14 @@ impl FurnituresInfo
     {
         let info = some_or_value!(with_error(File::open(info)), Self::empty());
 
-        let furnitures: FurnituresInfoRaw = some_or_value!(with_error(serde_json::from_reader(info)), Self::empty());
+        let mut furnitures: FurnituresInfoRaw = some_or_value!(with_error(serde_json::from_reader(info)), Self::empty());
+
+        inherit_infos(
+            &mut furnitures,
+            |this_info| this_info.inherit.as_ref(),
+            |this_info| &this_info.name,
+            |a, b| a.combine(b)
+        );
 
         let furnitures: Vec<_> = furnitures.into_iter().map(|info_raw|
         {

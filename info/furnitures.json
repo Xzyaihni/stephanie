@@ -10,18 +10,21 @@
     {
         "name": "wood table",
         "symmetry": "Both",
-        "health": 20.0
+        "health": 20.0,
+        "on_destroy": "(points-drops '((stick 2) (plank 3)) 6)"
     },
     {
         "name": "wood chair",
         "symmetry": "None",
         "hitbox": 0.0,
-        "health": 2.0
+        "health": 2.0,
+        "on_destroy": "(points-drops '((short_stick 1) (stick 2) (plank 3)) 3)"
     },
     {
         "name": "bed",
         "symmetry": "None",
-        "health": 50.0
+        "health": 50.0,
+        "on_destroy": "(points-drops '((cloth 2) (stick 2) (plank 3)) 8)"
     },
     {
         "name": "cabinet",
@@ -30,7 +33,8 @@
         "container": true,
         "colliding": false,
         "health": 30.0,
-        "on_contents": "'(heal_pills)"
+        "on_contents": "'(heal_pills)",
+        "on_destroy": "(standard-drops '(metal_shard glass_shard))"
     },
     {
         "name": "sink",
@@ -38,25 +42,31 @@
         "symmetry": "None",
         "container": true,
         "attached": true,
-        "health": 30.0
+        "health": 30.0,
+        "on_contents": "'(bottle)",
+        "on_destroy": "(points-drops '((short_stick 1) (pipe 2) (ceramic_shard 2) (plank 3)) 4)"
     },
     {
         "name": "safe",
         "symmetry": "Horizontal",
         "container": true,
-        "health": 200.0
+        "health": 200.0,
+        "on_contents": "(and-maybe (append '(bullet bullet) (maybe-multiple (lambda () 'bullet) (drop-rate 1 3) 3)) (drop-rate 1 3) 'glock)",
+        "on_destroy": "(standard-drops '(metal_shard))"
     },
     {
         "name": "bench",
         "symmetry": "None",
         "attached": true,
-        "health": 50.0
+        "health": 50.0,
+        "on_destroy": "(standard-drops '(metal_shard))"
     },
     {
         "name": "potted plant",
         "symmetry": "None",
         "hitbox": 0.0,
-        "health": 2.0
+        "health": 2.0,
+        "on_destroy": "(either '(grass) '(ceramic_shard))"
     },
     {
         "name": "bush1",
@@ -64,15 +74,12 @@
         "attached": true,
         "colliding": false,
         "hardness": 0.1,
-        "health": 0.5
+        "health": 0.5,
+        "on_destroy": "(if (random-bool) '(branch) '(grass grass))"
     },
     {
         "name": "bush2",
-        "z": "Hips",
-        "attached": true,
-        "colliding": false,
-        "hardness": 0.1,
-        "health": 0.5
+        "inherit": "bush1"
     },
     {
         "name": "grass1",
@@ -80,14 +87,11 @@
         "attached": true,
         "colliding": false,
         "hardness": 0.0,
-        "health": 0.1
+        "health": 0.1,
+        "on_destroy": "(and-maybe '() (drop-rate 1 3) 'grass)"
     },
     {
         "name": "grass2",
-        "z": "BelowFeet",
-        "attached": true,
-        "colliding": false,
-        "hardness": 0.0,
-        "health": 0.1
+        "inherit": "grass1"
     }
 ]

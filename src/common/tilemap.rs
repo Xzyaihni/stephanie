@@ -22,7 +22,7 @@ use yanyaengine::object::{
 
 use crate::common::{
     WeightedPicker,
-    generic_info::load_texture_path,
+    generic_info::{inherit_infos, inherit_with_fields, load_texture_path},
     loot::{loot_compile, TileLootInfo},
     world::{Tile, TileExisting}
 };
@@ -76,20 +76,7 @@ impl TileInfoRaw
         this.name = other.name.clone();
         this.textures = other.textures.clone();
 
-        macro_rules! with_fields
-        {
-            ($($name:ident),+) =>
-            {
-                $(
-                    if other.$name.is_some()
-                    {
-                        this.$name = other.$name.clone();
-                    }
-                )+
-            }
-        }
-
-        with_fields!(health, drawable, special, colliding, transparent);
+        inherit_with_fields!(this, other, health, drawable, special, colliding, transparent, on_destroy);
 
         this
     }
@@ -282,20 +269,14 @@ impl TileMap
 
                 tiles[index].textures = None;
             }
-
-            if tiles[index].inherit.is_none()
-            {
-                return;
-            }
-
-            if let Some(inherit_index) = tiles.iter().position(|x| x.name == *tiles[index].inherit.as_ref().unwrap())
-            {
-                tiles[index] = tiles[inherit_index].combine(&tiles[index]);
-            } else
-            {
-                eprintln!("inherit tile named `{}` not found", tiles[index].inherit.as_ref().unwrap());
-            }
         });
+
+        inherit_infos(
+            &mut tiles,
+            |this_info| this_info.inherit.as_ref(),
+            |this_info| &this_info.name,
+            |a, b| a.combine(b)
+        );
 
         let textures = tiles.iter().scan(0, |current_id: &mut u32, tile_raw: &TileInfoRaw| -> Option<_>
         {

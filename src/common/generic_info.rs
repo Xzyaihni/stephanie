@@ -10,6 +10,8 @@ use nalgebra::Vector2;
 use yanyaengine::{Assets, TextureId, object::texture::SimpleImage, game_object::*};
 
 pub use crate::{
+    inherit_with_fields,
+    some_or_return,
     some_or_value,
     define_info_id,
     common::{texture_scale, normalize_path}
@@ -137,6 +139,41 @@ pub fn load_texture(assets: &Assets, root: &Path, name: &str) -> Sprite
     let name = load_texture_path(root, name);
 
     Sprite::new(assets, assets.texture_id(&name))
+}
+
+#[macro_export]
+macro_rules! inherit_with_fields
+{
+    ($this:expr, $other:expr, $($name:ident),+) =>
+    {
+        $(
+            if $other.$name.is_some()
+            {
+                $this.$name = $other.$name.clone();
+            }
+        )+
+    }
+}
+
+pub fn inherit_infos<T>(
+    infos: &mut [T],
+    inherit_name: fn(&T) -> Option<&String>,
+    info_name: fn(&T) -> &str,
+    info_combine: fn(&T, &T) -> T
+)
+{
+    (0..infos.len()).for_each(|index|
+    {
+        let this_inherit_name = some_or_return!(inherit_name(&infos[index]));
+
+        if let Some(inherit_index) = infos.iter().position(|x| info_name(&x) == this_inherit_name)
+        {
+            infos[index] = info_combine(&infos[inherit_index], &infos[index]);
+        } else
+        {
+            eprintln!("inherit named `{this_inherit_name}` not found");
+        }
+    });
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]

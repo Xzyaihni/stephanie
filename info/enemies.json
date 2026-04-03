@@ -1,6 +1,7 @@
 [
     {
-        "name": "zob"
+        "name": "zob",
+        "on_contents": "(and-maybe (if ((drop-rate 1 6)) '(hammer) (standard-drops '(scissors kitchen_knife))) (drop-rate 1 5) 'heal_pills)"
     },
     {
         "name": "smol",
@@ -12,7 +13,8 @@
             "base_strength": 0.5
         },
         "hand": "smol hand",
-        "lying_face_offset": [-3, 0]
+        "lying_face_offset": [-3, 0],
+        "on_contents": "(and-maybe (standard-drops '(branch short_stick rock)) (drop-rate 1 10) 'heal_pills)"
     },
     {
         "name": "old",
@@ -31,7 +33,8 @@
             }
         },
         "body": "zob",
-        "face": "zob"
+        "face": "zob",
+        "on_contents": "(if ((drop-rate 1 6)) '(lamp) (standard-drops (cons 'heal_pills trash)))"
     },
     {
         "name": "runner",
@@ -43,7 +46,9 @@
             "base_strength": 0.8
         },
         "body": "zob",
-        "face": "zob"
+        "face": "zob",
+        "on_contents": "(and-maybe (standard-drops '(scissors bottle baseball_bat)) (drop-rate 1 5) 'heal_pills)",
+        "on_equip": "'(runner_cap)"
     },
     {
         "name": "bigy",
@@ -55,7 +60,8 @@
             "base_strength": 1.5
         },
         "hand": "bigy hand",
-        "face": "zob"
+        "face": "zob",
+        "on_contents": "(and-maybe (standard-drops '(boulder pipe sledgehammer axe meat_cleaver)) (drop-rate 1 2) 'heal_pills)"
     },
     {
         "name": "me",
@@ -91,6 +97,7 @@
         },
         "body": "../player",
         "face": "../player",
-        "lying_face_offset": [-5, 0]
+        "lying_face_offset": [-5, 0],
+        "on_contents": "'(heal_pills)"
     }
 ]
