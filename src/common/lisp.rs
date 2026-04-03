@@ -1922,7 +1922,7 @@ mod tests
     {
         let lisp = Lisp::new_one(code).unwrap();
 
-        assert!(!lisp.program.code().commands_contains_outer());
+        assert!(lisp.program.code().commands_lookup_outer_count() == 0);
 
         let value = lisp.run().unwrap_or_else(|err|
         {
@@ -1970,6 +1970,53 @@ mod tests
         ";
 
         simple_integer_test(code, 10);
+    }
+
+    #[test]
+    fn weird_cond_apply()
+    {
+        let code = "
+            (define (factorial n)
+                (if (= n 1)
+                    1
+                    (* n (factorial (- n 1)))))
+
+
+            ((if #t (if #t factorial wehweh) blabla) 7)
+        ";
+
+        let lisp = Lisp::new_one(code).unwrap();
+
+        assert!(lisp.program.code().commands_lookup_outer_count() == 2);
+
+        let value = lisp.run().unwrap_or_else(|err|
+        {
+            panic!("{err}")
+        });
+
+        let value = value.as_integer().unwrap_or_else(|err|
+        {
+            panic!("{err} ({value})")
+        });
+
+        assert_eq!(value, 5040);
+    }
+
+    #[test]
+    fn nested_func_apply()
+    {
+        let code = "
+            (define (factorial n)
+                (if (= n 1)
+                    1
+                    (* n (factorial (- n 1)))))
+
+            (define (yay) (lambda () (lambda () factorial)))
+
+            ((((yay))) 7)
+        ";
+
+        simple_integer_test(code, 5040);
     }
 
     #[test]
@@ -3040,7 +3087,7 @@ mod tests
 
         let lisp = Lisp::new_one(code).unwrap();
 
-        assert!(!lisp.program.code().commands_contains_outer());
+        assert!(lisp.program.code().commands_lookup_outer_count() == 0);
         assert!(lisp.program.code().commands_define_count() == 1);
 
         let value = lisp.run().unwrap_or_else(|err|
