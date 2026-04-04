@@ -157,18 +157,38 @@ impl DebugConfigTrait for DebugConfigTrue
 
     fn on_start()
     {
-        let available = DebugTool::iter().map(|tool| -> String
+        let available = DebugTool::iter().filter(|tool|
+        {
+            Self::is_disabled(*tool)
+        }).map(|tool| -> String
         {
             let s: &str = tool.into();
 
-            let state = if Self::is_enabled(tool) { 'X' } else { ' ' };
-            format!("[{state}] STEPHANIE_{}", s.to_uppercase())
+            format!("STEPHANIE_{}", s.to_uppercase())
         }).reduce(|acc, x|
         {
-            format!("{acc}\n{x}")
+            format!("{acc}, {x}")
         }).unwrap_or_default();
 
-        eprintln!("running in debug mode, available tools:\n{available}");
+        let maybe_enabled = DebugTool::iter().filter(|tool|
+        {
+            Self::is_enabled(*tool)
+        }).map(|tool| -> String
+        {
+            let s: &str = tool.into();
+
+            format!("STEPHANIE_{}", s.to_uppercase())
+        }).reduce(|acc, x|
+        {
+            format!("{acc}, {x}")
+        });
+
+        let maybe_enabled = maybe_enabled.map(|s|
+        {
+            format!("\n\nenabled tools:\n{s}")
+        }).unwrap_or_default();
+
+        eprintln!("running in debug mode, available tools:\n{available}{maybe_enabled}");
     }
 
     fn is_debug() -> bool { true }
