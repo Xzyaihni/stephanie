@@ -138,6 +138,7 @@ pub struct DamagingInfo
     pub knockback: f32,
     pub faction: Option<Faction>,
     pub on_hit_gain: Option<(StatId, f64)>,
+    pub crit: bool,
     pub ranged: bool
 }
 
@@ -154,6 +155,7 @@ impl Default for DamagingInfo
             knockback: 1.0,
             faction: None,
             on_hit_gain: None,
+            crit: false,
             ranged: false
         }
     }
@@ -189,6 +191,7 @@ pub struct Damaging
     pub faction: Faction,
     pub knockback: f32,
     pub source: Option<Entity>,
+    pub crit: bool,
     pub ranged: bool,
     pub on_hit_gain: Option<(StatId, f64)>,
     times: DamageTimes,
@@ -207,6 +210,7 @@ impl From<DamagingInfo> for Damaging
             faction: info.faction.expect("faction must be specified"),
             knockback: info.knockback,
             source: info.source,
+            crit: info.crit,
             ranged: info.ranged,
             on_hit_gain: info.on_hit_gain,
             already_damaged: Vec::new()

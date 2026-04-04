@@ -1055,13 +1055,6 @@ impl Game
         {
             eprintln!("ran command {command}, result: {result}");
         }
-
-        let defined_this = result.into_memory().defined_values().unwrap().len();
-        let changed_environment = defined_this > self.info.borrow().console.standard_definitions;
-        if changed_environment
-        {
-            self.info.borrow_mut().remember_command(defined_this, &command);
-        }
     }
 
     pub fn player_exists(&mut self) -> bool
@@ -1080,7 +1073,6 @@ struct PlayerCreateInfo
 struct ConsoleInfo
 {
     primitives: Option<Rc<Primitives>>,
-    standard_definitions: usize,
     standard: String,
     console_standard: String,
     past_commands: String
@@ -1092,7 +1084,6 @@ impl ConsoleInfo
     {
         Self{
             primitives: None,
-            standard_definitions: 0,
             standard: String::new(),
             console_standard: String::new(),
             past_commands: String::new()
@@ -1138,12 +1129,6 @@ impl PlayerInfo
             mouse_highlighted: None,
             interacted: false
         }
-    }
-
-    pub fn remember_command(&mut self, definitions: usize, command: &str)
-    {
-        self.console.standard_definitions = definitions;
-        self.console.past_commands += command;
     }
 }
 

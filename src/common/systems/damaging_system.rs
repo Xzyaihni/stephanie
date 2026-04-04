@@ -105,21 +105,20 @@ pub fn fall_damage(
         }
     };
 
-    let mut damaged = false;
+    let mut screenshook = false;
 
     if let Some(mut anatomy) = entities.anatomy_mut(entity)
     {
         anatomy.fall_damage(damage);
-
-        damaged = true;
     }
 
-    if damage_common_health(entities, textures, loot, |amount| screenshake_near(amount), entity, damage)
+    damage_common_health(entities, textures, loot, |amount|
     {
-        damaged = true;
-    }
+        screenshook = true;
+        screenshake_near(amount)
+    }, entity, damage);
 
-    if !damaged
+    if !screenshook
     {
         screenshake_near(WEAK_SCREENSHAKE);
     }
@@ -141,6 +140,7 @@ pub struct DamagingResult
     pub damage_entry: Vector3<f32>,
     pub damage_exit: Option<Vector3<f32>>,
     pub angle: f32,
+    pub crit: bool,
     pub ranged: bool,
     pub on_hit_gain: Option<(StatId, f64)>,
     pub damage: DamagePartial
@@ -297,7 +297,7 @@ pub fn damager<'a, 'b, 'c>(
                 let knockback = *knockback_direction * (knockback_strength * knockback_factor * ENEMY_MASS * 30.0);
                 knockback_entity(entities, entity, knockback);
 
-                flash_damage(entities, entity);
+                flash_damage(entities, entity, result.crit.then_some([1.0, 1.0, 0.0]));
 
                 if entities.enemy_exists(entity) && entities.anatomy(entity).map(|anatomy| !anatomy.is_dead()).unwrap_or(true)
                 {
@@ -487,6 +487,7 @@ fn damaging_raycasting(
             damage_entry,
             damage_exit,
             angle,
+            crit: damaging.crit,
             ranged: damaging.ranged,
             on_hit_gain: damaging.on_hit_gain,
             damage
@@ -635,6 +636,7 @@ fn damaging_colliding(
                     damage_entry,
                     damage_exit,
                     angle,
+                    crit: damaging.crit,
                     ranged: damaging.ranged,
                     on_hit_gain: damaging.on_hit_gain,
                     damage
@@ -840,6 +842,16 @@ fn destroy_entity(entities: &ClientEntities, textures: &CommonTextures, loot: &C
     let generator = if let Some(furniture_id) = entities.furniture(entity)
     {
         &loot.furniture_generator(*furniture_id).on_destroy
+    } else if let Some(door) = entities.door(entity)
+    {
+        loot.door.create(&entities.infos().items_info, &door)
+            .into_iter()
+            .for_each(|item|
+            {
+                spawn_item(entities, textures, &transform, &item)
+            });
+
+        return;
     } else
     {
         return;
@@ -927,15 +939,18 @@ fn knockback_entity(entities: &ClientEntities, entity: Entity, knockback: Vector
     some_or_return!(entities.character_mut(entity)).knockbacked();
 }
 
-fn flash_damage(entities: &ClientEntities, entity: Entity)
+fn flash_damage(entities: &ClientEntities, entity: Entity, override_color: Option<[f32; 3]>)
 {
-    let color = if entities.player_exists(entity)
+    let color = override_color.unwrap_or_else(||
     {
-        [1.0; 3]
-    } else
-    {
-        [1.0, 0.0, 0.0]
-    };
+        if entities.player_exists(entity)
+        {
+            [1.0; 3]
+        } else
+        {
+            [1.0, 0.0, 0.0]
+        }
+    });
 
     let flash_single = |entity| flash_damage_single(entities, entity, color);
 
@@ -1030,27 +1045,23 @@ pub fn damage_entity(
 
     turn_towards_other(entities, entity, other_entity);
 
-    let mut damaged = false;
+    let mut screenshook = false;
 
-    if damage_common_health(entities, textures, loot, |amount|
+    damage_common_health(entities, textures, loot, |amount|
     {
+        screenshook = true;
         if let Some(mut player) = entities.player_mut_no_change(other_entity)
         {
             player.screenshake.set(amount);
         }
-    }, entity, damage.data.as_flat())
-    {
-        damaged = true;
-    }
+    }, entity, damage.data.as_flat());
 
     if let Some(mut anatomy) = entities.anatomy_mut(entity)
     {
         anatomy.damage(damage);
-
-        damaged = true;
     }
 
-    if !damaged
+    if !screenshook
     {
         if let Some(mut player) = entities.player_mut_no_change(other_entity)
         {

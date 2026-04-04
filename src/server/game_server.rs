@@ -421,6 +421,7 @@ impl GameServer
             }.into()),
             render: Some(RenderInfo{
                 aspect: Aspect::KeepMax,
+                shadow_visible: true,
                 ..Default::default()
             }),
             physical: Some(PhysicalProperties{

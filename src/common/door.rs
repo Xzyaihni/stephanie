@@ -66,8 +66,8 @@ impl DoorMaterial
     {
         match self
         {
-            Self::Metal => 1000.0,
-            Self::Wood => 100.0
+            Self::Metal => 100.0,
+            Self::Wood => 10.0
         }
     }
 }
@@ -111,7 +111,17 @@ impl Door
         !self.is_open()
     }
 
-    pub fn tile_rotation(&self) -> TileRotation
+    pub const fn material(&self) -> DoorMaterial
+    {
+        self.material
+    }
+
+    pub const fn width(&self) -> u32
+    {
+        self.width
+    }
+
+    pub const fn tile_rotation(&self) -> TileRotation
     {
         self.rotation
     }
@@ -313,7 +323,6 @@ impl Door
                 let mut setter = entities.lazy_setter.borrow_mut();
 
                 setter.set_sibling_no_change(entity, Some(visible_part));
-                setter.set_named_no_change(entity, Some(<&str>::from(door.material).to_owned() + " door"));
             }
 
             door.update_parent_state(entities, entity);

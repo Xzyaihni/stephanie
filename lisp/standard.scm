@@ -92,6 +92,9 @@
         '()
         (cons (cons (car as) (car bs)) (zip (cdr as) (cdr bs)))))
 
+(define (flatten xs)
+    (fold1 (lambda (x acc) (append acc x)) xs))
+
 (define (find f xs)
     (if (null? xs)
         '()

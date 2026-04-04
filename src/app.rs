@@ -434,7 +434,8 @@ impl YanyaApp for App
         let client_loot = ClientLoot{
             furniture: client_furniture_loot_info,
             tile: tile_loot_info,
-            empty: TileLootInfo::default()
+            empty: TileLootInfo::default(),
+            door: DoorGenerator::new("lisp/door_loot.scm")
         };
 
         let sliced_textures = {

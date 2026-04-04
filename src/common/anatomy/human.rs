@@ -890,7 +890,7 @@ impl HumanAnatomy
 
                 if let Some(damager) = damager
                 {
-                    damager(Damage::area_each(0.005 * dt));
+                    damager(Damage::area_each((if is_player { 0.0005 } else { 0.005 }) * dt));
                 }
 
                 is_damaged

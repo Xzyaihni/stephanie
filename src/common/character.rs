@@ -197,6 +197,7 @@ fn heldlike_item_entity(
             }),
             z_level: if held { ZLevel::Held } else { if flip { ZLevel::HandHigh } else { ZLevel::HandLow } },
             visible: !held,
+            shadow_visible: is_player,
             ..Default::default()
         }),
         parent: Some(Parent::new(character)),
@@ -595,6 +596,7 @@ impl Character
                         id: texture.id
                     }.into()),
                     z_level: base_hair_z(*self.sprite_state.value(), is_player),
+                    shadow_visible: is_player,
                     ..Default::default()
                 }),
                 ..Default::default()
@@ -647,6 +649,7 @@ impl Character
                         id: texture.id
                     }.into()),
                     z_level: accessory_hair_z(*self.sprite_state.value(), is_player),
+                    shadow_visible: is_player,
                     ..Default::default()
                 }),
                 ..Default::default()
@@ -989,6 +992,11 @@ impl Character
 
     fn random_held_crit(&self, combined_info: CombinedInfo) -> Option<f32>
     {
+        if !combined_info.entities.player_exists(self.info.as_ref()?.this)
+        {
+            return None;
+        }
+
         let crit_chance = self.held_crit_chance(combined_info)?;
 
         (fastrand::f32() < crit_chance).then_some(2.0)
@@ -2267,6 +2275,7 @@ impl Character
                     knockback: 1.0,
                     faction: Some(self.faction),
                     source: Some(info.this),
+                    crit: crit.is_some(),
                     on_hit_gain: Some(if hands_attack { (StatId::Melee, 0.3) } else { (StatId::Bash, 0.5) }),
                     ..Default::default()
                 }.into()),
@@ -2353,6 +2362,7 @@ impl Character
                     knockback: 2.0,
                     faction: Some(self.faction),
                     source: Some(info.this),
+                    crit: crit.is_some(),
                     on_hit_gain: Some((StatId::Poke, 0.7)),
                     ..Default::default()
                 }.into()),

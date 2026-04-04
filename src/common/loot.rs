@@ -1,5 +1,6 @@
 use std::{
     fs,
+    cell::RefCell,
     borrow::Cow,
     path::PathBuf
 };
@@ -10,6 +11,7 @@ use crate::{
         some_or_return,
         with_error,
         lisp::{self, *},
+        Door,
         Item,
         ItemsInfo,
         EnemyId,
@@ -22,6 +24,67 @@ use crate::{
 pub fn loot_compile(code: &str) -> Generator
 {
     with_error(Generator::new(code)).unwrap_or_default()
+}
+
+fn parse_item(items_info: &ItemsInfo, value: OutputWrapperRef) -> Result<Item, lisp::Error>
+{
+    let name = value.as_symbol().map(|name|
+    {
+        name.chars().map(|c| if c == '_' { ' ' } else { c }).collect::<String>()
+    }).or_else(|_|
+    {
+        value.as_string()
+    })?;
+
+    let id = items_info.get_id(&name).ok_or_else(||
+    {
+        lisp::Error::Custom(format!("item named {name} not found"))
+    })?;
+
+    Ok(Item::new(items_info, id))
+}
+
+fn create_with_lisp<'a>(items_info: &ItemsInfo, lisp: &Lisp, name: impl Fn() -> Cow<'a, str>) -> Vec<Item>
+{
+    let (memory, value) = match lisp.run()
+    {
+        Ok(x) => x.destructure(),
+        Err(err) =>
+        {
+            let name = name();
+            let source = ["standard", "loot", &name][err.position.source];
+            eprintln!("(in {source}) {err}");
+
+            return Vec::new();
+        }
+    };
+
+    let items = match value.as_pairs_list(&memory)
+    {
+        Ok(x) => x,
+        Err(err) =>
+        {
+            eprintln!("{}: {err}", &name());
+
+            return Vec::new();
+        }
+    };
+
+    items.into_iter().filter_map(move |item|
+    {
+        let item = parse_item(items_info, OutputWrapperRef::new(&memory, item));
+
+        match item
+        {
+            Ok(x) => Some(x),
+            Err(err) =>
+            {
+                eprintln!("{}: {err}", &name());
+
+                None
+            }
+        }
+    }).collect()
 }
 
 #[derive(Clone)]
@@ -60,63 +123,7 @@ impl Generator
     {
         let lisp = some_or_return!(self.0.as_ref());
 
-        let (memory, value) = match lisp.run()
-        {
-            Ok(x) => x.destructure(),
-            Err(err) =>
-            {
-                let name = name();
-                let source = ["standard", "loot", &name][err.position.source];
-                eprintln!("(in {source}) {err}");
-
-                return Vec::new();
-            }
-        };
-
-        let items = match value.as_pairs_list(&memory)
-        {
-            Ok(x) => x,
-            Err(err) =>
-            {
-                eprintln!("{}: {err}", &name());
-
-                return Vec::new();
-            }
-        };
-
-        items.into_iter().filter_map(move |item|
-        {
-            let item = Self::parse_item(items_info, OutputWrapperRef::new(&memory, item));
-
-            match item
-            {
-                Ok(x) => Some(x),
-                Err(err) =>
-                {
-                    eprintln!("{}: {err}", &name());
-
-                    None
-                }
-            }
-        }).collect()
-    }
-
-    fn parse_item(items_info: &ItemsInfo, value: OutputWrapperRef) -> Result<Item, lisp::Error>
-    {
-        let name = value.as_symbol().map(|name|
-        {
-            name.chars().map(|c| if c == '_' { ' ' } else { c }).collect::<String>()
-        }).or_else(|_|
-        {
-            value.as_string()
-        })?;
-
-        let id = items_info.get_id(&name).ok_or_else(||
-        {
-            lisp::Error::Custom(format!("item named {name} not found"))
-        })?;
-
-        Ok(Item::new(items_info, id))
+        create_with_lisp(items_info, lisp, name)
     }
 }
 
@@ -194,11 +201,65 @@ impl ServerLoot
 }
 
 #[derive(Clone)]
+pub struct DoorGenerator
+{
+    lisp: RefCell<Lisp>
+}
+
+impl Default for DoorGenerator
+{
+    fn default() -> Self
+    {
+        Self{lisp: RefCell::new(Lisp::default())}
+    }
+}
+
+impl DoorGenerator
+{
+    pub fn new(path: &str) -> Self
+    {
+        let load_file = |path| with_error(fs::read_to_string(path));
+
+        let standard = some_or_return!(load_file("lisp/standard.scm"));
+        let loot_common = some_or_return!(load_file("lisp/loot.scm"));
+        let code = some_or_return!(load_file(path));
+
+        with_error(Lisp::new(&[&standard, &loot_common, &code])).map(|lisp|
+        {
+            Self{lisp: RefCell::new(lisp)}
+        }).unwrap_or_default()
+    }
+
+    pub fn create(&self, items_info: &ItemsInfo, door: &Door) -> Vec<Item>
+    {
+        let mut lisp = self.lisp.borrow_mut();
+
+        let material_name = <&str>::from(door.material());
+
+        {
+            let memory = lisp.memory_mut();
+
+            let material_symbol = memory.new_symbol(material_name);
+
+            some_or_return!(with_error(memory.define("material", material_symbol)));
+            some_or_return!(with_error(memory.define("width", (door.width() as i32).into())));
+        }
+
+        create_with_lisp(
+            items_info,
+            &lisp,
+            || (material_name.to_owned() + " door").into()
+        )
+    }
+}
+
+#[derive(Clone)]
 pub struct ClientLoot
 {
     pub furniture: Vec<ClientFurnitureLootInfo>,
     pub tile: Vec<TileLootInfo>,
-    pub empty: TileLootInfo
+    pub empty: TileLootInfo,
+    pub door: DoorGenerator
 }
 
 impl ClientLoot

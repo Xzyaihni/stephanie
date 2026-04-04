@@ -1842,6 +1842,14 @@ pub struct Lisp
     program: Program
 }
 
+impl Default for Lisp
+{
+    fn default() -> Self
+    {
+        Self::new_one("'()").unwrap()
+    }
+}
+
 impl Lisp
 {
     pub fn new_with_config(
@@ -1935,6 +1943,17 @@ mod tests
         });
 
         assert_eq!(value, result);
+    }
+
+    #[test]
+    fn empty_program_runs()
+    {
+        let lisp = Lisp::default();
+
+        let _value = lisp.run().unwrap_or_else(|err|
+        {
+            panic!("{err}")
+        });
     }
 
     #[test]
