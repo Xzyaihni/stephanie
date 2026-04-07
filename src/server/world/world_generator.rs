@@ -45,13 +45,12 @@ use super::{
     MarkerKind
 };
 
-use chunk_rules::ChunkRules;
-
 pub use super::server_overmap::WorldPlane;
 
 pub use chunk_rules::{
     WORLD_CHUNK_SIZE,
     CHUNK_RATIO,
+    ChunkRules,
     ChunkRulesGroup,
     ConditionalInfo,
     WorldChunk,
@@ -337,10 +336,19 @@ impl ChunkGenerator
 
             let output = if let Some(x) = this_chunk
             {
-                f(args, x.as_ref().ok_or_else(||
+                if let Some(x) = x.as_ref()
                 {
-                    lisp::Error::Custom("world chunk block isnt generated, this isnt supposed to happen ever".to_owned())
-                })?)
+                    f(args, x)
+                } else
+                {
+                    if allow_out_of_range
+                    {
+                        f(args, &WorldChunk::default())
+                    } else
+                    {
+                        return Err(lisp::Error::Custom("world chunk block isnt generated, this isnt supposed to happen ever".to_owned()));
+                    }
+                }
             } else
             {
                 if allow_out_of_range
@@ -963,7 +971,7 @@ impl<S: SaveLoad<WorldChunksBlock>> WorldGenerator<S>
 }
 
 #[derive(Debug, Clone, PartialEq)]
-struct PossibleStates
+pub struct PossibleStates
 {
     states: Vec<WorldChunkId>,
     total: f64,
@@ -974,9 +982,9 @@ struct PossibleStates
 
 impl PossibleStates
 {
-    pub fn new(rules: &ChunkRules) -> Self
+    fn new(rules: &ChunkRules) -> Self
     {
-        let states: Vec<_> = rules.ids().copied().collect();
+        let states: Vec<_> = rules.ids();
 
         {
             let total_weight = states.iter().map(|x| rules.get(*x).weight()).sum::<f64>();
@@ -992,7 +1000,7 @@ impl PossibleStates
         }
     }
 
-    pub fn new_collapsed(chunk: &WorldChunk) -> Self
+    fn new_collapsed(chunk: &WorldChunk) -> Self
     {
         debug_assert!(chunk.id() != WorldChunkId::none());
 
@@ -1005,7 +1013,7 @@ impl PossibleStates
         }
     }
 
-    pub fn constrain(
+    fn constrain(
         &mut self,
         rules: &ChunkRules,
         other: &PossibleStates,
@@ -1084,7 +1092,7 @@ impl PossibleStates
         id
     }
 
-    pub fn set_collapsed_id(&mut self, id: WorldChunkId)
+    fn set_collapsed_id(&mut self, id: WorldChunkId)
     {
         self.states = vec![id];
         self.collapsed = true;
@@ -1099,7 +1107,7 @@ impl PossibleStates
         }));
     }
 
-    pub fn calculate_entropy(weights: impl Iterator<Item=f64>) -> f64
+    fn calculate_entropy(weights: impl Iterator<Item=f64>) -> f64
     {
         let s: f64 = weights.map(|value|
         {
@@ -1317,6 +1325,11 @@ impl<'a> WaveCollapser<'a>
                 }
             });
         }
+    }
+
+    pub fn lowest_entropy(&mut self) -> Option<(LocalPos, &mut PossibleStates)>
+    {
+        self.entropies.lowest_entropy()
     }
 
     pub fn generate_single_maybe<C>(

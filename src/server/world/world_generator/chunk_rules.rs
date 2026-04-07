@@ -1054,6 +1054,7 @@ pub struct ChunkRules
 {
     rules: HashMap<WorldChunkId, ChunkRule>,
     fallback: WorldChunkId,
+    all_ids: Vec<WorldChunkId>,
     entropy: f64
 }
 
@@ -1144,9 +1145,13 @@ impl ChunkRules
 
         this_rules.values_mut().for_each(|rule| rule.weight /= total_weight);
 
+        let mut all_ids: Vec<_> = this_rules.keys().copied().collect();
+        all_ids.sort_by(|a, b| a.0.cmp(&b.0));
+
         let mut this = Self{
             entropy,
             rules: this_rules,
+            all_ids,
             fallback
         };
 
@@ -1394,9 +1399,9 @@ impl ChunkRules
         }).collect())
     }
 
-    pub fn ids(&self) -> impl Iterator<Item=&WorldChunkId>
+    pub fn ids(&self) -> Vec<WorldChunkId>
     {
-        self.rules.keys()
+        self.all_ids.clone()
     }
 
     pub fn name(&self, id: WorldChunkId) -> &str

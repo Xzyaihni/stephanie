@@ -43,6 +43,7 @@ use stephanie::{
             WORLD_CHUNK_SIZE,
             WaveCollapser,
             WorldPlane,
+            ChunkRules,
             ChunkRulesGroup,
             ChunkGenerator,
             ConditionalInfo
@@ -131,12 +132,17 @@ enum UiId
     ChunkInfo,
     SeedTextPanel,
     SeedText,
+    StepPanel,
+    StepText,
     Padding(u32)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 enum ButtonId
 {
+    ToggleStep,
+    StepOnce,
+    Clear,
     Regenerate
 }
 
@@ -226,6 +232,7 @@ struct ChunkPreview
 #[derive(Debug, Clone, PartialEq)]
 struct Tags
 {
+    step_by_step: bool,
     world_size: usize,
     seed_text: TextboxWrapper,
     seed: u64
@@ -436,6 +443,7 @@ impl YanyaApp for ChunkPreviewer
 
         let mut seed_rng = Rng::new();
         let tags = ModifiedWatcher::new(PARENT_DIRECTORY, Tags{
+            step_by_step: true,
             world_size: 15,
             seed_text: String::new().into(),
             seed: seed_rng.u64(..)
@@ -742,12 +750,46 @@ impl YanyaApp for ChunkPreviewer
                 });
             }
 
+            if update_button(controls, "toggle step", ButtonId::ToggleStep)
+            {
+                self.current_tags.step_by_step = !self.current_tags.step_by_step;
+            }
+
+            add_padding_vertical(screen_body, UiSize::Pixels(10.0).into());
+
+            {
+                let step_text = format!("step by step: {}", if self.current_tags.step_by_step { "on" } else { "off" });
+
+                let panel = screen_body.update(UiId::StepPanel, UiElement{
+                    children_layout: UiLayout::Horizontal,
+                    width: UiSize::Rest(1.0).into(),
+                    ..Default::default()
+                });
+
+                panel.update(UiId::StepText, UiElement{
+                    texture: UiTexture::Text(TextInfo::new_simple(font_size, step_text)),
+                    ..UiElement::fit_content()
+                });
+            }
+
+            let needs_step = update_button(controls, "step once", ButtonId::StepOnce);
+
+            if update_button(controls, "clear", ButtonId::Clear)
+            {
+                self.regenerate = true;
+            }
+
             if update_button(controls, "regenerate", ButtonId::Regenerate)
             {
                 self.current_tags.seed = self.seed_rng.u64(..);
                 eprintln!("new seed: {}", self.current_tags.seed);
 
                 self.regenerate = true;
+            }
+
+            if needs_step
+            {
+                self.do_step();
             }
         }
 
@@ -775,28 +817,17 @@ impl YanyaApp for ChunkPreviewer
 
             self.world_chunks.borrow_mut().0 = FlatChunksContainer::new(Pos3::new(tags.world_size, tags.world_size, 1));
 
-            let size = self.world_chunks.borrow().0.size();
+            fastrand::seed(self.preview_tags.seed);
 
-            let rules = some_or_return!(self.assets_dependent.rules.as_ref());
-
+            self.with_wave_collapser(|_rules, wave_collapser|
             {
-                let plane = &mut self.world_chunks.borrow_mut().0;
-
-                let mut wave_collapser = WaveCollapser::new(&rules.surface, plane);
-
-                fastrand::seed(self.preview_tags.seed);
-                wave_collapser.generate();
-            }
-
-            (0..size.y).for_each(|y|
-            {
-                (0..size.x).for_each(|x|
+                if !self.preview_tags.step_by_step
                 {
-                    let chunk_pos = LocalPos::new(Pos3::new(x, y, 0), size);
-
-                    self.generate_chunk_at(chunk_pos);
-                });
+                    wave_collapser.generate();
+                }
             });
+
+            self.redraw_map();
 
             self.update_timer = 0.5;
         }
@@ -884,6 +915,50 @@ impl YanyaApp for ChunkPreviewer
 
 impl ChunkPreviewer
 {
+    fn with_wave_collapser(&self, f: impl FnOnce(&ChunkRules, &mut WaveCollapser))
+    {
+        let rules = some_or_return!(self.assets_dependent.rules.as_ref());
+
+        let plane = &mut self.world_chunks.borrow_mut().0;
+
+        let mut wave_collapser = WaveCollapser::new(&rules.surface, plane);
+
+        f(&rules.surface, &mut wave_collapser);
+    }
+
+    fn redraw_map(&mut self)
+    {
+        let size = self.world_chunks.borrow().0.size();
+
+        (0..size.y).for_each(|y|
+        {
+            (0..size.x).for_each(|x|
+            {
+                let chunk_pos = LocalPos::new(Pos3::new(x, y, 0), size);
+
+                if self.world_chunks.borrow().0[chunk_pos].is_some()
+                {
+                    self.generate_chunk_at(chunk_pos);
+                }
+            });
+        });
+    }
+
+    fn do_step(&mut self)
+    {
+        self.with_wave_collapser(|rules, wave_collapser|
+        {
+            if let Some((pos, states)) = wave_collapser.lowest_entropy()
+            {
+                let generated_chunk = rules.generate(states.collapse(rules));
+
+                wave_collapser.generate_single(pos, generated_chunk);
+            }
+        });
+
+        self.redraw_map();
+    }
+
     fn generate_chunk_at(
         &mut self,
         chunk_pos: LocalPos
