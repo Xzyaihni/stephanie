@@ -1,6 +1,8 @@
 (define (generate-chunk middle-position part)
 
-(define building-height (assq 'building-height (chunk-tags-at middle-position)))
+(define building-height
+    (let ((x (assq 'building-height (chunk-tags-at middle-position))))
+        (if debug-mode (if (null? x) (begin (display "building-height not found") (newline) 15) x) x)))
 
 (if (>= height building-height) (filled-chunk (tile 'air))
 (begin
@@ -157,7 +159,14 @@
                 (tile 'stairs-down rotation)))
         this-chunk)
     (else
-        (define furnitures-seed (seed-with (seed-with (assq 'building-seed (chunk-tags-at middle-position)) height) 2222))
+        (define furnitures-seed
+            (seed-with
+                (seed-with
+                    (let ((x (assq 'building-seed (chunk-tags-at middle-position))))
+                        (if debug-mode (if (null? x) (begin (display "building-seed not found") (newline) 0) x) x))
+                    height)
+                2222))
+
         (define this-chunk (filled-chunk (tile 'air)))
         (define (decide-enemy type)
             (if (eq? type 'normal)

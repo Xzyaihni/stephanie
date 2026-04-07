@@ -258,7 +258,7 @@ impl ChunkGenerator
 
         primitives.add(
             "tile",
-            PrimitiveProcedureInfo::new_simple(ArgsCount::Min(1), Effect::Pure, move |mut args|
+            PrimitiveProcedureInfo::new_simple(ArgsCount::Min(1), Effect::Impure, move |mut args|
             {
                 let call_position = args.call_position();
 
@@ -419,7 +419,7 @@ impl ChunkGenerator
         })?;
 
         let config = LispConfig{
-            type_checks: cfg!(debug_assertions),
+            compile_config: CompileConfig::default(),
             load_handler: {
                 let parent_directory = chunks_directory;
                 Some(Box::new(move |filename|

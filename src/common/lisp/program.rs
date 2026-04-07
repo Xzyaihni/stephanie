@@ -17,6 +17,7 @@ use crate::{
 };
 
 pub use super::{
+    Symbols,
     Error,
     ErrorPos,
     SymbolId,
@@ -325,7 +326,7 @@ impl Default for Primitives
             (BEGIN_PRIMITIVE,
                 PrimitiveProcedureInfo::new_eval(ArgsCount::Min(1), Rc::new(|interpret_state, memory, args|
                 {
-                    Ok(InterRepr::Sequence(InterReprPos::parse_args::<true>(interpret_state, memory, args)?))
+                    Ok(InterRepr::Sequence(InterReprPos::parse_args(interpret_state, memory, args)?))
                 }))),
             (QUOTE_PRIMITIVE,
                 PrimitiveProcedureInfo::new_eval(1, Rc::new(|_interpret_state, _memory, args|
@@ -347,14 +348,11 @@ impl Default for Primitives
                             return Err(ErrorPos{position: clause.position, value: Error::ExpectedList});
                         }
 
-                        let check = interpret_state.with_new_env(|interpret_state|
-                        {
-                            InterReprPos::parse(interpret_state, memory, clause.car())
-                        })?;
+                        let check = InterReprPos::parse(interpret_state, memory, clause.car())?;
 
                         let tail = clause.cdr();
                         let tail_position = tail.position;
-                        let then = InterRepr::Sequence(InterReprPos::parse_args::<true>(interpret_state, memory, tail)?);
+                        let then = InterRepr::Sequence(InterReprPos::parse_args(interpret_state, memory, tail)?);
 
                         Ok((check, then.with_position(tail_position)))
                     }
@@ -369,10 +367,7 @@ impl Default for Primitives
                         let this = clauses.car();
                         let this_position = this.position;
 
-                        let (check, then) = interpret_state.with_new_env(|interpret_state|
-                        {
-                            parse_clause(interpret_state, memory, this)
-                        })?;
+                        let (check, then) = parse_clause(interpret_state, memory, this)?;
 
                         let rest = clauses.cdr();
 
@@ -396,7 +391,7 @@ impl Default for Primitives
                     parse_rest(interpret_state, memory, args).map(|x| x.value)
                 }))),
             ("cons",
-                PrimitiveProcedureInfo::new_simple(2, Effect::Pure, |mut args|
+                PrimitiveProcedureInfo::new_simple(2, Effect::Impure, |mut args|
                 {
                     let restore = args.memory.with_saved_registers([Register::Value]);
 
@@ -505,7 +500,7 @@ impl Default for Primitives
 
                     let position = args.position;
 
-                    let (name, value, redefine) = if is_procedure
+                    let (name, value) = if is_procedure
                     {
                         if first.is_null()
                         {
@@ -514,35 +509,21 @@ impl Default for Primitives
 
                         let name = InterReprPos::parse_symbol(memory, &first.car())?;
 
-                        let redefine = interpret_state.compile_env_add(name, None);
-
                         let lambdas_body = AstPos::cons(first.cdr(), args.cdr());
 
                         let lambda_name = memory.get_symbol(name);
                         let lambda = InterRepr::parse_lambda(interpret_state, memory, lambda_name, lambdas_body)?
                             .with_position(position);
 
-                        (name, lambda, redefine)
+                        (name, lambda)
                     } else
                     {
                         let name = InterReprPos::parse_symbol(memory, &first)?;
-                        let args = InterReprPos::parse_args::<true>(interpret_state, memory, args.cdr())?;
+                        let args = InterReprPos::parse_args(interpret_state, memory, args.cdr())?;
 
                         let value = args.into_iter().next().unwrap();
 
-                        let redefine = {
-                            let value = if let InterRepr::Value(simple_value) = value.value
-                            {
-                                Some(simple_value)
-                            } else
-                            {
-                                None
-                            };
-
-                            interpret_state.compile_env_add(name, value)
-                        };
-
-                        (name, value, redefine)
+                        (name, value)
                     };
 
                     {
@@ -556,14 +537,10 @@ impl Default for Primitives
                         }
                     }
 
-                    Ok(InterRepr::Define{
+                    Ok(InterRepr::Define(DefineStage::Parsed{
                         name,
-                        position: DefineEnvPosition{
-                            position: interpret_state.current_env_position.pos,
-                            redefine
-                        },
                         body: Box::new(value)
-                    })
+                    }))
                 }))),
             ("let",
                 PrimitiveProcedureInfo::new_eval(2, Rc::new(|interpret_state, memory, args|
@@ -571,7 +548,7 @@ impl Default for Primitives
                     InterRepr::parse_let(interpret_state, memory, args)
                 }))),
             ("eval",
-                PrimitiveProcedureInfo::new_state(1, Effect::Pure, Rc::new(|interpret_state: &mut InterpretState, _memory|
+                PrimitiveProcedureInfo::new_state(1, Effect::Impure, Rc::new(|interpret_state: &mut InterpretState, _memory|
                 {
                     interpret_state.eval_encountered = true;
 
@@ -595,7 +572,7 @@ impl Default for Primitives
                     }
                 })),
             (MAKE_VECTOR_PRIMITIVE,
-                PrimitiveProcedureInfo::new_with_target(2, Effect::Pure, |mut args, target|
+                PrimitiveProcedureInfo::new_with_target(2, Effect::Impure, |mut args, target|
                 {
                     let len = args.next().unwrap().as_integer()? as usize;
                     let fill = args.next().unwrap();
@@ -1181,12 +1158,11 @@ pub enum LambdaParams
 impl LambdaParams
 {
     pub fn parse(
-        interpret_state: &mut InterpretState,
         memory: &mut LispMemory,
         ast: AstPos
     ) -> Result<Self, ErrorPos>
     {
-        let this = match &ast.value
+        match &ast.value
         {
             Ast::Allocated(_) => Err(ErrorPos{position: ast.position, value: Error::ExpectedParams}),
             Ast::Value(_) =>
@@ -1195,11 +1171,7 @@ impl LambdaParams
             },
             Ast::List{..} => Ok(Self::Normal(Self::parse_list(memory, ast)?)),
             Ast::EmptyList => Ok(Self::Normal(Vec::new()))
-        }?;
-
-        this.add_to_compile_env(interpret_state);
-
-        Ok(this)
+        }
     }
 
     pub fn parse_list(memory: &mut LispMemory, ast: AstPos) -> Result<Vec<WithPosition<SymbolId>>, ErrorPos>
@@ -1338,8 +1310,16 @@ struct MarkStackEntry<'a>
 }
 
 #[derive(Debug, Clone)]
+pub enum DefineStage
+{
+    Parsed{name: SymbolId, body: Box<InterReprPos>},
+    Processed{name: SymbolId, position: DefineEnvPosition, body: Box<InterReprPos>}
+}
+
+#[derive(Debug, Clone)]
 pub enum LookupStage
 {
+    Parsed{symbol: SymbolId},
     Processed{symbol: SymbolId, pos: CompileEnvPosition},
     Final{symbol: SymbolId, location: Option<LexicalAddress>}
 }
@@ -1350,7 +1330,7 @@ pub enum InterRepr
     Apply{op: Box<InterReprPos>, args: Vec<InterReprPos>},
     Sequence(Vec<InterReprPos>),
     If{check: Box<InterReprPos>, then: Box<InterReprPos>, else_body: Box<InterReprPos>},
-    Define{name: SymbolId, position: DefineEnvPosition, body: Box<InterReprPos>},
+    Define(DefineStage),
     Lambda{name: String, params: LambdaParams, body: Box<InterReprPos>},
     Quoted(AstPos),
     Lookup(LookupStage),
@@ -1450,22 +1430,6 @@ impl InterReprPos
         None
     }
 
-    fn parse_lookup(
-        interpret_state: &mut InterpretState,
-        id: SymbolId
-    ) -> InterRepr
-    {
-        let pos = interpret_state.current_env_position.clone();
-
-        Self::compile_env_lookup(interpret_state, id, &pos).map(|value|
-        {
-            InterRepr::Value(value)
-        }).unwrap_or_else(||
-        {
-            InterRepr::Lookup(LookupStage::Processed{symbol: id, pos})
-        })
-    }
-
     fn parse(
         interpret_state: &mut InterpretState,
         memory: &mut LispMemory,
@@ -1483,9 +1447,12 @@ impl InterReprPos
                     if let Some(primitive_id) = memory.primitives.index_by_name(&memory.get_symbol(id))
                     {
                         InterRepr::Value(LispValue::new_primitive_procedure(primitive_id))
+                    } else if id == interpret_state.debug_mode_symbol
+                    {
+                        InterRepr::Value(LispValue::new_bool(interpret_state.debug_mode))
                     } else
                     {
-                        Self::parse_lookup(interpret_state, id)
+                        InterRepr::Lookup(LookupStage::Parsed{symbol: id})
                     }
                 } else
                 {
@@ -1500,10 +1467,7 @@ impl InterReprPos
             Ast::EmptyList => Ok(InterRepr::Value(LispValue::new_empty_list()).with_position(ast.position)),
             Ast::List{car, cdr} =>
             {
-                let op = interpret_state.with_new_env(|interpret_state|
-                {
-                    Self::parse(interpret_state, memory, *car)
-                })?;
+                let op = Self::parse(interpret_state, memory, *car)?;
 
                 if let InterRepr::Value(value) = op.value
                 {
@@ -1539,14 +1503,11 @@ impl InterReprPos
                     }
                 }
 
-                let args = Self::parse_args::<false>(interpret_state, memory, *cdr)?;
+                let args = Self::parse_args(interpret_state, memory, *cdr)?;
 
-                if let InterpretState{
-                    load_handler: Some((load_symbol, source_id, interpret_state_fn)),
-                    ..
-                } = interpret_state
+                if let InterRepr::Lookup(LookupStage::Parsed{symbol: this_lookup}) = *op
                 {
-                    if let InterRepr::Lookup(LookupStage::Processed{symbol: this_lookup, ..}) = *op
+                    if let Some((load_symbol, source_id, interpret_state_fn)) = &interpret_state.load_handler
                     {
                         if this_lookup == *load_symbol
                         {
@@ -1602,7 +1563,7 @@ impl InterReprPos
         }
     }
 
-    fn parse_args<const SHARE_ENVIRONMENT: bool>(
+    fn parse_args(
         interpret_state: &mut InterpretState,
         memory: &mut LispMemory,
         ast: AstPos
@@ -1615,20 +1576,9 @@ impl InterReprPos
             Ast::EmptyList => Ok(Vec::new()),
             Ast::List{car, cdr} =>
             {
-                let first = ({
-                    if SHARE_ENVIRONMENT
-                    {
-                        Self::parse(interpret_state, memory, *car)
-                    } else
-                    {
-                        interpret_state.with_new_env(|interpret_state|
-                        {
-                            Self::parse(interpret_state, memory, *car)
-                        })
-                    }
-                })?;
+                let first = Self::parse(interpret_state, memory, *car)?;
 
-                Ok(iter::once(first).chain(Self::parse_args::<SHARE_ENVIRONMENT>(interpret_state, memory, *cdr)?).collect())
+                Ok(iter::once(first).chain(Self::parse_args(interpret_state, memory, *cdr)?).collect())
             }
         }
     }
@@ -1686,7 +1636,7 @@ impl InterReprPos
                 then.remove_unused_defines(interpret_state);
                 else_body.remove_unused_defines(interpret_state);
             },
-            InterRepr::Define{name, position, body} =>
+            InterRepr::Define(DefineStage::Processed{name, position, body}) =>
             {
                 body.remove_unused_defines(interpret_state);
 
@@ -1743,6 +1693,7 @@ impl InterReprPos
                     return false;
                 }
             },
+            InterRepr::Define(_) => unreachable!(),
             InterRepr::Lambda{name: _, params: _, body} =>
             {
                 body.remove_unused_defines(interpret_state);
@@ -1858,7 +1809,7 @@ impl InterReprPos
 
                 false
             },
-            InterRepr::Define{name, position, body} =>
+            InterRepr::Define(DefineStage::Processed{name, position, body}) =>
             {
                 call_stack.push(MarkStackEntry{
                     func: Box::new(move |call_stack, _interpret_state, lambda_defines, _explore_queue, _previous_skipped|
@@ -1888,6 +1839,7 @@ impl InterReprPos
 
                 false
             },
+            InterRepr::Define(_) => unreachable!(),
             InterRepr::Lambda{name: _, params: _, body} =>
             {
                 if possibly_op > 0
@@ -1906,7 +1858,6 @@ impl InterReprPos
                 }
             },
             InterRepr::Quoted(_) => false,
-            InterRepr::Lookup(LookupStage::Final{..}) => unreachable!(),
             InterRepr::Lookup(LookupStage::Processed{symbol: id, pos}) =>
             {
                 call_stack.push(MarkStackEntry{
@@ -1951,7 +1902,319 @@ impl InterReprPos
 
                 false
             },
+            InterRepr::Lookup(_) => unreachable!(),
             InterRepr::Value(_) => false
+        }
+    }
+
+    fn process_lookups(&mut self, interpret_state: &mut InterpretState)
+    {
+        match &mut self.value
+        {
+            InterRepr::Apply{op, args} =>
+            {
+                interpret_state.with_new_env(|interpret_state|
+                {
+                    op.process_lookups(interpret_state);
+                });
+
+                args.iter_mut().for_each(|arg|
+                {
+                    interpret_state.with_new_env(|interpret_state|
+                    {
+                        arg.process_lookups(interpret_state);
+                    });
+                });
+            },
+            InterRepr::Sequence(sequence) =>
+            {
+                sequence.iter_mut().for_each(|value|
+                {
+                    value.process_lookups(interpret_state);
+                });
+            },
+            InterRepr::If{check, then, else_body} =>
+            {
+                interpret_state.with_new_env(|interpret_state|
+                {
+                    check.process_lookups(interpret_state);
+                });
+
+                interpret_state.with_new_env(|interpret_state|
+                {
+                    then.process_lookups(interpret_state);
+                });
+
+                interpret_state.with_new_env(|interpret_state|
+                {
+                    else_body.process_lookups(interpret_state);
+                });
+            },
+            InterRepr::Define(DefineStage::Parsed{name, body}) =>
+            {
+                let redefine = {
+                    let value = if let InterRepr::Value(x) = body.value
+                    {
+                        Some(x)
+                    } else
+                    {
+                        None
+                    };
+
+                    interpret_state.compile_env_add(*name, value)
+                };
+
+                self.value = InterRepr::Define(DefineStage::Processed{
+                    name: *name,
+                    body: body.clone(),
+                    position: DefineEnvPosition{
+                        position: interpret_state.current_env_position.pos,
+                        redefine
+                    }
+                });
+
+                if let InterRepr::Define(DefineStage::Processed{name: _, body, position: _}) = &mut self.value
+                {
+                    interpret_state.with_new_env(|interpret_state|
+                    {
+                        body.process_lookups(interpret_state);
+                    });
+                } else
+                {
+                    unreachable!()
+                }
+            },
+            InterRepr::Define(_) => unreachable!(),
+            InterRepr::Lambda{name: _, params, body} =>
+            {
+                let restore_position = interpret_state.lambda_begin_env();
+
+                params.add_to_compile_env(interpret_state);
+
+                body.process_lookups(interpret_state);
+
+                interpret_state.end_env(restore_position);
+            },
+            InterRepr::Quoted(_) => (),
+            InterRepr::Lookup(LookupStage::Parsed{symbol: id}) =>
+            {
+                let pos = interpret_state.current_env_position.clone();
+
+                self.value = Self::compile_env_lookup(interpret_state, *id, &pos).map(|value|
+                {
+                    InterRepr::Value(value)
+                }).unwrap_or_else(||
+                {
+                    InterRepr::Lookup(LookupStage::Processed{symbol: *id, pos})
+                });
+            },
+            InterRepr::Lookup(_) => unreachable!(),
+            InterRepr::Value(_) => ()
+        }
+    }
+
+    fn has_side_effects(&self) -> bool
+    {
+        match self.value
+        {
+            InterRepr::Apply{..} => true,
+            InterRepr::Sequence(_) => true,
+            InterRepr::If{..} => true,
+            InterRepr::Define{..} => true,
+            InterRepr::Lambda{..} => false,
+            InterRepr::Quoted(_) => false,
+            InterRepr::Lookup(_) => false,
+            InterRepr::Value(_) => false
+        }
+    }
+
+    fn simple_replace(&mut self, params: &[WithPosition<SymbolId>], f: &mut impl FnMut(&mut Self, usize)) -> bool
+    {
+        match &mut self.value
+        {
+            InterRepr::Apply{op, args} =>
+            {
+                let is_op = op.simple_replace(params, f);
+
+                is_op && args.iter_mut().all(|arg|
+                {
+                    arg.simple_replace(params, f)
+                })
+            },
+            InterRepr::Sequence(sequence) =>
+            {
+                sequence.iter_mut().all(|value|
+                {
+                    value.simple_replace(params, f)
+                })
+            },
+            InterRepr::If{check, then, else_body} =>
+            {
+                check.simple_replace(params, f) && then.simple_replace(params, f) && else_body.simple_replace(params, f)
+            },
+            InterRepr::Define(DefineStage::Parsed{..}) =>
+            {
+                false
+            },
+            InterRepr::Define(_) => unreachable!(),
+            InterRepr::Lambda{body, ..} =>
+            {
+                body.simple_replace(params, f)
+            },
+            InterRepr::Quoted(_) => true,
+            InterRepr::Lookup(LookupStage::Parsed{symbol: id}) =>
+            {
+                if let Some(index) = params.iter().position(|param| param.value == *id)
+                {
+                    f(self, index);
+                }
+
+                true
+            },
+            InterRepr::Lookup(_) => unreachable!(),
+            InterRepr::Value(_) => true
+        }
+    }
+
+    fn apply_known(
+        &mut self,
+        memory: &mut LispMemory
+    )
+    {
+        match &mut self.value
+        {
+            InterRepr::Apply{op, args} =>
+            {
+                op.apply_known(memory);
+
+                args.iter_mut().for_each(|arg|
+                {
+                    arg.apply_known(memory);
+                });
+
+                if let InterRepr::Value(value) = op.value
+                {
+                    if let Some(primitive_id) = value.as_primitive_procedure().ok()
+                    {
+                        if let Some((Effect::Pure, f)) = &memory.primitives.get(primitive_id).on_apply
+                        {
+                            let f = f.clone();
+
+                            memory.set_register(Register::Argument, ());
+
+                            for arg in args.iter().rev()
+                            {
+                                if let InterRepr::Value(value) = arg.value
+                                {
+                                    memory.set_register(Register::Temporary, value);
+
+                                    if let Err(err) = memory.cons(Register::Argument, Register::Temporary, Register::Argument)
+                                    {
+                                        eprintln!("error in apply_known args: {err}");
+
+                                        return;
+                                    }
+                                } else
+                                {
+                                    return;
+                                }
+                            }
+
+                            match f(memory, self.position, Register::Value)
+                            {
+                                Ok(_) =>
+                                {
+                                    self.value = InterRepr::Value(memory.get_register(Register::Value))
+                                },
+                                Err(err) => eprintln!("error in apply_known: {err}")
+                            }
+                        }
+                    }
+                } else if let InterRepr::Lambda{params: LambdaParams::Normal(params), body, ..} = &mut op.value
+                {
+                    if args.len() != params.len()
+                    {
+                        return;
+                    }
+
+                    {
+                        let mut counts = vec![0; params.len()];
+                        if !body.simple_replace(params, &mut |_lookup_repr, index| counts[index] += 1)
+                        {
+                            return;
+                        }
+
+                        if !counts.into_iter().all(|x| x < 2)
+                        {
+                            return;
+                        }
+                    }
+
+                    body.simple_replace(params, &mut |lookup_repr, index| *lookup_repr = args[index].clone());
+
+                    *self = *body.clone();
+                }
+            },
+            InterRepr::Sequence(sequence) =>
+            {
+                sequence.iter_mut().for_each(|value|
+                {
+                    value.apply_known(memory);
+                });
+
+                let useless_head = sequence.iter().take(sequence.len().saturating_sub(1)).all(|x|
+                {
+                    !x.has_side_effects()
+                });
+
+                debug_assert!(!sequence.is_empty());
+
+                if useless_head || sequence.len() == 1
+                {
+                    *self = sequence.into_iter().last().unwrap().clone();
+                }
+            },
+            InterRepr::If{check, then, else_body} =>
+            {
+                check.apply_known(memory);
+
+                let known_boolean = if let InterRepr::Value(value) = check.value
+                {
+                    value.as_bool().ok()
+                } else
+                {
+                    None
+                };
+
+                if let Some(known_boolean) = known_boolean
+                {
+                    *self = if known_boolean
+                    {
+                        *then.clone()
+                    } else
+                    {
+                        *else_body.clone()
+                    };
+
+                    self.apply_known(memory);
+                } else
+                {
+                    then.apply_known(memory);
+                    else_body.apply_known(memory);
+                }
+            },
+            InterRepr::Define(DefineStage::Parsed{name: _, body}) =>
+            {
+                body.apply_known(memory);
+            },
+            InterRepr::Define(_) => unreachable!(),
+            InterRepr::Lambda{name: _, params: _, body} =>
+            {
+                body.apply_known(memory);
+            },
+            InterRepr::Quoted(_) => (),
+            InterRepr::Lookup(_) => (),
+            InterRepr::Value(_) => ()
         }
     }
 
@@ -1984,16 +2247,16 @@ impl InterReprPos
                 then.parse_addresses(interpret_state);
                 else_body.parse_addresses(interpret_state);
             },
-            InterRepr::Define{name: _, position: _, body} =>
+            InterRepr::Define(DefineStage::Processed{name: _, position: _, body}) =>
             {
                 body.parse_addresses(interpret_state);
             },
+            InterRepr::Define(_) => unreachable!(),
             InterRepr::Lambda{name: _, params: _, body} =>
             {
                 body.parse_addresses(interpret_state);
             },
             InterRepr::Quoted(_) => (),
-            InterRepr::Lookup(LookupStage::Final{..}) => unreachable!(),
             InterRepr::Lookup(LookupStage::Processed{symbol: id, pos: current_env_pos}) =>
             {
                 let current_env_depth = current_env_pos.pos.depth;
@@ -2023,6 +2286,7 @@ impl InterReprPos
 
                 self.value = InterRepr::Lookup(LookupStage::Final{symbol: *id, location: found});
             },
+            InterRepr::Lookup(_) => unreachable!(),
             InterRepr::Value(_) => ()
         }
     }
@@ -2231,7 +2495,7 @@ impl InterReprPos
 
                 lambda.with_proceed(proceed)
             },
-            InterRepr::Define{name, position: _, body} =>
+            InterRepr::Define(DefineStage::Processed{name, position: _, body}) =>
             {
                 let temp = if let Some(target) = target
                 {
@@ -2254,6 +2518,7 @@ impl InterReprPos
                     RegisterStates::one(Register::Environment)
                 ).with_proceed(proceed)
             },
+            InterRepr::Define(_) => unreachable!(),
             InterRepr::Quoted(ast) =>
             {
                 if let Some(register) = target
@@ -2459,7 +2724,7 @@ impl InterRepr
         ast: AstPos
     ) -> Result<Self, ErrorPos>
     {
-        let args = InterReprPos::parse_args::<false>(interpret_state, memory, ast)?;
+        let args = InterReprPos::parse_args(interpret_state, memory, ast)?;
 
         let mut args = args.into_iter();
 
@@ -2526,14 +2791,8 @@ impl InterRepr
 
         let params = LambdaParams::Normal(params);
 
-        let restore_position = interpret_state.lambda_begin_env();
-
-        params.add_to_compile_env(interpret_state);
-
-        let body = InterReprPos::parse_args::<false>(interpret_state, memory, ast.cdr())?
+        let body = InterReprPos::parse_args(interpret_state, memory, ast.cdr())?
             .into_iter().next().unwrap();
-
-        interpret_state.end_env(restore_position);
 
         let lambda = Self::Lambda{name: "<lambda>".to_owned(), params, body: Box::new(body)}
             .with_position(position);
@@ -2554,14 +2813,10 @@ impl InterRepr
 
         let bodies_position = cdr.position;
 
-        let restore_position = interpret_state.lambda_begin_env();
+        let params = LambdaParams::parse(memory, params)?;
 
-        let params = LambdaParams::parse(interpret_state, memory, params)?;
-
-        let bodies = InterReprPos::parse_args::<true>(interpret_state, memory, cdr)?;
+        let bodies = InterReprPos::parse_args(interpret_state, memory, cdr)?;
         let body = InterRepr::Sequence(bodies).with_position(bodies_position);
-
-        interpret_state.end_env(restore_position);
 
         Ok(Self::Lambda{name, params, body: Box::new(body)})
     }
@@ -2651,19 +2906,19 @@ impl CompileEnvPosition
 }
 
 #[allow(dead_code)]
-struct InterpretStateDebugWithMemory<'a>
+struct InterpretStateDebugWithSymbols<'a>
 {
-    memory: Option<&'a LispMemory>,
+    symbols: Option<&'a Symbols>,
     state: &'a InterpretState
 }
 
-impl Debug for InterpretStateDebugWithMemory<'_>
+impl Debug for InterpretStateDebugWithSymbols<'_>
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
     {
         let outer_lookups: Vec<_> = self.state.outer_lookups.iter().map(|x|
         {
-            DebugRaw(self.memory.map(|memory| memory.get_symbol(*x)).unwrap_or_else(|| x.to_string()))
+            DebugRaw(self.symbols.map(|symbols| symbols.get_by_id(*x).to_owned()).unwrap_or_else(|| x.to_string()))
         }).collect();
 
         let compile_env: Vec<_> = self.state.compile_env.iter().map(|x| -> Vec<_>
@@ -2672,7 +2927,7 @@ impl Debug for InterpretStateDebugWithMemory<'_>
             {
                 x.iter().map(|(key, value)|
                 {
-                    let name = self.memory.map(|memory| memory.get_symbol(*key)).unwrap_or_else(||
+                    let name = self.symbols.map(|symbols| symbols.get_by_id(*key).to_owned()).unwrap_or_else(||
                     {
                         key.to_string()
                     });
@@ -2684,10 +2939,7 @@ impl Debug for InterpretStateDebugWithMemory<'_>
 
                     let x = if let Some(value) = value
                     {
-                        format!("{name} -> {}", self.memory.map(|memory| value.to_string(memory)).unwrap_or_else(||
-                        {
-                            format!("{value:?}")
-                        }))
+                        format!("{name} -> {value:?}")
                     } else
                     {
                         name
@@ -2725,14 +2977,6 @@ pub struct CompileSymbolState
     value: Option<LispValue>
 }
 
-impl CompileSymbolState
-{
-    fn clear_lookups(&mut self)
-    {
-        self.looked_up = false;
-    }
-}
-
 pub struct InterpretState
 {
     eval_encountered: bool,
@@ -2740,16 +2984,27 @@ pub struct InterpretState
     current_env_position: CompileEnvPosition,
     compile_env: Vec<Vec<Vec<(SymbolId, CompileSymbolState)>>>,
     load_handler: Option<(SymbolId, usize, Box<dyn Fn(&str) -> Option<String>>)>,
+    debug_mode_symbol: SymbolId,
+    debug_mode: bool,
     #[cfg(debug_assertions)]
-    defined_symbols: Option<super::Symbols>
+    defined_symbols: Option<Symbols>
 }
 
 impl Debug for InterpretState
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
     {
-        <InterpretStateDebugWithMemory as Debug>::fmt(&InterpretStateDebugWithMemory{
-            memory: None,
+        #[cfg(debug_assertions)]
+        {
+            return <InterpretStateDebugWithSymbols as Debug>::fmt(&InterpretStateDebugWithSymbols{
+                symbols: self.defined_symbols.as_ref(),
+                state: self
+            }, f);
+        }
+
+        #[allow(unreachable_code)]
+        <InterpretStateDebugWithSymbols as Debug>::fmt(&InterpretStateDebugWithSymbols{
+            symbols: None,
             state: self
         }, f)
     }
@@ -2757,27 +3012,6 @@ impl Debug for InterpretState
 
 impl InterpretState
 {
-    #[allow(dead_code)]
-    fn debug_with_memory<'a>(&'a self, memory: &'a LispMemory) -> InterpretStateDebugWithMemory<'a>
-    {
-        InterpretStateDebugWithMemory{
-            memory: Some(memory),
-            state: self
-        }
-    }
-
-    fn clear_lookups(&mut self)
-    {
-        self.outer_lookups.clear();
-        self.compile_env.iter_mut().for_each(|x|
-        {
-            x.iter_mut().for_each(|x|
-            {
-                x.iter_mut().for_each(|x| x.1.clear_lookups());
-            });
-        });
-    }
-
     fn compile_env_add(&mut self, name: SymbolId, value: Option<LispValue>) -> usize
     {
         let p = self.current_env_position.pos;
@@ -3360,6 +3594,23 @@ impl CompiledProgram
     }
 }
 
+pub struct CompileConfig
+{
+    pub type_checks: bool,
+    pub apply_known: bool
+}
+
+impl Default for CompileConfig
+{
+    fn default() -> Self
+    {
+        Self{
+            type_checks: cfg!(debug_assertions),
+            apply_known: !cfg!(test)
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Program
 {
@@ -3370,7 +3621,7 @@ pub struct Program
 impl Program
 {
     pub fn parse(
-        type_checks: bool,
+        config: CompileConfig,
         load_handler: Option<Box<dyn Fn(&str) -> Option<String>>>,
         mut memory: LispMemory,
         code: &[&str]
@@ -3379,6 +3630,8 @@ impl Program
         debug_assert!(memory.iter_values().all(|x| x.tag != ValueTag::Address));
 
         let ast = Parser::parse(0, code)?;
+
+        let type_checks = config.type_checks && DebugConfig::is_disabled(DebugTool::LispDisableChecks);
 
         let mut interpret_state = InterpretState{
             eval_encountered: false,
@@ -3390,6 +3643,8 @@ impl Program
                 let load_symbol = memory.new_symbol_id("load");
                 (load_symbol, code.len(), x)
             }),
+            debug_mode_symbol: memory.new_symbol_id("debug-mode"),
+            debug_mode: type_checks,
             #[cfg(debug_assertions)]
             defined_symbols: None
         };
@@ -3405,10 +3660,15 @@ impl Program
             interpret_state.defined_symbols = Some(memory.symbols());
         }
 
+        if config.apply_known
+        {
+            ir.apply_known(&mut memory);
+        }
+
+        ir.process_lookups(&mut interpret_state);
+
         if !interpret_state.eval_encountered
         {
-            interpret_state.clear_lookups();
-
             {
                 let mut call_stack = Vec::new();
 
@@ -3435,7 +3695,6 @@ impl Program
         ir.parse_addresses(&interpret_state);
 
         let code = {
-            let type_checks = type_checks && DebugConfig::is_disabled(DebugTool::LispDisableChecks);
             let mut state = CompileState::new(&mut memory, type_checks);
 
             let compiled = ir.compile(&mut state, Some(Register::Value), Proceed::Jump(Label::Halt));

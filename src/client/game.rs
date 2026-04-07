@@ -384,7 +384,7 @@ impl Game
 
             primitives.add(
                 "entity-collided",
-                PrimitiveProcedureInfo::new_simple(1, Effect::Pure, move |mut args|
+                PrimitiveProcedureInfo::new_simple(1, Effect::Impure, move |mut args|
                 {
                     with_game_state(&game_state, |game_state|
                     {
@@ -752,7 +752,7 @@ impl Game
 
             primitives.add(
                 "children-of",
-                PrimitiveProcedureInfo::new_simple(1, Effect::Pure, move |mut args|
+                PrimitiveProcedureInfo::new_simple(1, Effect::Impure, move |mut args|
                 {
                     with_game_state(&game_state, |game_state|
                     {
@@ -1016,7 +1016,7 @@ impl Game
         }
 
         let config = LispConfig{
-            type_checks: true,
+            compile_config: CompileConfig{type_checks: true, apply_known: true},
             load_handler: None,
             memory: LispMemory::new(self.info.borrow().console.primitives.as_ref().unwrap().clone(), 2048, 1 << 16)
         };

@@ -1,7 +1,7 @@
 use std::{
     iter,
     vec,
-    fmt::{self, Display},
+    fmt::{self, Display, Debug},
     ops::Deref
 };
 
@@ -286,11 +286,27 @@ impl Ast
 }
 
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy)]
 pub struct WithPosition<T>
 {
     pub position: CodePosition,
     pub value: T
+}
+
+impl<T: Debug> Debug for WithPosition<T>
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
+    {
+        let p = self.position;
+
+        if f.alternate()
+        {
+            write!(f, "{p} {:#?}", self.value)
+        } else
+        {
+            write!(f, "{p} {:?}", self.value)
+        }
+    }
 }
 
 impl<T> WithPositionTrait<WithPosition<T>> for T

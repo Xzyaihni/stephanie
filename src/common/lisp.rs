@@ -14,6 +14,7 @@ use strum::{Display, EnumCount};
 use crate::debug_config::*;
 
 pub use program::{
+    CompileConfig,
     Register,
     Effect,
     PrimitiveArgs,
@@ -1435,6 +1436,11 @@ impl LispMemory
         self.registers[register as usize] = value.into();
     }
 
+    pub fn clear_register(&mut self, register: Register)
+    {
+        self.set_register(register, ());
+    }
+
     pub fn is_empty_args(&self) -> bool
     {
         self.get_register(Register::Argument).is_null()
@@ -1831,9 +1837,21 @@ impl<M: Borrow<LispMemory>> GenericOutputWrapper<M>
 
 pub struct LispConfig
 {
-    pub type_checks: bool,
+    pub compile_config: CompileConfig,
     pub load_handler: Option<Box<dyn Fn(&str) -> Option<String>>>,
     pub memory: LispMemory
+}
+
+impl Default for LispConfig
+{
+    fn default() -> Self
+    {
+        LispConfig{
+            compile_config: CompileConfig::default(),
+            load_handler: None,
+            memory: LispMemory::default()
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -1858,7 +1876,7 @@ impl Lisp
     ) -> Result<Self, ErrorPos>
     {
         let program = Program::parse(
-            config.type_checks,
+            config.compile_config,
             config.load_handler,
             config.memory,
             code
@@ -1873,9 +1891,8 @@ impl Lisp
     ) -> Result<Self, ErrorPos>
     {
         let config = LispConfig{
-            type_checks: true,
-            load_handler: None,
-            memory
+            memory,
+            ..Default::default()
         };
 
         Self::new_with_config(config, code)
@@ -1926,10 +1943,8 @@ mod tests
 {
     use super::*;
 
-    fn simple_integer_test(code: &str, result: i32)
+    fn run_simple_integer_test_with(lisp: Lisp, result: i32)
     {
-        let lisp = Lisp::new_one(code).unwrap();
-
         assert!(lisp.program.code().commands_lookup_outer_count() == 0);
 
         let value = lisp.run().unwrap_or_else(|err|
@@ -1943,6 +1958,38 @@ mod tests
         });
 
         assert_eq!(value, result);
+    }
+
+    fn run_tests_with_memory(memory: LispMemory, code: &str, mut f: impl FnMut(Lisp))
+    {
+        f(Lisp::new_with_memory(memory.clone(), &[code]).unwrap());
+
+        f(Lisp::new_with_config(
+            LispConfig{
+                compile_config: CompileConfig{type_checks: true, apply_known: true},
+                memory,
+                ..Default::default()
+            },
+            &[code]
+        ).unwrap());
+    }
+
+    fn run_tests_with(code: &str, mut f: impl FnMut(Lisp))
+    {
+        f(Lisp::new_one(code).unwrap());
+
+        f(Lisp::new_with_config(
+            LispConfig{
+                compile_config: CompileConfig{type_checks: true, apply_known: true},
+                ..Default::default()
+            },
+            &[code]
+        ).unwrap());
+    }
+
+    fn simple_integer_test(code: &str, result: i32)
+    {
+        run_tests_with(code, |lisp| run_simple_integer_test_with(lisp, result))
     }
 
     #[test]
@@ -2004,21 +2051,27 @@ mod tests
             ((if #t (if #t factorial wehweh) blabla) 7)
         ";
 
-        let lisp = Lisp::new_one(code).unwrap();
-
-        assert!(lisp.program.code().commands_lookup_outer_count() == 2);
-
-        let value = lisp.run().unwrap_or_else(|err|
+        let mut is_first = true;
+        run_tests_with(code, |lisp|
         {
-            panic!("{err}")
-        });
+            if is_first
+            {
+                assert!(lisp.program.code().commands_lookup_outer_count() == 2);
+                is_first = false;
+            }
 
-        let value = value.as_integer().unwrap_or_else(|err|
-        {
-            panic!("{err} ({value})")
-        });
+            let value = lisp.run().unwrap_or_else(|err|
+            {
+                panic!("{err}")
+            });
 
-        assert_eq!(value, 5040);
+            let value = value.as_integer().unwrap_or_else(|err|
+            {
+                panic!("{err} ({value})")
+            });
+
+            assert_eq!(value, 5040);
+        });
     }
 
     #[test]
@@ -2138,19 +2191,20 @@ mod tests
             (func-four (+ 229 a))
         ";
 
-        let mut lisp = Lisp::new_one(code).unwrap();
+        run_tests_with(code, |mut lisp|
+        {
+            lisp.memory_mut().define("a", 1.into()).unwrap();
+            lisp.memory_mut().define("b", 2.into()).unwrap();
+            lisp.memory_mut().define("c", 3.into()).unwrap();
+            lisp.memory_mut().define("d", 4.into()).unwrap();
 
-        lisp.memory_mut().define("a", 1.into()).unwrap();
-        lisp.memory_mut().define("b", 2.into()).unwrap();
-        lisp.memory_mut().define("c", 3.into()).unwrap();
-        lisp.memory_mut().define("d", 4.into()).unwrap();
+            let value = lisp.run()
+                .unwrap()
+                .as_integer()
+                .unwrap();
 
-        let value = lisp.run()
-            .unwrap()
-            .as_integer()
-            .unwrap();
-
-        assert!(value == 333, "{value}");
+            assert!(value == 333, "{value}");
+        });
     }
 
     #[test]
@@ -2160,19 +2214,20 @@ mod tests
             (* outside-value 2)
         ";
 
-        let mut lisp = Lisp::new_one(code).unwrap();
-
-        for outside_value in [123, 333, 444, 12, 2, 5]
+        run_tests_with(code, |mut lisp|
         {
-            lisp.memory_mut().define("outside-value", outside_value.into()).unwrap();
+            for outside_value in [123, 333, 444, 12, 2, 5]
+            {
+                lisp.memory_mut().define("outside-value", outside_value.into()).unwrap();
 
-            let value = lisp.run()
-                .unwrap()
-                .as_integer()
-                .unwrap();
+                let value = lisp.run()
+                    .unwrap()
+                    .as_integer()
+                    .unwrap();
 
-            assert!(value == outside_value * 2, "{value}");
-        }
+                assert!(value == outside_value * 2, "{value}");
+            }
+        });
     }
 
     #[test]
@@ -2190,14 +2245,15 @@ mod tests
             ((derivative square) 0.5)
         ";
 
-        let lisp = Lisp::new_one(code).unwrap();
+        run_tests_with(code, |lisp|
+        {
+            let value = lisp.run()
+                .unwrap()
+                .as_float()
+                .unwrap();
 
-        let value = lisp.run()
-            .unwrap()
-            .as_float()
-            .unwrap();
-
-        assert!(value > 0.9999 && value <= 1.0, "{value}");
+            assert!(value > 0.9999 && value <= 1.0, "{value}");
+        });
     }
 
     fn compare_integer_vec(values: Vec<LispValue>, other: Vec<i32>)
@@ -2222,12 +2278,13 @@ mod tests
             v
         ";
 
-        let lisp = Lisp::new_one(code).unwrap();
+        run_tests_with(code, |lisp|
+        {
+            let output = lisp.run().unwrap();
+            let value = output.as_vector().unwrap();
 
-        let output = lisp.run().unwrap();
-        let value = output.as_vector().unwrap();
-
-        compare_integer_vec(value, vec![1, 2, 3]);
+            compare_integer_vec(value, vec![1, 2, 3]);
+        });
     }
 
     #[test]
@@ -2258,14 +2315,15 @@ mod tests
         let memory_size = 92;
         let memory = LispMemory::new(Rc::new(Primitives::default()), 20, memory_size);
 
-        let lisp = Lisp::new_with_memory(memory, &[code]).unwrap();
+        run_tests_with_memory(memory, code, |lisp|
+        {
+            let value = lisp.run()
+                .unwrap()
+                .as_integer()
+                .unwrap();
 
-        let value = lisp.run()
-            .unwrap()
-            .as_integer()
-            .unwrap();
-
-        assert_eq!(value, 3_i32);
+            assert_eq!(value, 3_i32);
+        });
     }
 
     #[test]
@@ -2308,14 +2366,15 @@ mod tests
         let memory_size = 430;
         let memory = LispMemory::new(Rc::new(Primitives::default()), 64, memory_size);
 
-        let lisp = Lisp::new_with_memory(memory, &[code]).unwrap();
+        run_tests_with_memory(memory, code, |lisp|
+        {
+            let value = lisp.run()
+                .unwrap()
+                .as_integer()
+                .unwrap();
 
-        let value = lisp.run()
-            .unwrap()
-            .as_integer()
-            .unwrap();
-
-        assert_eq!(value, 39_922_707_i32);
+            assert_eq!(value, 39_922_707_i32);
+        });
     }
 
     fn list_equals(list: LispList<OutputWrapperRef>, check: &[i32])
@@ -2340,13 +2399,14 @@ mod tests
             (quote (1 2 3 4 5))
         ";
 
-        let lisp = Lisp::new_one(code).unwrap();
+        run_tests_with(code, |lisp|
+        {
+            let output = lisp.run().unwrap();
 
-        let output = lisp.run().unwrap();
+            let value = output.as_list().unwrap();
 
-        let value = output.as_list().unwrap();
-
-        list_equals(value, &[1, 2, 3, 4, 5]);
+            list_equals(value, &[1, 2, 3, 4, 5]);
+        });
     }
 
     #[test]
@@ -2356,13 +2416,14 @@ mod tests
             '(1 2 3 4 5)
         ";
 
-        let lisp = Lisp::new_one(code).unwrap();
+        run_tests_with(code, |lisp|
+        {
+            let output = lisp.run().unwrap();
 
-        let output = lisp.run().unwrap();
+            let value = output.as_list().unwrap();
 
-        let value = output.as_list().unwrap();
-
-        list_equals(value, &[1, 2, 3, 4, 5]);
+            list_equals(value, &[1, 2, 3, 4, 5]);
+        });
     }
 
     #[test]
@@ -2372,13 +2433,14 @@ mod tests
             'heyyy
         ";
 
-        let lisp = Lisp::new_one(code).unwrap();
+        run_tests_with(code, |lisp|
+        {
+            let output = lisp.run().unwrap();
 
-        let output = lisp.run().unwrap();
+            let value = output.as_symbol().unwrap();
 
-        let value = output.as_symbol().unwrap();
-
-        assert_eq!(value, "heyyy".to_owned());
+            assert_eq!(value, "heyyy".to_owned());
+        });
     }
 
     #[test]
@@ -2388,13 +2450,14 @@ mod tests
             (cons 3 (cons 4 (cons 5 (quote ()))))
         ";
 
-        let lisp = Lisp::new_one(code).unwrap();
+        run_tests_with(code, |lisp|
+        {
+            let output = lisp.run().unwrap();
 
-        let output = lisp.run().unwrap();
+            let value = output.as_list().unwrap();
 
-        let value = output.as_list().unwrap();
-
-        list_equals(value, &[3, 4, 5]);
+            list_equals(value, &[3, 4, 5]);
+        });
     }
 
     #[test]
@@ -2416,12 +2479,13 @@ mod tests
             \"test\"
         ";
 
-        let lisp = Lisp::new_one(code).unwrap();
+        run_tests_with(code, |lisp|
+        {
+            let output = lisp.run().unwrap();
+            let value = output.as_string().unwrap();
 
-        let output = lisp.run().unwrap();
-        let value = output.as_string().unwrap();
-
-        assert_eq!(value, "test".to_owned());
+            assert_eq!(value, "test".to_owned());
+        });
     }
 
     #[test]
@@ -2431,14 +2495,15 @@ mod tests
             '(1 2 \"three\")
         ";
 
-        let lisp = Lisp::new_one(code).unwrap();
+        run_tests_with(code, |lisp|
+        {
+            let output = lisp.run().unwrap();
+            let mut values = output.as_pairs_list().unwrap().into_iter();
 
-        let output = lisp.run().unwrap();
-        let mut values = output.as_pairs_list().unwrap().into_iter();
-
-        assert_eq!(values.next().unwrap().as_integer().unwrap(), 1);
-        assert_eq!(values.next().unwrap().as_integer().unwrap(), 2);
-        assert_eq!(values.next().unwrap().as_string().unwrap(), "three".to_owned());
+            assert_eq!(values.next().unwrap().as_integer().unwrap(), 1);
+            assert_eq!(values.next().unwrap().as_integer().unwrap(), 2);
+            assert_eq!(values.next().unwrap().as_string().unwrap(), "three".to_owned());
+        });
     }
 
     #[test]
@@ -2451,12 +2516,13 @@ mod tests
             (car (cdr (cdr x)))
         ";
 
-        let lisp = Lisp::new_one(code).unwrap();
+        run_tests_with(code, |lisp|
+        {
+            let output = lisp.run().unwrap();
+            let value = output.as_symbol().unwrap();
 
-        let output = lisp.run().unwrap();
-        let value = output.as_symbol().unwrap();
-
-        assert_eq!(value, "💢".to_owned());
+            assert_eq!(value, "💢".to_owned());
+        });
     }
 
     #[test]
@@ -2466,12 +2532,13 @@ mod tests
             (make-vector 5 999)
         ";
 
-        let lisp = Lisp::new_one(code).unwrap();
+        run_tests_with(code, |lisp|
+        {
+            let output = lisp.run().unwrap();
+            let value = output.as_vector().unwrap();
 
-        let output = lisp.run().unwrap();
-        let value = output.as_vector().unwrap();
-
-        compare_integer_vec(value, vec![999, 999, 999, 999, 999]);
+            compare_integer_vec(value, vec![999, 999, 999, 999, 999]);
+        });
     }
 
     #[test]
@@ -2493,12 +2560,13 @@ mod tests
             x
         ";
 
-        let lisp = Lisp::new_one(code).unwrap();
+        run_tests_with(code, |lisp|
+        {
+            let output = lisp.run().unwrap();
+            let value = output.as_vector().unwrap();
 
-        let output = lisp.run().unwrap();
-        let value = output.as_vector().unwrap();
-
-        compare_integer_vec(value, vec![1005, 9, 5, 123, 1000]);
+            compare_integer_vec(value, vec![1005, 9, 5, 123, 1000]);
+        });
     }
 
     #[test]
@@ -2551,13 +2619,14 @@ mod tests
         let memory_size = 300;
         let memory = LispMemory::new(Rc::new(Primitives::default()), 256, memory_size);
 
-        let lisp = Lisp::new_with_memory(memory, &[&code]).unwrap();
+        run_tests_with_memory(memory, &code, |lisp|
+        {
+            let output = lisp.run().unwrap();
 
-        let output = lisp.run().unwrap();
+            let value = output.as_vector().unwrap();
 
-        let value = output.as_vector().unwrap();
-
-        compare_integer_vec(value, vec![amount, amount, amount, amount, amount + 1]);
+            compare_integer_vec(value, vec![amount, amount, amount, amount, amount + 1]);
+        });
     }
 
     #[test]
@@ -2662,19 +2731,20 @@ mod tests
             '("\\" ";" "test string \" one")
         "###;
 
-        let lisp = Lisp::new_one(code).unwrap();
-
-        let output = lisp.run().unwrap();
-        let mut values = output.as_pairs_list().unwrap().into_iter();
-
-        let mut next_s = ||
+        run_tests_with(code, |lisp|
         {
-            values.next().unwrap().as_string().unwrap()
-        };
+            let output = lisp.run().unwrap();
+            let mut values = output.as_pairs_list().unwrap().into_iter();
 
-        assert_eq!(next_s(), "\\".to_owned());
-        assert_eq!(next_s(), ";".to_owned());
-        assert_eq!(next_s(), "test string \" one".to_owned());
+            let mut next_s = ||
+            {
+                values.next().unwrap().as_string().unwrap()
+            };
+
+            assert_eq!(next_s(), "\\".to_owned());
+            assert_eq!(next_s(), ";".to_owned());
+            assert_eq!(next_s(), "test string \" one".to_owned());
+        });
     }
 
     #[test]
@@ -2781,11 +2851,12 @@ mod tests
             #\\x
         ";
 
-        let lisp = Lisp::new_one(code).unwrap();
+        run_tests_with(code, |lisp|
+        {
+            let value = lisp.run().unwrap().as_char().unwrap();
 
-        let value = lisp.run().unwrap().as_char().unwrap();
-
-        assert_eq!(value, 'x');
+            assert_eq!(value, 'x');
+        });
     }
 
     #[test]
@@ -2795,11 +2866,12 @@ mod tests
             (random-integer 10)
         ";
 
-        let lisp = Lisp::new_one(code).unwrap();
+        run_tests_with(code, |lisp|
+        {
+            let value = lisp.run().unwrap().as_integer().unwrap();
 
-        let value = lisp.run().unwrap().as_integer().unwrap();
-
-        assert!((0..10).contains(&value));
+            assert!((0..10).contains(&value));
+        });
     }
 
     #[test]
@@ -2859,19 +2931,20 @@ mod tests
             (one)
         ";
 
-        let lisp = Lisp::new_one(code).unwrap();
-
-        let value = lisp.run().unwrap_or_else(|err|
+        run_tests_with(code, |lisp|
         {
-            panic!("{err}")
-        });
+            let value = lisp.run().unwrap_or_else(|err|
+            {
+                panic!("{err}")
+            });
 
-        let value = value.as_integer().unwrap_or_else(|err|
-        {
-            panic!("{err} ({value})")
-        });
+            let value = value.as_integer().unwrap_or_else(|err|
+            {
+                panic!("{err} ({value})")
+            });
 
-        assert_eq!(value, 5);
+            assert_eq!(value, 5);
+        });
     }
 
     #[test]
@@ -3039,6 +3112,27 @@ mod tests
     }
 
     #[test]
+    fn optimize_away_simple_let()
+    {
+        let code = "
+            (let ((x (cons 99 100)))
+                    (if #f (+ (car x) (cdr x)) (car x)))
+        ";
+
+        let lisp = Lisp::new_with_config(
+            LispConfig{
+                compile_config: CompileConfig{type_checks: true, apply_known: true},
+                ..Default::default()
+            },
+            &[code]
+        ).unwrap();
+
+        assert!(lisp.program.code().commands_define_count() == 0);
+
+        run_simple_integer_test_with(lisp, 99);
+    }
+
+    #[test]
     fn many_cond_defines()
     {
         let code = "
@@ -3104,22 +3198,23 @@ mod tests
             (- (cool) fun)
         ";
 
-        let lisp = Lisp::new_one(code).unwrap();
-
-        assert!(lisp.program.code().commands_lookup_outer_count() == 0);
-        assert!(lisp.program.code().commands_define_count() == 1);
-
-        let value = lisp.run().unwrap_or_else(|err|
+        run_tests_with(code, |lisp|
         {
-            panic!("{err}")
-        });
+            assert!(lisp.program.code().commands_lookup_outer_count() == 0);
+            assert!(lisp.program.code().commands_define_count() == 1);
 
-        let value = value.as_integer().unwrap_or_else(|err|
-        {
-            panic!("{err} ({value})")
-        });
+            let value = lisp.run().unwrap_or_else(|err|
+            {
+                panic!("{err}")
+            });
 
-        assert_eq!(value, 998);
+            let value = value.as_integer().unwrap_or_else(|err|
+            {
+                panic!("{err} ({value})")
+            });
+
+            assert_eq!(value, 998);
+        });
     }
 
     #[test]
@@ -3171,11 +3266,12 @@ mod tests
             (x 1312)
         ";
 
-        let lisp = Lisp::new_one(code).unwrap();
+        run_tests_with(code, |lisp|
+        {
+            let value = lisp.run().unwrap().as_integer().unwrap();
 
-        let value = lisp.run().unwrap().as_integer().unwrap();
-
-        assert_eq!(value, 1312_i32 * 2);
+            assert_eq!(value, 1312_i32 * 2);
+        });
     }
 
     #[test]
