@@ -42,6 +42,7 @@ pub struct PhysicalProperties
     pub restitution: f32,
     pub damping: f32,
     pub angular_damping: f32,
+    pub friction: f32,
     pub floating: bool,
     pub fixed: PhysicalFixed,
     pub target_non_lazy: bool,
@@ -52,11 +53,14 @@ impl Default for PhysicalProperties
 {
     fn default() -> Self
     {
+        let add_friction_lter = ();
+        let also_remove_damping_alot = ();
         Self{
             inverse_mass: 1.0,
             restitution: 0.3,
             damping: 0.003,
             angular_damping: 0.005,
+            friction: 0.1,
             floating: false,
             fixed: PhysicalFixed::default(),
             target_non_lazy: false,
@@ -69,6 +73,7 @@ impl Default for PhysicalProperties
 pub struct Physical
 {
     pub inverse_mass: f32,
+    pub friction: f32,
     pub restitution: f32,
     pub fixed: PhysicalFixed,
     pub target_non_lazy: bool,
@@ -92,6 +97,7 @@ impl From<PhysicalProperties> for Physical
     {
         Self{
             inverse_mass: props.inverse_mass,
+            friction: props.friction,
             restitution: props.restitution,
             floating: props.floating,
             fixed: props.fixed,
@@ -117,6 +123,7 @@ impl Physical
     {
         PhysicalProperties{
             inverse_mass: self.inverse_mass,
+            friction: self.friction,
             restitution: self.restitution,
             damping: self.damping,
             angular_damping: self.angular_damping,

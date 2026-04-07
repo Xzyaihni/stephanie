@@ -5,11 +5,10 @@ use std::{
     fs,
     collections::HashMap,
     cell::RefCell,
-    ops::{Range, Deref, DerefMut},
-    time::SystemTime,
+    ops::Range,
     rc::Rc,
     sync::Arc,
-    path::{Path, PathBuf}
+    path::PathBuf
 };
 
 use parking_lot::Mutex;
@@ -45,6 +44,7 @@ use yanyaengine::{
 };
 
 use stephanie::{
+    extra_common::*,
     server::world::{
         MarkerKind,
         world_generator::{
@@ -324,162 +324,6 @@ struct ChunkPreview
 }
 
 #[derive(Debug, Clone, PartialEq)]
-struct ModifiedWatcher<T>
-{
-    paths: Vec<PathBuf>,
-    last_modified: Vec<Option<SystemTime>>,
-    value: T
-}
-
-impl<T> Deref for ModifiedWatcher<T>
-{
-    type Target = T;
-
-    fn deref(&self) -> &Self::Target
-    {
-        &self.value
-    }
-}
-
-impl<T> DerefMut for ModifiedWatcher<T>
-{
-    fn deref_mut(&mut self) -> &mut Self::Target
-    {
-        &mut self.value
-    }
-}
-
-fn modified_time(path: &Path) -> Option<SystemTime>
-{
-    if !path.exists()
-    {
-        eprintln!("cant find path: {}", path.display());
-        return None;
-    }
-
-    let this_metadata = match fs::metadata(path)
-    {
-        Ok(x) => x,
-        Err(err) =>
-        {
-            eprintln!("modified time access error: {err}");
-            return None;
-        }
-    };
-
-    if this_metadata.is_dir()
-    {
-        match fs::read_dir(path)
-        {
-            Ok(x) =>
-            {
-                x.fold(None, |acc, x|
-                {
-                    let modified_time = match x
-                    {
-                        Ok(x) => modified_time(&x.path()),
-                        Err(err) =>
-                        {
-                            eprintln!("dir entry error: {err}");
-                            None
-                        }
-                    };
-
-                    if let Some(modified) = modified_time
-                    {
-                        if let Some(acc) = acc
-                        {
-                            Some(if modified > acc { modified } else { acc })
-                        } else
-                        {
-                            Some(modified)
-                        }
-                    } else
-                    {
-                        acc
-                    }
-                })
-            },
-            Err(err) =>
-            {
-                eprintln!("read dir error: {err}");
-
-                None
-            }
-        }
-    } else
-    {
-        match this_metadata.modified()
-        {
-            Ok(x) => Some(x),
-            Err(err) =>
-            {
-                eprintln!("modified access error: {err}");
-
-                None
-            }
-        }
-    }
-}
-
-impl<T> ModifiedWatcher<T>
-{
-    fn new(path: impl Into<PathBuf>, value: T) -> Self
-    {
-        let path = path.into();
-
-        Self::new_many(vec![path], value)
-    }
-
-    fn new_many(paths: Vec<PathBuf>, value: T) -> Self
-    {
-        let last_modified: Vec<_> = paths.iter().map(|x| modified_time(x)).collect();
-
-        Self{
-            paths,
-            last_modified,
-            value
-        }
-    }
-
-    fn modified_check(&mut self) -> bool
-    {
-        self.paths.iter().zip(self.last_modified.iter_mut()).fold(false, |modified, (path, last_modified)|
-        {
-            let new_modified_time = modified_time(path);
-
-            let changed = new_modified_time != *last_modified;
-
-            if changed
-            {
-                *last_modified = new_modified_time;
-            }
-
-            modified || changed
-        })
-    }
-}
-
-#[derive(Debug, Clone)]
-struct TextboxWrapper(TextboxInfo);
-
-impl From<String> for TextboxWrapper
-{
-    fn from(s: String) -> Self
-    {
-        Self(TextboxInfo::new(s))
-    }
-}
-
-impl PartialEq for TextboxWrapper
-{
-    fn eq(&self, other: &Self) -> bool
-    {
-        self.0.text == other.0.text
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
 struct Tags
 {
     name: TextboxWrapper,
@@ -521,7 +365,7 @@ impl AssetsDependent
             {
                 let overmaps = Rc::new(RefCell::new(vec![world_chunks.clone()]));
 
-                let primitives = Rc::new(ChunkGenerator::default_primitives(&tilemap.tilemap, rules.clone(), overmaps));
+                let primitives = Rc::new(ChunkGenerator::default_primitives(&tilemap.tilemap, rules.clone(), overmaps, false));
 
                 let memory = LispMemory::new(primitives, 256, 1 << 13);
 
@@ -656,7 +500,6 @@ impl ChunkPreviewer
         ]));
 
         let config = LispConfig{
-            type_checks: true,
             load_handler: {
                 let depend_paths = depend_paths.clone();
                 let parent_directory = chunks_directory;
@@ -678,7 +521,8 @@ impl ChunkPreviewer
                     }
                 }))
             },
-            memory
+            memory,
+            ..Default::default()
         };
 
         match Lisp::new_with_config(config, &[&standard_code, &default_code, &chunk_code])
@@ -1136,8 +980,7 @@ impl YanyaApp for ChunkPreviewer
                 let chunk_info = ConditionalInfo{
                     position: LocalPos::new(chunk_pos, Pos3::new(3, 3, 1)),
                     height: self.preview_tags.height,
-                    difficulty: self.preview_tags.difficulty,
-                    rotation: self.preview_tags.rotation
+                    difficulty: self.preview_tags.difficulty
                 };
 
                 let chunk_name = {
@@ -1155,6 +998,7 @@ impl YanyaApp for ChunkPreviewer
                 let tiles = ChunkGenerator::generate_chunk_with(
                     &chunk_info,
                     &chunk_name,
+                    self.preview_tags.rotation,
                     0,
                     chunk_code,
                     &mut |marker|

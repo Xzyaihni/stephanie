@@ -2,7 +2,13 @@
 
 (define building-height
     (let ((x (assq 'building-height (chunk-tags-at middle-position))))
-        (if debug-mode (if (null? x) (begin (display "building-height not found") (newline) 15) x) x)))
+        (if debug-mode
+            (if (null? x)
+                (begin
+                    (if (not (allow-out-of-range-chunks)) (begin (display "building-height not found") (newline)))
+                    15)
+                x)
+            x)))
 
 (if (>= height building-height) (filled-chunk (tile 'air))
 (begin

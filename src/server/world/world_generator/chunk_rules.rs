@@ -740,8 +740,7 @@ pub struct ConditionalInfo
 {
     pub position: LocalPos,
     pub height: i32,
-    pub difficulty: f32,
-    pub rotation: TileRotation
+    pub difficulty: f32
 }
 
 impl ConditionalInfo
@@ -961,6 +960,11 @@ impl NameMappings
         self.current_index += 1;
 
         self.world_chunk.insert(key, id);
+    }
+
+    pub fn id_by_rotation_name(&self, rotation: TileRotation, name: String) -> Option<WorldChunkId>
+    {
+        self.world_chunk.get(&(rotation, name)).copied()
     }
 }
 

@@ -33,6 +33,8 @@ pub mod main_menu;
 
 pub mod app;
 
+pub mod extra_common;
+
 pub mod debug_config;
 
 

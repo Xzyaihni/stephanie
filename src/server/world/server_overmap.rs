@@ -350,8 +350,7 @@ impl<S: SaveLoad<WorldChunksBlock>> ServerOvermap<S>
                         ConditionalInfo{
                             position: local_pos,
                             height: global_pos.0.z * CHUNK_RATIO.z as i32 + z as i32,
-                            difficulty: chunk_difficulty(global_pos),
-                            rotation: world_generator.rotation_of(this_chunk.id())
+                            difficulty: chunk_difficulty(global_pos)
                         }
                     };
 
