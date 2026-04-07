@@ -10,6 +10,8 @@ use std::{
     path::PathBuf
 };
 
+use fastrand::Rng;
+
 use vulkano::pipeline::graphics::{
     rasterization::CullMode,
     depth_stencil::{
@@ -22,6 +24,7 @@ use nalgebra::{vector, Vector2, Vector3};
 
 use yanyaengine::{
     game_object::*,
+    FontsContainer,
     ShadersContainer,
     ShaderId,
     Shader,
@@ -121,9 +124,13 @@ enum UiId
     Screen,
     ScreenBody,
     Scrollbar(UiScrollbarId, UiScrollbarPart),
+    TextboxLabel(TextboxId),
+    Textbox(TextboxId, TextboxPartId),
     Button(ButtonId, ButtonPartId),
     ChunkHighlight,
     ChunkInfo,
+    SeedTextPanel,
+    SeedText,
     Padding(u32)
 }
 
@@ -139,6 +146,23 @@ enum ButtonPartId
     Panel,
     Body,
     Text
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum TextboxId
+{
+    Seed
+}
+
+impl TextboxId
+{
+    fn name(&self) -> String
+    {
+        match self
+        {
+            Self::Seed => "seed".to_owned()
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -202,7 +226,9 @@ struct ChunkPreview
 #[derive(Debug, Clone, PartialEq)]
 struct Tags
 {
-    world_size: usize
+    world_size: usize,
+    seed_text: TextboxWrapper,
+    seed: u64
 }
 
 fn parse_rules() -> Option<Rc<ChunkRulesGroup>>
@@ -274,6 +300,7 @@ impl AssetsDependent
 struct ChunkPreviewer
 {
     shaders: DrawShaders,
+    fonts: Rc<FontsContainer>,
     world_chunks: Rc<RefCell<WorldPlane>>,
     assets_dependent: ModifiedWatcher<AssetsDependent>,
     controls: ControlsController<UiId>,
@@ -284,7 +311,9 @@ struct ChunkPreviewer
     controller: Controller<UiId>,
     update_timer: f32,
     regenerate: bool,
+    selected_textbox: Option<UiId>,
     chunk_code: HashMap<String, ModifiedWatcher<Lisp>>,
+    seed_rng: Rng,
     current_tags: ModifiedWatcher<Tags>,
     preview_tags: ModifiedWatcher<Tags>,
     preview: Option<ChunkPreview>
@@ -405,8 +434,11 @@ impl YanyaApp for ChunkPreviewer
 
         let controller = Controller::new(&info.object_info);
 
+        let mut seed_rng = Rng::new();
         let tags = ModifiedWatcher::new(PARENT_DIRECTORY, Tags{
-            world_size: 15
+            world_size: 15,
+            seed_text: String::new().into(),
+            seed: seed_rng.u64(..)
         });
 
         let preview = None;
@@ -420,6 +452,7 @@ impl YanyaApp for ChunkPreviewer
 
         Self{
             shaders: app_info.unwrap(),
+            fonts: info.object_info.builder_wrapper.fonts().clone(),
             world_chunks,
             assets_dependent,
             controls,
@@ -430,7 +463,9 @@ impl YanyaApp for ChunkPreviewer
             controller,
             update_timer: 0.0,
             regenerate: false,
+            selected_textbox: None,
             chunk_code: HashMap::new(),
+            seed_rng,
             current_tags: tags.clone(),
             preview_tags: tags,
             preview
@@ -618,8 +653,100 @@ impl YanyaApp for ChunkPreviewer
                 button.is_mouse_inside() && controls.take_click_down()
             };
 
+            let mut update_textbox = |controls: &mut UiControls<_>, textbox_id: TextboxId, text: &mut TextboxInfo, centered|
+            {
+                let id = |part| UiId::Textbox(textbox_id, part);
+
+                let parent = if centered
+                {
+                    screen_body
+                } else
+                {
+                    screen_body.update(id(TextboxPartId::Panel), UiElement{
+                        width: UiSize::Rest(1.0).into(),
+                        ..Default::default()
+                    })
+                };
+
+                if !centered
+                {
+                    parent.update(UiId::TextboxLabel(textbox_id), UiElement{
+                        texture: UiTexture::Text(TextInfo::new_simple(font_size, textbox_id.name())),
+                        ..UiElement::fit_content()
+                    });
+
+                    add_padding_horizontal(parent, UiSize::Pixels(10.0).into());
+                }
+
+                let name_body = parent.update(id(TextboxPartId::Body), UiElement{
+                    texture: UiTexture::Solid,
+                    mix: Some(MixColorLch::color(Lcha{l: 0.0, c: 0.0, h: 0.0, a: 0.3})),
+                    width: UiElementSize{minimum_size: Some(UiMinimumSize::Pixels(250.0)), size: UiSize::FitChildren},
+                    height: UiSize::Pixels(20.0).into(),
+                    ..Default::default()
+                });
+
+                if name_body.is_mouse_inside() && controls.take_click_down()
+                {
+                    self.selected_textbox = Some(id(TextboxPartId::Body));
+                }
+
+                add_padding_horizontal(name_body, UiSize::Pixels(10.0).into());
+
+                if self.selected_textbox.as_ref().map(|x| *x == id(TextboxPartId::Body)).unwrap_or(false)
+                {
+                    name_body.element().mix = Some(MixColorLch::color(Lcha{l: 0.0, c: 0.0, h: 0.0, a: 0.5}));
+
+                    textbox_update(controls, &self.fonts, id, name_body, font_size, text);
+                } else
+                {
+                    name_body.update(id(TextboxPartId::Text), UiElement{
+                        texture: UiTexture::Text(TextInfo::new_simple(font_size, text.text.clone())),
+                        ..UiElement::fit_content()
+                    });
+                }
+
+                add_padding_horizontal(name_body, UiSize::Pixels(10.0).into());
+            };
+
+            add_padding_vertical(screen_body, UiSize::Pixels(15.0).into());
+
+            {
+                update_textbox(controls, TextboxId::Seed, &mut self.current_tags.seed_text.0, false);
+
+                let text = &self.current_tags.seed_text.0.text;
+                if !text.is_empty()
+                {
+                    match text.parse::<u64>()
+                    {
+                        Ok(seed) => self.current_tags.seed = seed,
+                        Err(err) => eprintln!("error parsing seed ({text}): {err}")
+                    }
+                }
+            }
+
+            add_padding_vertical(screen_body, UiSize::Pixels(10.0).into());
+
+            {
+                let seed_text = format!("seed: {}", self.current_tags.seed);
+
+                let panel = screen_body.update(UiId::SeedTextPanel, UiElement{
+                    children_layout: UiLayout::Horizontal,
+                    width: UiSize::Rest(1.0).into(),
+                    ..Default::default()
+                });
+
+                panel.update(UiId::SeedText, UiElement{
+                    texture: UiTexture::Text(TextInfo::new_simple(font_size, seed_text)),
+                    ..UiElement::fit_content()
+                });
+            }
+
             if update_button(controls, "regenerate", ButtonId::Regenerate)
             {
+                self.current_tags.seed = self.seed_rng.u64(..);
+                eprintln!("new seed: {}", self.current_tags.seed);
+
                 self.regenerate = true;
             }
         }
@@ -656,6 +783,8 @@ impl YanyaApp for ChunkPreviewer
                 let plane = &mut self.world_chunks.borrow_mut().0;
 
                 let mut wave_collapser = WaveCollapser::new(&rules.surface, plane);
+
+                fastrand::seed(self.preview_tags.seed);
                 wave_collapser.generate();
             }
 
@@ -677,6 +806,11 @@ impl YanyaApp for ChunkPreviewer
         if let Some(preview) = self.preview.as_mut()
         {
             preview.tiles.iter_mut().for_each(|x| x.update_buffers(&mut info));
+        }
+
+        if controls.is_click_down() && !controls.is_click_taken()
+        {
+            self.selected_textbox = None;
         }
 
         self.controls.consume_changed(controls).for_each(drop);
