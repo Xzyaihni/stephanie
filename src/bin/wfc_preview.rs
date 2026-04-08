@@ -78,6 +78,7 @@ use stephanie::{
             CHUNK_SIZE,
             TILE_SIZE,
             CHUNK_VISUAL_SIZE,
+            TileRotation,
             MaybeGroup,
             DirectionsGroup,
             LocalPos
@@ -146,7 +147,9 @@ enum UiId
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 enum StatePart
 {
-    Panel
+    ItemPanel,
+    Panel,
+    Text
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -622,11 +625,43 @@ impl YanyaApp for ChunkPreviewer
 
                             add_padding_horizontal(panel_y, UiSize::Pixels(padding).into());
 
-                            panel_y.update(UiId::State(index as u32, StatePart::Panel), UiElement{
+                            let panel_width = 70.0;
+                            let panel_height = 70.0;
+                            let text_height = 10.0;
+
+                            let this_state = states[index];
+
+                            let state_name = self.assets_dependent.rules.as_ref().map(|rules|
+                            {
+                                let info = rules.surface.get(this_state);
+
+                                let direction = match info.rotation()
+                                {
+                                    TileRotation::Up => "",
+                                    TileRotation::Right => "> ",
+                                    TileRotation::Left => "< ",
+                                    TileRotation::Down => "V "
+                                };
+
+                                format!("{}{}", direction, info.name())
+                            }).unwrap_or("idk".to_owned());
+
+                            let item_panel = panel_y.update(UiId::State(index as u32, StatePart::ItemPanel), UiElement{
+                                children_layout: UiLayout::Vertical,
+                                ..Default::default()
+                            });
+
+                            item_panel.update(UiId::State(index as u32, StatePart::Text), UiElement{
+                                texture: UiTexture::Text(TextInfo::new_simple(8, state_name)),
+                                mix: Some(MixColorLch::color(Lcha{l: 0.0, c: 0.0, h: 0.0, a: 1.0})),
+                                height: UiSize::Pixels(text_height).into(),
+                                ..UiElement::fit_content()
+                            });
+
+                            item_panel.update(UiId::State(index as u32, StatePart::Panel), UiElement{
                                 texture: UiTexture::Solid,
-                                mix: Some(MixColorLch::color(Lcha{l: 0.0, c: 0.0, h: 0.0, a: 0.5})),
-                                width: UiSize::Pixels(50.0).into(),
-                                height: UiSize::Pixels(50.0).into(),
+                                width: UiSize::Pixels(panel_width).into(),
+                                height: UiSize::Pixels(panel_height - text_height).into(),
                                 ..Default::default()
                             });
                         }

@@ -575,6 +575,11 @@ impl ChunkRule
         &self.name
     }
 
+    pub fn rotation(&self) -> TileRotation
+    {
+        self.rotation
+    }
+
     pub fn weight(&self) -> f64
     {
         self.weight
