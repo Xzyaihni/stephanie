@@ -41,6 +41,7 @@ use stephanie::{
     server::world::{
         world_generator::{
             WORLD_CHUNK_SIZE,
+            WorldChunkId,
             Entropies,
             WaveCollapser,
             WorldPlane,
@@ -136,7 +137,16 @@ enum UiId
     SeedText,
     StepPanel,
     StepText,
+    StatesPanel,
+    StatesPanelY(u32),
+    State(u32, StatePart),
     Padding(u32)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum StatePart
+{
+    Panel
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -307,6 +317,12 @@ impl AssetsDependent
     }
 }
 
+struct StatesTooltip
+{
+    states: Vec<WorldChunkId>,
+    mouse_position: Vector2<f32>
+}
+
 struct ChunkPreviewer
 {
     shaders: DrawShaders,
@@ -325,6 +341,7 @@ struct ChunkPreviewer
     chunk_code: HashMap<String, ModifiedWatcher<Lisp>>,
     seed_rng: Rng,
     current_generator: Option<(Entropies, SeededRandom)>,
+    states_tooltip: Option<StatesTooltip>,
     current_tags: ModifiedWatcher<Tags>,
     preview_tags: ModifiedWatcher<Tags>,
     preview: Option<ChunkPreview>
@@ -479,6 +496,7 @@ impl YanyaApp for ChunkPreviewer
             chunk_code: HashMap::new(),
             seed_rng,
             current_generator: None,
+            states_tooltip: None,
             current_tags: tags.clone(),
             preview_tags: tags,
             preview
@@ -565,6 +583,59 @@ impl YanyaApp for ChunkPreviewer
                     position: UiPosition::Absolute{position: tile_position + vector![0.0, -tile_size], align: UiPositionAlign::default()},
                     ..UiElement::fit_content()
                 });
+            }
+
+            if let Some(StatesTooltip{states, mouse_position}) = self.states_tooltip.as_ref()
+            {
+                let panel = self.controller.update(UiId::StatesPanel, UiElement{
+                    texture: UiTexture::Solid,
+                    mix: Some(MixColorLch::color(Lcha{l: 0.0, c: 0.0, h: 0.0, a: 0.5})),
+                    position: UiPosition::Absolute{position: *mouse_position, align: UiPositionAlign::default()},
+                    children_layout: UiLayout::Vertical,
+                    ..Default::default()
+                });
+
+                let padding = 5.0;
+                let per_row = 10;
+
+                (||
+                {
+                    for y in 0..
+                    {
+                        add_padding_vertical(panel, UiSize::Pixels(padding).into());
+
+                        let panel_y = panel.update(UiId::StatesPanelY(y as u32), UiElement{
+                            children_layout: UiLayout::Horizontal,
+                            ..Default::default()
+                        });
+
+                        for x in 0..per_row
+                        {
+                            let index = x + y * per_row;
+
+                            if states.len() == index
+                            {
+                                add_padding_horizontal(panel_y, UiSize::Pixels(padding).into());
+
+                                return;
+                            }
+
+                            add_padding_horizontal(panel_y, UiSize::Pixels(padding).into());
+
+                            panel_y.update(UiId::State(index as u32, StatePart::Panel), UiElement{
+                                texture: UiTexture::Solid,
+                                mix: Some(MixColorLch::color(Lcha{l: 0.0, c: 0.0, h: 0.0, a: 0.5})),
+                                width: UiSize::Pixels(50.0).into(),
+                                height: UiSize::Pixels(50.0).into(),
+                                ..Default::default()
+                            });
+                        }
+
+                        add_padding_horizontal(panel_y, UiSize::Pixels(padding).into());
+                    }
+                })();
+
+                add_padding_vertical(panel, UiSize::Pixels(padding).into());
             }
 
             let mut update_scrollbar = |this_id, tags: &mut Tags|
@@ -807,7 +878,29 @@ impl YanyaApp for ChunkPreviewer
 
             if controls.is_click_down() && !controls.is_click_taken()
             {
-                todo!()
+                if let Some((entropies, _)) = self.current_generator.as_ref()
+                {
+                    let size = {
+                        let size = self.preview_tags.world_size;
+
+                        Pos3::new(size, size, 1)
+                    };
+
+                    let local_pos = LocalPos::new(Pos3::new(logical_position.x as usize, logical_position.y as usize, 0), size);
+
+                    if local_pos.in_bounds()
+                    {
+                        let states = entropies
+                            .get(local_pos)
+                            .states()
+                            .to_vec();
+
+                        self.states_tooltip = Some(StatesTooltip{states, mouse_position: self.controller.mouse_position()});
+                    } else
+                    {
+                        self.states_tooltip = None;
+                    }
+                }
             }
         }
 
@@ -948,6 +1041,8 @@ impl ChunkPreviewer
 {
     fn with_wave_collapser(&mut self, f: impl FnOnce(&ChunkRules, &mut WaveCollapser, &mut SeededRandom))
     {
+        self.states_tooltip = None;
+
         let rules = some_or_return!(self.assets_dependent.rules.as_ref());
 
         let plane = &mut self.world_chunks.borrow_mut().0;

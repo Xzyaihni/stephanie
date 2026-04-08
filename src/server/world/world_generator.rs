@@ -1093,6 +1093,11 @@ impl PossibleStates
         id
     }
 
+    pub fn states(&self) -> &[WorldChunkId]
+    {
+        &self.states
+    }
+
     fn set_collapsed_id(&mut self, id: WorldChunkId)
     {
         self.states = vec![id];
@@ -1183,7 +1188,7 @@ impl Entropies
         self.0.positions()
     }
 
-    fn get(&self, pos: LocalPos) -> &PossibleStates
+    pub fn get(&self, pos: LocalPos) -> &PossibleStates
     {
         &self.0[pos]
     }
