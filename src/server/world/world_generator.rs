@@ -1173,22 +1173,22 @@ impl VisitedTracker
     }
 }
 
-#[derive(Debug)]
-struct Entropies(FlatChunksContainer<PossibleStates>);
+#[derive(Debug, PartialEq)]
+pub struct Entropies(FlatChunksContainer<PossibleStates>);
 
 impl Entropies
 {
-    pub fn positions(&self) -> impl Iterator<Item=LocalPos>
+    fn positions(&self) -> impl Iterator<Item=LocalPos>
     {
         self.0.positions()
     }
 
-    pub fn get(&self, pos: LocalPos) -> &PossibleStates
+    fn get(&self, pos: LocalPos) -> &PossibleStates
     {
         &self.0[pos]
     }
 
-    pub fn get_two_mut(
+    fn get_two_mut(
         &mut self,
         one: LocalPos,
         two: LocalPos
@@ -1197,7 +1197,7 @@ impl Entropies
         self.0.get_two_mut(one, two)
     }
 
-    pub fn lowest_entropy(&mut self, rng: &mut SeededRandom) -> Option<(LocalPos, &mut PossibleStates)>
+    fn lowest_entropy(&mut self, rng: &mut SeededRandom) -> Option<(LocalPos, &mut PossibleStates)>
     {
         let mut lowest_entropy = f64::MAX;
         let mut mins: Vec<(LocalPos, &mut PossibleStates)> = Vec::new();
@@ -1294,10 +1294,19 @@ impl<'a> WaveCollapser<'a>
         this
     }
 
-    pub fn is_eq_to(&self, other: &WaveCollapser) -> bool
+    pub fn new_raw(
+        rng: SeededRandom,
+        rules: &'a ChunkRules,
+        entropies: Entropies,
+        world_chunks: &'a mut FlatChunksContainer<Option<WorldChunk>>
+    ) -> Self
     {
-        self.entropies.0 == other.entropies.0
-            && self.world_chunks == other.world_chunks
+        Self{rng, rules, entropies, world_chunks}
+    }
+
+    pub fn entropies(&self) -> &Entropies
+    {
+        &self.entropies
     }
 
     fn constrain_all(&mut self)

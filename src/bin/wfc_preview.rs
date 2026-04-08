@@ -502,6 +502,8 @@ impl YanyaApp for ChunkPreviewer
         let mut controls = self.controls.changed_this_frame();
 
         {
+            let logical_position;
+
             let controls = &mut controls;
 
             let aspect = self.ui_camera.aspect();
@@ -550,7 +552,7 @@ impl YanyaApp for ChunkPreviewer
                     ..Default::default()
                 });
 
-                let logical_position = tiled_position.map(|x| x as i32);
+                logical_position = tiled_position.map(|x| x as i32);
 
                 let tile_info_text = format!(
                     "{}, {}",
@@ -800,6 +802,11 @@ impl YanyaApp for ChunkPreviewer
             if needs_step_ten
             {
                 self.do_step_n(10);
+            }
+
+            if controls.is_click_down() && !controls.is_click_taken()
+            {
+                todo!()
             }
         }
 
@@ -1186,6 +1193,7 @@ mod tests
             wave_collapser_two
         };
 
-        assert!(one.is_eq_to(&two), "{one:#?} != {two:#?}");
+        assert_eq!(one.entropies(), two.entropies());
+        assert_eq!(plane_one, plane_two);
     }
 }
