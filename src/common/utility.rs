@@ -451,7 +451,7 @@ pub fn random_f32(range: RangeInclusive<f32>) -> f32
     f32_to_range(range, fastrand::f32())
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SeededRandom(u64);
 
 impl From<u64> for SeededRandom

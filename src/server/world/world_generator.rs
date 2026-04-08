@@ -15,6 +15,7 @@ use nalgebra::Vector3;
 
 use crate::common::{
     with_error,
+    SeededRandom,
     TileMap,
     SaveLoad,
     WeightedPicker,
@@ -1067,7 +1068,7 @@ impl PossibleStates
         Some(any_constrained)
     }
 
-    pub fn collapse(&mut self, rules: &ChunkRules) -> WorldChunkId
+    pub fn collapse(&mut self, rules: &ChunkRules, rng: &mut SeededRandom) -> WorldChunkId
     {
         let id = if self.states.is_empty()
         {
@@ -1078,7 +1079,7 @@ impl PossibleStates
         } else
         {
             *WeightedPicker::new(self.total, &self.states)
-                .pick_with(fastrand::f64(), |value|
+                .pick_with(rng.next_f64(), |value|
                 {
                     let rule = rules.get(*value);
 
@@ -1172,6 +1173,7 @@ impl VisitedTracker
     }
 }
 
+#[derive(Debug)]
 struct Entropies(FlatChunksContainer<PossibleStates>);
 
 impl Entropies
@@ -1195,7 +1197,7 @@ impl Entropies
         self.0.get_two_mut(one, two)
     }
 
-    pub fn lowest_entropy(&mut self) -> Option<(LocalPos, &mut PossibleStates)>
+    pub fn lowest_entropy(&mut self, rng: &mut SeededRandom) -> Option<(LocalPos, &mut PossibleStates)>
     {
         let mut lowest_entropy = f64::MAX;
         let mut mins: Vec<(LocalPos, &mut PossibleStates)> = Vec::new();
@@ -1222,7 +1224,7 @@ impl Entropies
             None
         } else
         {
-            let r = fastrand::usize(0..mins.len());
+            let r = rng.next_usize_between(0..mins.len());
 
             Some(mins.remove(r))
         }
@@ -1249,9 +1251,22 @@ impl IndexMut<LocalPos> for Entropies
 
 pub struct WaveCollapser<'a>
 {
+    rng: SeededRandom,
     rules: &'a ChunkRules,
     entropies: Entropies,
     world_chunks: &'a mut FlatChunksContainer<Option<WorldChunk>>
+}
+
+impl Debug for WaveCollapser<'_>
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
+    {
+        f.debug_struct("WaveCollapser")
+            .field("rng", &self.rng)
+            .field("entropies", &self.entropies)
+            .field("world_chunks", &self.world_chunks)
+            .finish()
+    }
 }
 
 impl<'a> WaveCollapser<'a>
@@ -1272,11 +1287,17 @@ impl<'a> WaveCollapser<'a>
             }
         }));
 
-        let mut this = Self{rules, entropies, world_chunks};
+        let mut this = Self{rng: SeededRandom::new(), rules, entropies, world_chunks};
 
         this.constrain_all();
 
         this
+    }
+
+    pub fn is_eq_to(&self, other: &WaveCollapser) -> bool
+    {
+        self.entropies.0 == other.entropies.0
+            && self.world_chunks == other.world_chunks
     }
 
     fn constrain_all(&mut self)
@@ -1327,9 +1348,9 @@ impl<'a> WaveCollapser<'a>
         }
     }
 
-    pub fn lowest_entropy(&mut self) -> Option<(LocalPos, &mut PossibleStates)>
+    pub fn lowest_entropy_with(&mut self, rng: &mut SeededRandom) -> Option<(LocalPos, &mut PossibleStates)>
     {
-        self.entropies.lowest_entropy()
+        self.entropies.lowest_entropy(rng)
     }
 
     pub fn generate_single_maybe<C>(
@@ -1364,9 +1385,9 @@ impl<'a> WaveCollapser<'a>
 
     pub fn generate(&mut self)
     {
-        while let Some((local_pos, state)) = self.entropies.lowest_entropy()
+        while let Some((local_pos, state)) = self.entropies.lowest_entropy(&mut self.rng)
         {
-            let generated_chunk = self.rules.generate(state.collapse(self.rules));
+            let generated_chunk = self.rules.generate(state.collapse(self.rules, &mut self.rng));
 
             self.generate_single(local_pos, generated_chunk);
         }

@@ -64,6 +64,7 @@ use stephanie::{
         with_error,
         some_or_return,
         some_or_unexpected_return,
+        SeededRandom,
         render_info::*,
         lisp::*,
         Pos3,
@@ -142,6 +143,7 @@ enum ButtonId
 {
     ToggleStep,
     StepOnce,
+    StepTen,
     Clear,
     Regenerate
 }
@@ -321,6 +323,7 @@ struct ChunkPreviewer
     selected_textbox: Option<UiId>,
     chunk_code: HashMap<String, ModifiedWatcher<Lisp>>,
     seed_rng: Rng,
+    current_rng: SeededRandom,
     current_tags: ModifiedWatcher<Tags>,
     preview_tags: ModifiedWatcher<Tags>,
     preview: Option<ChunkPreview>
@@ -474,6 +477,7 @@ impl YanyaApp for ChunkPreviewer
             selected_textbox: None,
             chunk_code: HashMap::new(),
             seed_rng,
+            current_rng: SeededRandom::new(),
             current_tags: tags.clone(),
             preview_tags: tags,
             preview
@@ -772,7 +776,8 @@ impl YanyaApp for ChunkPreviewer
                 });
             }
 
-            let needs_step = update_button(controls, "step once", ButtonId::StepOnce);
+            let needs_step_once = update_button(controls, "step once", ButtonId::StepOnce);
+            let needs_step_ten = update_button(controls, "step ten", ButtonId::StepTen);
 
             if update_button(controls, "clear", ButtonId::Clear)
             {
@@ -787,9 +792,14 @@ impl YanyaApp for ChunkPreviewer
                 self.regenerate = true;
             }
 
-            if needs_step
+            if needs_step_once
             {
-                self.do_step();
+                self.do_step_n(1);
+            }
+
+            if needs_step_ten
+            {
+                self.do_step_n(10);
             }
         }
 
@@ -807,25 +817,28 @@ impl YanyaApp for ChunkPreviewer
 
         if recreate_preview
         {
-            self.preview.take();
-
             self.regenerate = false;
 
             self.preview_tags = self.current_tags.clone();
 
             let tags = self.preview_tags.clone();
 
+            self.current_rng = SeededRandom::from(self.preview_tags.seed);
+
             self.world_chunks.borrow_mut().0 = FlatChunksContainer::new(Pos3::new(tags.world_size, tags.world_size, 1));
 
-            fastrand::seed(self.preview_tags.seed);
-
-            self.with_wave_collapser(|_rules, wave_collapser|
+            if !self.preview_tags.step_by_step
             {
-                if !self.preview_tags.step_by_step
+                self.with_wave_collapser(|rules, wave_collapser, rng|
                 {
-                    wave_collapser.generate();
-                }
-            });
+                    while let Some((pos, states)) = wave_collapser.lowest_entropy_with(rng)
+                    {
+                        let generated_chunk = rules.generate(states.collapse(rules, rng));
+
+                        wave_collapser.generate_single(pos, generated_chunk);
+                    }
+                });
+            }
 
             self.redraw_map();
 
@@ -915,7 +928,7 @@ impl YanyaApp for ChunkPreviewer
 
 impl ChunkPreviewer
 {
-    fn with_wave_collapser(&self, f: impl FnOnce(&ChunkRules, &mut WaveCollapser))
+    fn with_wave_collapser(&mut self, f: impl FnOnce(&ChunkRules, &mut WaveCollapser, &mut SeededRandom))
     {
         let rules = some_or_return!(self.assets_dependent.rules.as_ref());
 
@@ -923,11 +936,13 @@ impl ChunkPreviewer
 
         let mut wave_collapser = WaveCollapser::new(&rules.surface, plane);
 
-        f(&rules.surface, &mut wave_collapser);
+        f(&rules.surface, &mut wave_collapser, &mut self.current_rng);
     }
 
     fn redraw_map(&mut self)
     {
+        self.preview.take();
+
         let size = self.world_chunks.borrow().0.size();
 
         (0..size.y).for_each(|y|
@@ -944,16 +959,19 @@ impl ChunkPreviewer
         });
     }
 
-    fn do_step(&mut self)
+    fn do_step_n(&mut self, n: usize)
     {
-        self.with_wave_collapser(|rules, wave_collapser|
+        self.with_wave_collapser(|rules, wave_collapser, rng|
         {
-            if let Some((pos, states)) = wave_collapser.lowest_entropy()
+            (0..n).for_each(|_|
             {
-                let generated_chunk = rules.generate(states.collapse(rules));
+                if let Some((pos, states)) = wave_collapser.lowest_entropy_with(rng)
+                {
+                    let generated_chunk = rules.generate(states.collapse(rules, rng));
 
-                wave_collapser.generate_single(pos, generated_chunk);
-            }
+                    wave_collapser.generate_single(pos, generated_chunk);
+                }
+            });
         });
 
         self.redraw_map();
@@ -1120,4 +1138,54 @@ fn main()
         .with_app_init(Some(DrawShaders{normal, ui, ui_fill}))
         .with_clear_color([0.4, 0.4, 0.45])
         .run();
+}
+
+#[cfg(test)]
+mod tests
+{
+    use super::*;
+
+
+    fn do_test_step(rules: &ChunkRules, wave_collapser: &mut WaveCollapser, rng: &mut SeededRandom)
+    {
+        if let Some((pos, states)) = wave_collapser.lowest_entropy_with(rng)
+        {
+            let generated_chunk = rules.generate(states.collapse(rules, rng));
+
+            wave_collapser.generate_single(pos, generated_chunk);
+        }
+    }
+
+    #[test]
+    fn deterministic_wfc()
+    {
+        let rules = ChunkRulesGroup::load(PathBuf::from("world_generation/")).unwrap();
+
+        let mut plane_one = FlatChunksContainer::new(Pos3::new(5, 5, 1));
+
+        let one = {
+            let mut rng_one = SeededRandom::from(5);
+
+            let mut wave_collapser_one = WaveCollapser::new(&rules.surface, &mut plane_one);
+            (0..3).for_each(|_| do_test_step(&rules.surface, &mut wave_collapser_one, &mut rng_one));
+
+            wave_collapser_one
+        };
+
+        let mut plane_two = FlatChunksContainer::new(Pos3::new(5, 5, 1));
+
+        let two = {
+            let mut rng_two = SeededRandom::from(5);
+
+            let mut wave_collapser_two_temp = WaveCollapser::new(&rules.surface, &mut plane_two);
+            do_test_step(&rules.surface, &mut wave_collapser_two_temp, &mut rng_two);
+
+            let mut wave_collapser_two = WaveCollapser::new(&rules.surface, &mut plane_two);
+            (0..2).for_each(|_| do_test_step(&rules.surface, &mut wave_collapser_two, &mut rng_two));
+
+            wave_collapser_two
+        };
+
+        assert!(one.is_eq_to(&two), "{one:#?} != {two:#?}");
+    }
 }
