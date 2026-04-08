@@ -41,6 +41,7 @@ use stephanie::{
     server::world::{
         world_generator::{
             WORLD_CHUNK_SIZE,
+            Entropies,
             WaveCollapser,
             WorldPlane,
             ChunkRules,
@@ -323,7 +324,7 @@ struct ChunkPreviewer
     selected_textbox: Option<UiId>,
     chunk_code: HashMap<String, ModifiedWatcher<Lisp>>,
     seed_rng: Rng,
-    current_rng: SeededRandom,
+    current_generator: Option<(Entropies, SeededRandom)>,
     current_tags: ModifiedWatcher<Tags>,
     preview_tags: ModifiedWatcher<Tags>,
     preview: Option<ChunkPreview>
@@ -477,7 +478,7 @@ impl YanyaApp for ChunkPreviewer
             selected_textbox: None,
             chunk_code: HashMap::new(),
             seed_rng,
-            current_rng: SeededRandom::new(),
+            current_generator: None,
             current_tags: tags.clone(),
             preview_tags: tags,
             preview
@@ -830,9 +831,19 @@ impl YanyaApp for ChunkPreviewer
 
             let tags = self.preview_tags.clone();
 
-            self.current_rng = SeededRandom::from(self.preview_tags.seed);
-
             self.world_chunks.borrow_mut().0 = FlatChunksContainer::new(Pos3::new(tags.world_size, tags.world_size, 1));
+
+            self.current_generator = {
+                let rules = some_or_return!(self.assets_dependent.rules.as_ref());
+
+                let plane = &mut self.world_chunks.borrow_mut().0;
+
+                let wave_collapser = WaveCollapser::new(&rules.surface, plane);
+
+                let entropies = wave_collapser.entropies().clone();
+
+                Some((entropies, SeededRandom::from(self.preview_tags.seed)))
+            };
 
             if !self.preview_tags.step_by_step
             {
@@ -941,9 +952,13 @@ impl ChunkPreviewer
 
         let plane = &mut self.world_chunks.borrow_mut().0;
 
-        let mut wave_collapser = WaveCollapser::new(&rules.surface, plane);
+        let (entropies, mut rng) = some_or_return!(self.current_generator.take());
 
-        f(&rules.surface, &mut wave_collapser, &mut self.current_rng);
+        let mut wave_collapser = WaveCollapser::new_raw(SeededRandom::from(0), &rules.surface, entropies, plane);
+
+        f(&rules.surface, &mut wave_collapser, &mut rng);
+
+        self.current_generator = Some((wave_collapser.entropies().clone(), rng));
     }
 
     fn redraw_map(&mut self)

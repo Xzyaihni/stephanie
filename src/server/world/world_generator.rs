@@ -1173,7 +1173,7 @@ impl VisitedTracker
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Entropies(FlatChunksContainer<PossibleStates>);
 
 impl Entropies
