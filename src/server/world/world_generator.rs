@@ -7,7 +7,7 @@ use std::{
     rc::Rc,
     ops::{Index, IndexMut},
     cmp::Ordering,
-    collections::{HashMap, HashSet},
+    collections::HashMap,
     path::{Path, PathBuf}
 };
 
@@ -1098,6 +1098,11 @@ impl PossibleStates
         &self.states
     }
 
+    pub fn states_count(&self) -> usize
+    {
+        self.states.len()
+    }
+
     fn set_collapsed_id(&mut self, id: WorldChunkId)
     {
         self.states = vec![id];
@@ -1107,10 +1112,16 @@ impl PossibleStates
 
     fn update_entropy(&mut self, rules: &ChunkRules)
     {
-        self.entropy = Self::calculate_entropy(self.states.iter().map(|state|
+        self.entropy = if self.states.len() <= 1
         {
-            rules.get(*state).weight()
-        }));
+            0.0
+        } else
+        {
+            Self::calculate_entropy(self.states.iter().map(|state|
+            {
+                rules.get(*state).weight()
+            }))
+        };
     }
 
     fn calculate_entropy(weights: impl Iterator<Item=f64>) -> f64
@@ -1155,26 +1166,31 @@ impl PossibleStates
     }
 }
 
-// extremely useful struct (not)
-// a vec would probably be faster cuz cpu caching and how much it allocates upfront and blablabla
-struct VisitedTracker(HashSet<Pos3<usize>>);
+struct VisitedTracker(Vec<(Pos3<usize>, usize)>);
 
 impl VisitedTracker
 {
     pub fn new() -> Self
     {
-        Self(HashSet::new())
+        Self(Vec::new())
     }
 
-    pub fn visit(&mut self, value: Pos3<usize>) -> bool
+    pub fn visit(&mut self, key: Pos3<usize>, amount: usize) -> bool
     {
-        self.0.insert(value)
-    }
+        let visited = if let Some(index) = self.0.iter().position(|x| x.0 == key)
+        {
+            self.0[index].1 <= amount
+        } else
+        {
+            false
+        };
 
-    #[allow(dead_code)]
-    pub fn visited(&self, value: &Pos3<usize>) -> bool
-    {
-        self.0.contains(value)
+        if !visited
+        {
+            self.0.push((key, amount));
+        }
+
+        !visited
     }
 }
 
@@ -1325,7 +1341,7 @@ impl<'a> WaveCollapser<'a>
 
     fn constrain(&mut self, visited: &mut VisitedTracker, pos: LocalPos)
     {
-        if visited.visit(pos.pos)
+        if visited.visit(pos.pos, self.entropies.get(pos).states_count())
         {
             pos.directions_group().map(|direction, value|
             {
