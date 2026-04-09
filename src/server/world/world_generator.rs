@@ -1183,7 +1183,7 @@ pub struct Entropies(FlatChunksContainer<PossibleStates>);
 
 impl Entropies
 {
-    fn positions(&self) -> impl Iterator<Item=LocalPos>
+    pub fn positions(&self) -> impl Iterator<Item=LocalPos>
     {
         self.0.positions()
     }

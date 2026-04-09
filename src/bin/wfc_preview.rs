@@ -135,6 +135,7 @@ enum UiId
     Button(ButtonId, ButtonPartId),
     ChunkHighlight,
     ChunkInfo,
+    MinHighlight(u32),
     SeedTextPanel,
     SeedText,
     StepPanel,
@@ -535,6 +536,36 @@ impl YanyaApp for ChunkPreviewer
 
             let logical_position;
 
+            let states_at = |this: &Self, logical_position: Vector2<i32>| -> Option<_>
+            {
+                let (entropies, _) = this.current_generator.as_ref()?;
+
+                let size = {
+                    let size = this.preview_tags.world_size;
+
+                    Pos3::new(size, size, 1)
+                };
+
+                let local_pos = LocalPos::new(Pos3::new(logical_position.x as usize, logical_position.y as usize, 0), size);
+
+                local_pos.in_bounds().then(|| entropies.get(local_pos).clone())
+            };
+
+            let absolute_camera = self.camera_position / self.camera_zoom;
+
+            let tile_size = TILE_SIZE / self.camera_zoom;
+            let chunk_size = Vector3::from(WORLD_CHUNK_SIZE).xy().map(|x| x as f32 * tile_size);
+
+            let world_size = self.current_tags.world_size;
+            let half_offset = vector![(world_size / 2) as i32, (world_size / 2) as i32];
+
+            let tile_position_of = |tiled_position: Vector2<i32>| -> Vector2<f32>
+            {
+                (tiled_position.map(|x| x as f32).component_mul(&chunk_size) - absolute_camera)
+                    - (chunk_size * 0.5)
+                    - (half_offset.map(|x| x as f32).component_mul(&chunk_size))
+            };
+
             let controls = &mut controls;
 
             let aspect = self.ui_camera.aspect();
@@ -547,14 +578,6 @@ impl YanyaApp for ChunkPreviewer
             });
 
             {
-                let absolute_camera = self.camera_position / self.camera_zoom;
-
-                let tile_size = TILE_SIZE / self.camera_zoom;
-                let chunk_size = Vector3::from(WORLD_CHUNK_SIZE).xy().map(|x| x as f32 * tile_size);
-
-                let world_size = self.current_tags.world_size;
-                let half_offset = vector![(world_size / 2) as i32, (world_size / 2) as i32];
-
                 let tiled_position = {
                     let tile = (self.controller.mouse_position() + absolute_camera).map(|x| (x / tile_size).floor() as i32);
 
@@ -570,9 +593,7 @@ impl YanyaApp for ChunkPreviewer
                     }) + half_offset
                 };
 
-                let tile_position = (tiled_position.map(|x| x as f32).component_mul(&chunk_size) - absolute_camera)
-                    - (chunk_size * 0.5)
-                    - (half_offset.map(|x| x as f32).component_mul(&chunk_size));
+                let tile_position = tile_position_of(tiled_position);
 
                 self.controller.update(UiId::ChunkHighlight, UiElement{
                     texture: UiTexture::Solid,
@@ -586,8 +607,9 @@ impl YanyaApp for ChunkPreviewer
                 logical_position = tiled_position.map(|x| x as i32);
 
                 let tile_info_text = format!(
-                    "{}, {}",
-                    logical_position.x, logical_position.y
+                    "{}, {} (entropy: {})",
+                    logical_position.x, logical_position.y,
+                    states_at(self, logical_position).map(|states| format!("{:.2}", states.entropy())).unwrap_or_else(|| "?".to_owned())
                 );
 
                 self.controller.update(UiId::ChunkInfo, UiElement{
@@ -925,6 +947,48 @@ impl YanyaApp for ChunkPreviewer
                 self.do_step_n(10);
             }
 
+            if let Some((entropies, _)) = self.current_generator.as_ref()
+            {
+                let mut lowest_entropy = f64::MAX;
+                let mut mins: Vec<LocalPos> = Vec::new();
+
+                for pos in entropies.positions()
+                {
+                    let value = entropies.get(pos);
+
+                    if !value.collapsed()
+                    {
+                        let entropy = value.entropy();
+
+                        if entropy < lowest_entropy
+                        {
+                            lowest_entropy = entropy;
+
+                            mins.clear();
+                            mins.push(pos);
+                        } else if entropy == lowest_entropy
+                        {
+                            mins.push(pos);
+                        }
+                    }
+                }
+
+                mins.iter().enumerate().for_each(|(index, x)|
+                {
+                    self.controller.update(UiId::MinHighlight(index as u32), UiElement{
+                        texture: UiTexture::Solid,
+                        mix: Some(MixColorLch::color(Lcha{l: 80.0, c: 100.0, h: 0.0, a: 0.5})),
+                        width: UiSize::Absolute(chunk_size.x).into(),
+                        height: UiSize::Absolute(chunk_size.y).into(),
+                        position: UiPosition::Absolute{
+                            position: tile_position_of(Vector3::from(x.pos).xy().cast()),
+                            align: UiPositionAlign::default()
+                        },
+                        ..Default::default()
+                    });
+                });
+            }
+
             {
                 let new_positions = all_exist.then(|| -> Vec<Vec<Object>>
                 {
@@ -937,8 +1001,9 @@ impl YanyaApp for ChunkPreviewer
                         objects.iter_mut().for_each(|object|
                         {
                             let scale = vector![PANEL_WIDTH - TEXT_HEIGHT, PANEL_HEIGHT - TEXT_HEIGHT].component_div(&screen_size);
+                            let offset = vector![PANEL_WIDTH - TEXT_HEIGHT * 2.0, PANEL_HEIGHT - TEXT_HEIGHT * 2.0].component_div(&screen_size);
 
-                            object.translate(with_z(this_position.component_div(&aspect_size) * 2.0 - scale, 0.0));
+                            object.translate(with_z(this_position.component_div(&aspect_size) * 2.0 - offset, 0.0));
 
                             object.set_scale(with_z(scale * 2.0, 1.0));
                         });
@@ -955,28 +1020,14 @@ impl YanyaApp for ChunkPreviewer
 
             if controls.is_click_down() && !controls.is_click_taken()
             {
-                if let Some((entropies, _)) = self.current_generator.as_ref()
+                if let Some(states) = states_at(self, logical_position)
                 {
-                    let size = {
-                        let size = self.preview_tags.world_size;
+                    let states = states.states().to_vec();
 
-                        Pos3::new(size, size, 1)
-                    };
-
-                    let local_pos = LocalPos::new(Pos3::new(logical_position.x as usize, logical_position.y as usize, 0), size);
-
-                    if local_pos.in_bounds()
-                    {
-                        let states = entropies
-                            .get(local_pos)
-                            .states()
-                            .to_vec();
-
-                        self.states_tooltip = Some(StatesTooltip{chunk_positions: None, states, mouse_position: self.controller.mouse_position()});
-                    } else
-                    {
-                        self.states_tooltip = None;
-                    }
+                    self.states_tooltip = Some(StatesTooltip{chunk_positions: None, states, mouse_position: self.controller.mouse_position()});
+                } else
+                {
+                    self.states_tooltip = None;
                 }
             }
         }
