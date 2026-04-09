@@ -20,10 +20,11 @@ use vulkano::pipeline::graphics::{
     }
 };
 
-use nalgebra::{vector, Vector2, Vector3};
+use nalgebra::{vector, Vector2, Vector3, Matrix4};
 
 use yanyaengine::{
     game_object::*,
+    TransformContainer,
     FontsContainer,
     ShadersContainer,
     ShaderId,
@@ -320,8 +321,13 @@ impl AssetsDependent
     }
 }
 
+const PANEL_WIDTH: f32 = 70.0;
+const PANEL_HEIGHT: f32 = 70.0;
+const TEXT_HEIGHT: f32 = 10.0;
+
 struct StatesTooltip
 {
+    chunk_positions: Option<Vec<Vec<Object>>>,
     states: Vec<WorldChunkId>,
     mouse_position: Vector2<f32>
 }
@@ -524,6 +530,9 @@ impl YanyaApp for ChunkPreviewer
         let mut controls = self.controls.changed_this_frame();
 
         {
+            let mut all_exist = true;
+            let mut these_positions = Vec::new();
+
             let logical_position;
 
             let controls = &mut controls;
@@ -588,7 +597,7 @@ impl YanyaApp for ChunkPreviewer
                 });
             }
 
-            if let Some(StatesTooltip{states, mouse_position}) = self.states_tooltip.as_ref()
+            if let Some(StatesTooltip{states, mouse_position, ..}) = self.states_tooltip.as_ref()
             {
                 let panel = self.controller.update(UiId::StatesPanel, UiElement{
                     texture: UiTexture::Solid,
@@ -625,10 +634,6 @@ impl YanyaApp for ChunkPreviewer
 
                             add_padding_horizontal(panel_y, UiSize::Pixels(padding).into());
 
-                            let panel_width = 70.0;
-                            let panel_height = 70.0;
-                            let text_height = 10.0;
-
                             let this_state = states[index];
 
                             let state_name = self.assets_dependent.rules.as_ref().map(|rules|
@@ -654,16 +659,25 @@ impl YanyaApp for ChunkPreviewer
                             item_panel.update(UiId::State(index as u32, StatePart::Text), UiElement{
                                 texture: UiTexture::Text(TextInfo::new_simple(8, state_name)),
                                 mix: Some(MixColorLch::color(Lcha{l: 0.0, c: 0.0, h: 0.0, a: 1.0})),
-                                height: UiSize::Pixels(text_height).into(),
+                                height: UiSize::Pixels(TEXT_HEIGHT).into(),
                                 ..UiElement::fit_content()
                             });
 
-                            item_panel.update(UiId::State(index as u32, StatePart::Panel), UiElement{
+                            let panel = item_panel.update(UiId::State(index as u32, StatePart::Panel), UiElement{
                                 texture: UiTexture::Solid,
-                                width: UiSize::Pixels(panel_width).into(),
-                                height: UiSize::Pixels(panel_height - text_height).into(),
+                                mix: Some(MixColorLch::color(Lcha{l: 0.0, c: 0.0, h: 0.0, a: 0.0})),
+                                width: UiSize::Pixels(PANEL_WIDTH).into(),
+                                height: UiSize::Pixels(PANEL_HEIGHT - TEXT_HEIGHT).into(),
                                 ..Default::default()
                             });
+
+                            if let Some(this_position) = panel.try_position()
+                            {
+                                these_positions.push((this_position, this_state));
+                            } else
+                            {
+                                all_exist = false;
+                            }
                         }
 
                         add_padding_horizontal(panel_y, UiSize::Pixels(padding).into());
@@ -911,6 +925,34 @@ impl YanyaApp for ChunkPreviewer
                 self.do_step_n(10);
             }
 
+            {
+                let new_positions = all_exist.then(|| -> Vec<Vec<Object>>
+                {
+                    these_positions.into_iter().map(|(this_position, this_state)|
+                    {
+                        let screen_size = Vector2::from(info.partial.size);
+                        let aspect_size = screen_size / screen_size.max();
+
+                        let mut objects = self.chunk_objects(None, this_state);
+                        objects.iter_mut().for_each(|object|
+                        {
+                            let scale = vector![PANEL_WIDTH - TEXT_HEIGHT, PANEL_HEIGHT - TEXT_HEIGHT].component_div(&screen_size);
+
+                            object.translate(with_z(this_position.component_div(&aspect_size) * 2.0 - scale, 0.0));
+
+                            object.set_scale(with_z(scale * 2.0, 1.0));
+                        });
+
+                        objects
+                    }).collect()
+                });
+
+                if let Some(StatesTooltip{chunk_positions, ..}) = self.states_tooltip.as_mut()
+                {
+                    *chunk_positions = new_positions;
+                }
+            }
+
             if controls.is_click_down() && !controls.is_click_taken()
             {
                 if let Some((entropies, _)) = self.current_generator.as_ref()
@@ -930,7 +972,7 @@ impl YanyaApp for ChunkPreviewer
                             .states()
                             .to_vec();
 
-                        self.states_tooltip = Some(StatesTooltip{states, mouse_position: self.controller.mouse_position()});
+                        self.states_tooltip = Some(StatesTooltip{chunk_positions: None, states, mouse_position: self.controller.mouse_position()});
                     } else
                     {
                         self.states_tooltip = None;
@@ -998,6 +1040,14 @@ impl YanyaApp for ChunkPreviewer
             preview.tiles.iter_mut().for_each(|x| x.update_buffers(&mut info));
         }
 
+        info.with_projection(Matrix4::identity(), |info|
+        {
+            if let Some(StatesTooltip{chunk_positions: Some(chunk_positions), ..}) = self.states_tooltip.as_mut()
+            {
+                chunk_positions.iter_mut().for_each(|x| x.iter_mut().for_each(|x| x.update_buffers(info)));
+            }
+        });
+
         if controls.is_click_down() && !controls.is_click_taken()
         {
             self.selected_textbox = None;
@@ -1063,6 +1113,13 @@ impl YanyaApp for ChunkPreviewer
         info.bind_pipeline(self.shaders.ui);
 
         self.controller.draw(&mut info, &UiShaders{ui: self.shaders.ui, ui_fill: self.shaders.ui_fill});
+
+        info.bind_pipeline(self.shaders.normal);
+
+        if let Some(StatesTooltip{chunk_positions: Some(chunk_positions), ..}) = self.states_tooltip.as_ref()
+        {
+            chunk_positions.iter().for_each(|x| x.iter().for_each(|x| x.draw(&mut info)));
+        }
     }
 
     fn resize(&mut self, aspect: f32)
@@ -1129,18 +1186,19 @@ impl ChunkPreviewer
         self.redraw_map();
     }
 
-    fn generate_chunk_at(
+    fn chunk_objects(
         &mut self,
-        chunk_pos: LocalPos
-    )
+        chunk_pos: Option<LocalPos>,
+        world_chunk_id: WorldChunkId
+    ) -> Vec<Object>
     {
+        let size = self.preview_tags.world_size;
+
         let chunk_info = ConditionalInfo{
-            position: chunk_pos,
+            position: chunk_pos.unwrap_or_else(|| LocalPos::new(Pos3::repeat(0), Pos3::new(size, size, 1))),
             height: 0,
             difficulty: 0.0
         };
-
-        let world_chunk_id = self.world_chunks.borrow().0[chunk_pos].as_ref().unwrap().id();
 
         let chunk_name = {
             let rules = some_or_return!(self.assets_dependent.rules.as_ref());
@@ -1209,20 +1267,36 @@ impl ChunkPreviewer
                         1
                     );
 
-                    let size = self.preview_tags.world_size;
-
                     let half_offset = Pos3::new((size / 2) as i32, (size / 2) as i32, 0);
 
-                    let pos_offset: Vector3<f32> = Vector3::from(chunk_pos.pos.map(|x| x as i32) - half_offset).cast();
+                    let pos_offset = if let Some(chunk_pos) = chunk_pos
+                    {
+                        let pos_offset: Vector3<f32> = Vector3::from(chunk_pos.pos.map(|x| x as i32) - half_offset).cast();
 
-                    let pos_offset = (pos_offset * CHUNK_VISUAL_SIZE).component_div(&chunk_ratio.cast());
+                        Vector3::repeat(-CHUNK_VISUAL_SIZE * 0.5) + (pos_offset * CHUNK_VISUAL_SIZE).component_div(&chunk_ratio.cast())
+                    } else
+                    {
+                        Vector3::zeros()
+                    };
 
-                    slice_info.transform.position += Vector3::repeat(-CHUNK_VISUAL_SIZE * 0.5) + pos_offset;
+                    slice_info.transform.position += pos_offset;
                     chunk_objects.push(tiles_factory.build_slice(slice_info));
                 }
             },
             Err(err) => eprintln!("{err} in ({chunk_name})")
         }
+
+        chunk_objects
+    }
+
+    fn generate_chunk_at(
+        &mut self,
+        chunk_pos: LocalPos
+    )
+    {
+        let world_chunk_id = self.world_chunks.borrow().0[chunk_pos].as_ref().unwrap().id();
+
+        let chunk_objects = self.chunk_objects(Some(chunk_pos), world_chunk_id);
 
         if let Some(preview) = self.preview.as_mut()
         {
