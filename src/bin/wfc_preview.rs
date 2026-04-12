@@ -46,7 +46,6 @@ use stephanie::{
             Entropies,
             WaveCollapser,
             WorldPlane,
-            ChunkRules,
             ChunkRulesGroup,
             ChunkGenerator,
             ConditionalInfo
@@ -160,6 +159,8 @@ enum ButtonId
     ToggleStep,
     StepOnce,
     StepTen,
+    StepN,
+    StepOnceVerbose,
     Clear,
     Regenerate
 }
@@ -175,7 +176,8 @@ enum ButtonPartId
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 enum TextboxId
 {
-    Seed
+    Seed,
+    StepN
 }
 
 impl TextboxId
@@ -184,7 +186,8 @@ impl TextboxId
     {
         match self
         {
-            Self::Seed => "seed".to_owned()
+            Self::Seed => "seed".to_owned(),
+            Self::StepN => "step n".to_owned()
         }
     }
 }
@@ -347,9 +350,11 @@ struct ChunkPreviewer
     controller: Controller<UiId>,
     update_timer: f32,
     regenerate: bool,
+    step_n_text: TextboxWrapper,
     selected_textbox: Option<UiId>,
     chunk_code: HashMap<String, ModifiedWatcher<Lisp>>,
     seed_rng: Rng,
+    next_step_verbose: bool,
     current_generator: Option<(Entropies, SeededRandom)>,
     states_tooltip: Option<StatesTooltip>,
     current_tags: ModifiedWatcher<Tags>,
@@ -485,7 +490,7 @@ impl YanyaApp for ChunkPreviewer
         let world_chunks = Rc::new(RefCell::new(WorldPlane(FlatChunksContainer::new(Pos3::new(tags.world_size, tags.world_size, 1)))));
 
         let assets_dependent = ModifiedWatcher::new_many(
-            vec!["textures".into(), "info".into(), "lisp".into()],
+            vec!["world_generation".into(), "textures".into(), "info".into(), "lisp".into()],
             AssetsDependent::new(&mut info.object_info, parse_rules(), world_chunks.clone())
         );
 
@@ -502,9 +507,11 @@ impl YanyaApp for ChunkPreviewer
             controller,
             update_timer: 0.0,
             regenerate: false,
+            step_n_text: String::new().into(),
             selected_textbox: None,
             chunk_code: HashMap::new(),
             seed_rng,
+            next_step_verbose: false,
             current_generator: None,
             states_tooltip: None,
             current_tags: tags.clone(),
@@ -924,6 +931,15 @@ impl YanyaApp for ChunkPreviewer
             let needs_step_once = update_button(controls, "step once", ButtonId::StepOnce);
             let needs_step_ten = update_button(controls, "step ten", ButtonId::StepTen);
 
+            add_padding_vertical(screen_body, UiSize::Pixels(15.0).into());
+
+            update_textbox(controls, TextboxId::StepN, &mut self.step_n_text.0, false);
+            let needs_step_n = update_button(controls, "step n", ButtonId::StepN);
+
+            add_padding_vertical(screen_body, UiSize::Pixels(10.0).into());
+
+            let needs_step_verbose = update_button(controls, "verbose step", ButtonId::StepOnceVerbose);
+
             if update_button(controls, "clear", ButtonId::Clear)
             {
                 self.regenerate = true;
@@ -945,6 +961,21 @@ impl YanyaApp for ChunkPreviewer
             if needs_step_ten
             {
                 self.do_step_n(10);
+            }
+
+            if needs_step_n
+            {
+                match self.step_n_text.0.text.parse::<usize>()
+                {
+                    Ok(n) => self.do_step_n(n),
+                    Err(err) => eprintln!("error parsing steps: {err}")
+                }
+            }
+
+            if needs_step_verbose
+            {
+                self.next_step_verbose = true;
+                self.do_step_n(1);
             }
 
             if let Some((entropies, _)) = self.current_generator.as_ref()
@@ -1018,6 +1049,14 @@ impl YanyaApp for ChunkPreviewer
                 }
             }
 
+            if let Some(StatesTooltip{mouse_position, ..}) = self.states_tooltip.as_ref()
+            {
+                if mouse_position.metric_distance(&self.controller.mouse_position()) > 0.1
+                {
+                    self.states_tooltip = None;
+                }
+            }
+
             if controls.is_click_down() && !controls.is_click_taken()
             {
                 if let Some(states) = states_at(self, logical_position)
@@ -1068,14 +1107,9 @@ impl YanyaApp for ChunkPreviewer
 
             if !self.preview_tags.step_by_step
             {
-                self.with_wave_collapser(|rules, wave_collapser, rng|
+                self.with_wave_collapser(|wave_collapser, rng|
                 {
-                    while let Some((pos, states)) = wave_collapser.lowest_entropy_with(rng)
-                    {
-                        let generated_chunk = rules.generate(states.collapse(rules, rng));
-
-                        wave_collapser.generate_single(pos, generated_chunk);
-                    }
+                    while wave_collapser.generate_once(rng) {}
                 });
             }
 
@@ -1182,7 +1216,7 @@ impl YanyaApp for ChunkPreviewer
 
 impl ChunkPreviewer
 {
-    fn with_wave_collapser(&mut self, f: impl FnOnce(&ChunkRules, &mut WaveCollapser, &mut SeededRandom))
+    fn with_wave_collapser(&mut self, f: impl FnOnce(&mut WaveCollapser, &mut SeededRandom))
     {
         self.states_tooltip = None;
 
@@ -1194,7 +1228,7 @@ impl ChunkPreviewer
 
         let mut wave_collapser = WaveCollapser::new_raw(SeededRandom::from(0), &rules.surface, entropies, plane);
 
-        f(&rules.surface, &mut wave_collapser, &mut rng);
+        f(&mut wave_collapser, &mut rng);
 
         self.current_generator = Some((wave_collapser.entropies().clone(), rng));
     }
@@ -1221,18 +1255,26 @@ impl ChunkPreviewer
 
     fn do_step_n(&mut self, n: usize)
     {
-        self.with_wave_collapser(|rules, wave_collapser, rng|
+        let next_step_verbose = self.next_step_verbose;
+        self.with_wave_collapser(|wave_collapser, rng|
         {
             (0..n).for_each(|_|
             {
-                if let Some((pos, states)) = wave_collapser.lowest_entropy_with(rng)
+                #[cfg(debug_assertions)]
                 {
-                    let generated_chunk = rules.generate(states.collapse(rules, rng));
+                    wave_collapser.set_verbose_constrain(next_step_verbose);
+                }
 
-                    wave_collapser.generate_single(pos, generated_chunk);
+                wave_collapser.generate_once(rng);
+
+                #[cfg(debug_assertions)]
+                {
+                    wave_collapser.set_verbose_constrain(false);
                 }
             });
         });
+
+        self.next_step_verbose = false;
 
         self.redraw_map();
     }
@@ -1420,6 +1462,7 @@ fn main()
 #[cfg(test)]
 mod tests
 {
+    use stephanie::server::world::world_generator::ChunkRules;
     use super::*;
 
 

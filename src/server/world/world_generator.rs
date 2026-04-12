@@ -15,6 +15,7 @@ use nalgebra::Vector3;
 
 use crate::common::{
     with_error,
+    DebugRaw,
     SeededRandom,
     TileMap,
     SaveLoad,
@@ -971,7 +972,7 @@ impl<S: SaveLoad<WorldChunksBlock>> WorldGenerator<S>
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct PossibleStates
 {
     states: Vec<WorldChunkId>,
@@ -979,6 +980,14 @@ pub struct PossibleStates
     entropy: f64,
     collapsed: bool,
     is_all: bool
+}
+
+impl PartialEq for PossibleStates
+{
+    fn eq(&self, other: &Self) -> bool
+    {
+        self.states == other.states
+    }
 }
 
 impl PossibleStates
@@ -1098,11 +1107,6 @@ impl PossibleStates
         &self.states
     }
 
-    pub fn states_count(&self) -> usize
-    {
-        self.states.len()
-    }
-
     fn set_collapsed_id(&mut self, id: WorldChunkId)
     {
         self.states = vec![id];
@@ -1150,9 +1154,9 @@ impl PossibleStates
     }
 
     #[allow(dead_code)]
-    fn format_states(&self) -> String
+    fn format_states(&self, rules: &ChunkRules) -> String
     {
-        self.format_states_with(|x| x.to_string())
+        self.format_states_with(|x| rules.format_id(x))
     }
 
     fn format_states_with(&self, f: impl Fn(WorldChunkId) -> String) -> String
@@ -1166,36 +1170,18 @@ impl PossibleStates
     }
 }
 
-struct VisitedTracker(Vec<(Pos3<usize>, usize)>);
+#[derive(Clone, PartialEq)]
+pub struct Entropies(FlatChunksContainer<PossibleStates>);
 
-impl VisitedTracker
+impl Debug for Entropies
 {
-    pub fn new() -> Self
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
     {
-        Self(Vec::new())
-    }
-
-    pub fn visit(&mut self, key: Pos3<usize>, amount: usize) -> bool
-    {
-        let visited = if let Some(index) = self.0.iter().position(|x| x.0 == key)
-        {
-            self.0[index].1 <= amount
-        } else
-        {
-            false
-        };
-
-        if !visited
-        {
-            self.0.push((key, amount));
-        }
-
-        !visited
+        f.debug_tuple("Entropies")
+            .field(&self.0.map(|x| DebugRaw(x.format_states_with(|x| x.to_string()))))
+            .finish()
     }
 }
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct Entropies(FlatChunksContainer<PossibleStates>);
 
 impl Entropies
 {
@@ -1275,7 +1261,9 @@ pub struct WaveCollapser<'a>
     rng: SeededRandom,
     rules: &'a ChunkRules,
     entropies: Entropies,
-    world_chunks: &'a mut FlatChunksContainer<Option<WorldChunk>>
+    world_chunks: &'a mut FlatChunksContainer<Option<WorldChunk>>,
+    #[cfg(debug_assertions)]
+    verbose_constrain: bool
 }
 
 impl Debug for WaveCollapser<'_>
@@ -1308,7 +1296,14 @@ impl<'a> WaveCollapser<'a>
             }
         }));
 
-        let mut this = Self{rng: SeededRandom::new(), rules, entropies, world_chunks};
+        let mut this = Self{
+            rng: SeededRandom::new(),
+            rules,
+            entropies,
+            world_chunks,
+            #[cfg(debug_assertions)]
+            verbose_constrain: false
+        };
 
         this.constrain_all();
 
@@ -1322,7 +1317,20 @@ impl<'a> WaveCollapser<'a>
         world_chunks: &'a mut FlatChunksContainer<Option<WorldChunk>>
     ) -> Self
     {
-        Self{rng, rules, entropies, world_chunks}
+        Self{
+            rng,
+            rules,
+            entropies,
+            world_chunks,
+            #[cfg(debug_assertions)]
+            verbose_constrain: false
+        }
+    }
+
+    #[cfg(debug_assertions)]
+    pub fn set_verbose_constrain(&mut self, value: bool)
+    {
+        self.verbose_constrain = value;
     }
 
     pub fn entropies(&self) -> &Entropies
@@ -1334,48 +1342,67 @@ impl<'a> WaveCollapser<'a>
     {
         for pos in self.entropies.positions()
         {
-            let mut visited = VisitedTracker::new();
-            self.constrain(&mut visited, pos);
+            self.constrain(pos);
         }
     }
 
-    fn constrain(&mut self, visited: &mut VisitedTracker, pos: LocalPos)
+    fn constrain(&mut self, pos: LocalPos)
     {
-        if visited.visit(pos.pos, self.entropies.get(pos).states_count())
+        pos.directions_group().map(|direction, value|
         {
-            pos.directions_group().map(|direction, value|
+            if let Some(direction_pos) = value
             {
-                if let Some(direction_pos) = value
+                let (this, other) = self.entropies.get_two_mut(pos, direction_pos);
+
+                #[cfg(debug_assertions)]
                 {
-                    let (this, other) = self.entropies.get_two_mut(pos, direction_pos);
-
-                    let changed = other.constrain(self.rules, this, direction.flip_y());
-
-                    if changed.is_none()
+                    if self.verbose_constrain
                     {
-                        let neighbors = direction_pos.directions_group().map(|direction, x|
-                        {
-                            x.map(|x|
-                            {
-                                let states = self.entropies.get(x).format_states_with(|x| self.rules.format_id(x));
-
-                                format!("{}: {states}", direction.flip_y())
-                            })
-                        }).filter_map(convert::identity).into_iter().reduce(|acc, x|
-                        {
-                            acc + ", " + &x
-                        }).unwrap_or_default();
-
-                        eprintln!("couldnt find a valid worldchunk with {neighbors}, using fallback");
-                    }
-
-                    if changed.unwrap_or(true)
-                    {
-                        self.constrain(visited, direction_pos);
+                        eprintln!(
+                            "{} constraining {} against {} ({} x {})",
+                            direction.opposite().flip_y(),
+                            direction_pos.pos,
+                            pos.pos,
+                            other.format_states(&self.rules),
+                            this.format_states(&self.rules)
+                        );
                     }
                 }
-            });
-        }
+
+                let changed = other.constrain(self.rules, this, direction.flip_y());
+
+                #[cfg(debug_assertions)]
+                {
+                    if self.verbose_constrain
+                    {
+                        eprintln!("after: {}", other.format_states(&self.rules));
+                    }
+                }
+
+                if changed.is_none()
+                {
+                    let neighbors = direction_pos.directions_group().map(|direction, x|
+                    {
+                        x.map(|x|
+                        {
+                            let states = self.entropies.get(x).format_states(&self.rules);
+
+                            format!("{}: {states}", direction.flip_y())
+                        })
+                    }).filter_map(convert::identity).into_iter().reduce(|acc, x|
+                    {
+                        acc + ", " + &x
+                    }).unwrap_or_default();
+
+                    eprintln!("couldnt find a valid worldchunk with {neighbors}, using fallback");
+                }
+
+                if changed.unwrap_or(true)
+                {
+                    self.constrain(direction_pos);
+                }
+            }
+        });
     }
 
     pub fn lowest_entropy_with(&mut self, rng: &mut SeededRandom) -> Option<(LocalPos, &mut PossibleStates)>
@@ -1409,18 +1436,28 @@ impl<'a> WaveCollapser<'a>
 
         self.world_chunks[local] = Some(chunk);
 
-        let mut visited = VisitedTracker::new();
-        self.constrain(&mut visited, local);
+        self.constrain(local)
+    }
+
+    pub fn generate_once(&mut self, rng: &mut SeededRandom) -> bool
+    {
+        if let Some((local_pos, state)) = self.entropies.lowest_entropy(rng)
+        {
+            let generated_chunk = self.rules.generate(state.collapse(self.rules, rng));
+
+            self.generate_single(local_pos, generated_chunk);
+
+            true
+        } else
+        {
+            false
+        }
     }
 
     pub fn generate(&mut self)
     {
-        while let Some((local_pos, state)) = self.entropies.lowest_entropy(&mut self.rng)
-        {
-            let generated_chunk = self.rules.generate(state.collapse(self.rules, &mut self.rng));
-
-            self.generate_single(local_pos, generated_chunk);
-        }
+        let mut rng = self.rng.clone();
+        while self.generate_once(&mut rng) {}
     }
 }
 

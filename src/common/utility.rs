@@ -6,7 +6,7 @@ use std::{
     cmp::Ordering,
     hash::{Hash, Hasher},
     io::Write,
-    fmt::{Display, Debug},
+    fmt::{self, Display, Debug},
     fs::File,
     collections::HashMap,
     path::{Path, Component},
@@ -181,6 +181,16 @@ impl Ord for SimpleF32
     fn cmp(&self, other: &Self) -> Ordering
     {
         self.0.partial_cmp(&other.0).unwrap()
+    }
+}
+
+pub struct DebugRaw(pub String);
+
+impl Debug for DebugRaw
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
+    {
+        write!(f, "{}", self.0)
     }
 }
 

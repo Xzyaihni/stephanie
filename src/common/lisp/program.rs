@@ -13,7 +13,7 @@ use strum::{EnumCount, FromRepr};
 
 use crate::{
     debug_config::*,
-    common::SeededRandom
+    common::{DebugRaw, SeededRandom}
 };
 
 pub use super::{
@@ -3206,16 +3206,6 @@ enum CommandRaw
     Error(ErrorPos),
     CallPrimitiveValue{target: Register},
     CallPrimitiveValueUnchecked{target: Register}
-}
-
-struct DebugRaw(String);
-
-impl Debug for DebugRaw
-{
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
-    {
-        write!(f, "{}", self.0)
-    }
 }
 
 struct CommandRawDisplay<'a, 'b>
