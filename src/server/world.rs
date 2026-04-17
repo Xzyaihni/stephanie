@@ -276,12 +276,6 @@ impl World
                 if let Some(indexer) = self.client_indexers.get_mut(&id)
                 {
                     indexer.position_offset(offset.0);
-
-                    let mut overmaps = self.overmaps.borrow_mut();
-                    if let Some(overmap) = overmaps.get_mut(&id)
-                    {
-                        overmap.move_to(new_position);
-                    }
                 }
             }
         }

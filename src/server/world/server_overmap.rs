@@ -291,10 +291,8 @@ impl<S: SaveLoad<WorldChunksBlock>> ServerOvermap<S>
         false
     }
 
-    pub fn move_to(&mut self, pos: GlobalPos)
+    fn move_to(&mut self, pos: GlobalPos)
     {
-        let pos = worldchunk_pos(pos);
-
         let shift_offset = (pos - self.player_position()).0;
 
         if shift_offset != Pos3::repeat(0_i32)
@@ -303,16 +301,55 @@ impl<S: SaveLoad<WorldChunksBlock>> ServerOvermap<S>
         }
     }
 
+    fn to_grid_pos(size: Pos3<usize>, world_pos: GlobalPos) -> GlobalPos
+    {
+        eprintln!("to_grid called with {}", world_pos.0); let remove_me = ();
+        let non_z_grid = world_pos.0.zip(size).map(|(pos, original_size)|
+        {
+            let h = original_size as i32 / 2;
+
+            let pos = pos + (h - 1);
+
+            let s = original_size as i32 - 3;
+
+            if pos < 0
+            {
+                let pos = pos + 1;
+
+                pos - (pos % s) - s
+            } else
+            {
+                let pos = pos - 1;
+
+                pos - (pos % s)
+            }
+        });
+
+        let grid_pos = Pos3{z: world_pos.0.z, ..non_z_grid};
+
+        GlobalPos::from(grid_pos)
+    }
+
+    fn move_to_grid(&mut self, world_pos: GlobalPos)
+    {
+        self.move_to(Self::to_grid_pos(self.indexer.size, world_pos));
+    }
+
     pub fn generate_chunk(&mut self, pos: GlobalPos, marker: impl FnMut(MarkerTile)) -> Chunk
     {
-        if let Some(local_pos) = self.to_local(worldchunk_pos(pos))
+        let world_pos = worldchunk_pos(pos);
+
+        self.move_to_grid(world_pos);
+
+        if let Some(local_pos) = self.to_local(world_pos)
         {
             crate::debug_time_this!{"generate-existing-chunk", self.generate_existing_chunk(local_pos, marker)}
         } else
         {
             eprintln!(
-                "trying to generate chunk at position {pos:?}, which is outside the server overmap (player position {:?})",
-                self.player_position()
+                "trying to generate chunk at position {}, which is outside the server overmap (player position {})",
+                pos.0,
+                self.player_position().0
             );
 
             Chunk::new()
@@ -432,19 +469,17 @@ impl<'a, 'b, 'c, S: SaveLoad<WorldChunksBlock>> ServerOvermapRef<'a, 'b, 'c, S>
             let z = 0;
             let local_z = self.to_local_z(z);
 
-            let mut generate_surface = |surface_blocks|
-            {
-                let mut outside_indexer = self.indexer.clone();
-                outside_indexer.player_position.0.z = 0;
-                outside_indexer.size.z = 1;
-
-                self.world_generator.generate_surface(surface_blocks, self.world_plane, &outside_indexer)
-            };
-
             if let Some(local_z) = local_z
             {
                 let mut surface_blocks = self.world_chunks.map_slice_ref(local_z, |(_pos, chunk)| chunk.clone());
-                generate_surface(&mut surface_blocks);
+
+                {
+                    let mut outside_indexer = self.indexer.clone();
+                    outside_indexer.player_position.0.z = 0;
+                    outside_indexer.size.z = 1;
+
+                    self.world_generator.generate_surface(&mut surface_blocks, self.world_plane, &outside_indexer);
+                }
 
                 surface_blocks.into_iter().for_each(|(pos, block)|
                 {
@@ -754,7 +789,7 @@ mod tests
         {
             let pos = random_chunk();
 
-            move_to(pos)
+            move_to(worldchunk_pos(pos))
         }
     }
 }

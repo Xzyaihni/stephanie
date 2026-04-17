@@ -1051,9 +1051,11 @@ impl PossibleStates
 
             if !keep
             {
-                let this_rule = rules.get(*state);
+                let this_weight = rules.get(*state).weight();
 
-                self.total -= this_rule.weight();
+                self.total -= this_weight;
+                self.entropy += this_weight * this_weight.ln();
+
                 any_constrained = true;
             }
 
