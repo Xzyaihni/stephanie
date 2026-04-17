@@ -1,6 +1,5 @@
 use std::{
     f32,
-    mem,
     rc::Rc
 };
 
@@ -1032,7 +1031,7 @@ impl HumanAnatomy
     {
         {
             let f = &mut f;
-            mem::take(&mut self.this.broken).into_iter().for_each(|broken|
+            self.this.broken.drain(..).for_each(|broken|
             {
                 f(ChangedPart::whole(broken));
             });

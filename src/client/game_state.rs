@@ -833,6 +833,7 @@ pub struct GameState
     is_paused: bool,
     camera_scale: f32,
     sync_character_delay: f32,
+    sync_other_delay: f32,
     rare_timer: f32,
     dt: Option<f32>,
     debug_visibility: <DebugVisibility as DebugVisibilityTrait>::State,
@@ -998,6 +999,7 @@ impl GameState
             tilemap,
             camera_scale: 1.0,
             sync_character_delay: 0.0,
+            sync_other_delay: 0.0,
             rare_timer: 0.0,
             dt: None,
             ui,
@@ -1660,7 +1662,7 @@ impl GameState
 
         crate::frame_time_this!{
             [update, update_pre] -> world_update,
-            self.world.update(&mut self.connections_handler)
+            self.world.update(&mut self.connections_handler, self.is_loading)
         };
 
         if !self.is_loading && !self.is_paused
@@ -1761,6 +1763,17 @@ impl GameState
                     [update, game_state_update] -> sync_changed,
                     self.entities.entities.sync_changed(&mut self.connections_handler)
                 };
+
+                self.sync_other_delay -= dt;
+                if self.sync_other_delay < 0.0
+                {
+                    crate::frame_time_this!{
+                        [update, game_state_update] -> sync_position_rotation,
+                        self.entities.entities.sync_position_rotation(&mut self.connections_handler)
+                    };
+
+                    self.sync_other_delay = 1.0;
+                }
             }
 
             crate::frame_time_this!{

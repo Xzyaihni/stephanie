@@ -13,7 +13,6 @@ use crate::{
 #[derive(Debug, Clone)]
 pub struct ChunkWorldReceiver
 {
-    delay: usize,
     buffered: VecDeque<GlobalPos>
 }
 
@@ -21,15 +20,25 @@ impl ChunkWorldReceiver
 {
     pub fn new() -> Self
     {
-        Self{delay: 0, buffered: VecDeque::new()}
+        Self{buffered: VecDeque::new()}
     }
 
-    pub fn update(&mut self, passer: &mut ConnectionsHandler, indexer: &impl OvermapIndexing)
+    pub fn update(
+        &mut self,
+        passer: &mut ConnectionsHandler,
+        indexer: &impl OvermapIndexing,
+        is_loading: bool
+    )
     {
-        if self.delay > 0
+        let mut take_amount = if is_loading
         {
-            self.delay -= 1;
+            usize::MAX
         } else
+        {
+            2
+        };
+
+        while take_amount > 0
         {
             if let Some(pos) = self.buffered.pop_front()
             {
@@ -37,8 +46,11 @@ impl ChunkWorldReceiver
                 {
                     self.request_chunk_inner(passer, pos);
 
-                    self.delay = 5;
+                    take_amount -= 1;
                 }
+            } else
+            {
+                break;
             }
         }
     }

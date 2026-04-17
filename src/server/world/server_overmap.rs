@@ -303,7 +303,6 @@ impl<S: SaveLoad<WorldChunksBlock>> ServerOvermap<S>
 
     fn to_grid_pos(size: Pos3<usize>, world_pos: GlobalPos) -> GlobalPos
     {
-        eprintln!("to_grid called with {}", world_pos.0); let remove_me = ();
         let non_z_grid = world_pos.0.zip(size).map(|(pos, original_size)|
         {
             let h = original_size as i32 / 2;

@@ -379,16 +379,16 @@ impl ClientOvermap
         }).unwrap_or_default()
     }
 
-    pub fn update(&mut self, passer: &mut ConnectionsHandler)
+    pub fn update(&mut self, passer: &mut ConnectionsHandler, is_loading: bool)
     {
         crate::frame_time_this!{
             [update, update_pre, world_update] -> world_receiver,
-            self.world_receiver.update(passer, &self.indexer)
+            self.world_receiver.update(passer, &self.indexer, is_loading)
         };
 
         crate::frame_time_this!{
             [update, update_pre, world_update] -> visual_overmap,
-            self.visual_overmap.update()
+            self.visual_overmap.update(is_loading)
         };
     }
 

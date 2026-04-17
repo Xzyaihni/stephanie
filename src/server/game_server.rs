@@ -1,7 +1,6 @@
 use std::{
     f32,
     fmt,
-    mem,
     fs,
     path::PathBuf,
     rc::Rc,
@@ -154,7 +153,7 @@ impl Drop for GameServer
             });
         }
 
-        mem::take(&mut self.receiver_handles).into_iter().for_each(|receiver_handle|
+        self.receiver_handles.drain(..).for_each(|receiver_handle|
         {
             receiver_handle.join().unwrap()
         });

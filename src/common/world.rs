@@ -16,6 +16,7 @@ use serde::{Serialize, Deserialize};
 use yanyaengine::{Transform, game_object::*};
 
 use crate::{
+    debug_config::*,
     Version,
     VERSION,
     client::{
@@ -431,9 +432,9 @@ impl World
         self.set_time(time);
     }
 
-    pub fn update(&mut self, passer: &mut ConnectionsHandler)
+    pub fn update(&mut self, passer: &mut ConnectionsHandler, is_loading: bool)
     {
-        self.overmap.update(passer);
+        self.overmap.update(passer, is_loading || DebugConfig::is_enabled(DebugTool::InstantChunks));
     }
 
     pub fn rescale(&mut self, size: Vector2<f32>)

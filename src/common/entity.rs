@@ -1100,7 +1100,12 @@ macro_rules! define_entities_both
                     return;
                 }
 
-                self.0.changed_entities.borrow_mut().position_rotation.push(entity);
+                let mut changed = self.0.changed_entities.borrow_mut();
+
+                if !changed.position_rotation.contains(&entity)
+                {
+                    changed.position_rotation.push(entity);
+                }
             }
         }
 
@@ -1998,8 +2003,6 @@ macro_rules! define_entities_both
 
             pub fn handle_on_change(&mut self)
             {
-                self.changed_entities.get_mut().position_rotation.clear();
-
                 let changed_entities = self.changed_entities.get_mut();
 
                 $(
@@ -2920,7 +2923,7 @@ macro_rules! define_entities
                         side_sync.changed = false;
 
                         $(
-                            mem::take(&mut side_sync.$side_name).into_iter().for_each(|(entity, component)|
+                            side_sync.$side_name.drain(..).for_each(|(entity, component)|
                             {
                                 passer.send_message(Message::$side_message_name{
                                     entity,
@@ -2939,16 +2942,7 @@ macro_rules! define_entities
                     }
                 }
 
-                let changed_entities = self.changed_entities.borrow();
-
-                changed_entities.position_rotation.iter().copied().for_each(|entity|
-                {
-                    debug_assert!(!entity.local);
-
-                    let target = some_or_return!(self.target_ref(entity));
-
-                    passer.send_message(Message::SyncPositionRotation{entity, position: target.position, rotation: target.rotation});
-                });
+                let changed_entities = self.changed_entities.get_mut();
 
                 $(
                     changed_entities.$name.iter().copied().for_each(|entity|
@@ -2964,6 +2958,24 @@ macro_rules! define_entities
                         });
                     });
                 )+
+            }
+
+            pub fn sync_position_rotation(&mut self, passer: &mut client::ConnectionsHandler)
+            {
+                self.changed_entities.get_mut().position_rotation.drain(..).for_each(|entity|
+                {
+                    debug_assert!(!entity.local);
+
+                    let target = some_or_return!(get_entity!(self, entity, get, lazy_transform).map(|x|
+                    {
+                        x.target_ref().clone()
+                    }).or_else(||
+                    {
+                        get_entity!(self, entity, get, transform).as_deref().cloned()
+                    }));
+
+                    passer.send_message(Message::SyncPositionRotation{entity, position: target.position, rotation: target.rotation});
+                });
             }
 
             fn handle_entity_set(

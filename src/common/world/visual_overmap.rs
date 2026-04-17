@@ -874,17 +874,28 @@ impl VisualOvermap
         generated
     }
 
-    pub fn update(&mut self)
+    pub fn update(&mut self, is_loading: bool)
     {
-        self.process_message();
+        if is_loading
+        {
+            while self.process_message() {}
+        } else
+        {
+            self.process_message();
+        }
     }
 
-    pub fn process_message(&mut self)
+    pub fn process_message(&mut self) -> bool
     {
-        if let Ok(generated) = self.receiver.try_recv()
+        let value = self.receiver.try_recv();
+        let is_success = value.is_ok();
+
+        if let Ok(generated) = value
         {
             self.handle_generated(generated);
         }
+
+        is_success
     }
 
     fn handle_generated(&mut self, generated: VisualGenerated)

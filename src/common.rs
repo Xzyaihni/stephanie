@@ -447,6 +447,7 @@ define_timings!
                 remove
             },
             sync_changed,
+            sync_position_rotation,
             handle_on_change,
             create_render_queued,
             rare
