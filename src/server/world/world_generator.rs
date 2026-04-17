@@ -272,41 +272,54 @@ impl ChunkGenerator
 
         primitives.add(
             "tile",
-            PrimitiveProcedureInfo::new_simple(ArgsCount::Min(1), Effect::Impure, move |mut args|
-            {
-                let call_position = args.call_position();
-
-                let name = args.next().unwrap().as_symbol(args.memory)?;
-                let rotation = args.next();
-
-                let mut tile = *names_map.get(&name).unwrap_or_else(||
+            PrimitiveProcedureInfo::new_simple(
+                ArgsCount::Min(1),
+                Effect::PureIf(PureCondition::ArgsBetween{start: 1, end_inclusive: 1}),
+                move |mut args|
                 {
-                    eprintln!("no tile named `{name}`, using fallback");
+                    let call_position = args.call_position();
 
-                    &fallback_tile
-                });
+                    let name = args.next().unwrap().as_symbol(args.memory)?;
+                    let rotation = args.next();
 
-                if let Some(rotation) = rotation
-                {
-                    if let Err(err) = || -> Result<(), lisp::Error>
+                    let mut tile = *names_map.get(&name).unwrap_or_else(||
                     {
-                        let rotation = TileRotation::from_lisp_value(rotation)?;
+                        eprintln!("no tile named `{name}`, using fallback");
 
-                        tile.0.as_mut().ok_or_else(||
+                        &fallback_tile
+                    });
+
+                    if let Some(rotation) = rotation
+                    {
+                        if let Err(err) = || -> Result<(), lisp::Error>
                         {
-                            lisp::Error::Custom("air cannot have rotation".to_owned())
-                        })?.set_rotation(rotation);
+                            let rotation = TileRotation::from_lisp_value(rotation)?;
 
-                        Ok(())
-                    }()
-                    {
-                        let err: lisp::ErrorPos = err.with_position(call_position);
-                        eprintln!("{err}, ignoring");
+                            tile.0.as_mut().ok_or_else(||
+                            {
+                                lisp::Error::Custom("air cannot have rotation".to_owned())
+                            })?.set_rotation(rotation);
+
+                            Ok(())
+                        }()
+                        {
+                            let err: lisp::ErrorPos = err.with_position(call_position);
+                            eprintln!("{err}, ignoring");
+                        }
                     }
-                }
 
-                tile.as_lisp_value(args.memory)
-            }));
+                    let lisp_value = tile.as_lisp_value(args.memory);
+
+                    if rotation.is_none()
+                    {
+                        if let Ok(lisp_value) = lisp_value
+                        {
+                            debug_assert!(!lisp_value.tag().is_boxed());
+                        }
+                    }
+
+                    lisp_value
+                }));
 
         fn read_chunk_info<T>(
             overmaps_world_chunks: &Vec<Rc<RefCell<WorldPlane>>>,

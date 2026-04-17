@@ -17,6 +17,7 @@ pub use program::{
     CompileConfig,
     Register,
     Effect,
+    PureCondition,
     PrimitiveArgs,
     Program,
     PrimitiveProcedureInfo,

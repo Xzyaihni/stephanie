@@ -94,9 +94,16 @@ impl ArgsCount
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PureCondition
+{
+    ArgsBetween{start: usize, end_inclusive: usize}
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Effect
 {
     Pure,
+    PureIf(PureCondition),
     Impure
 }
 
@@ -2134,26 +2141,50 @@ impl InterReprPos
                 {
                     if let Some(primitive_id) = value.as_primitive_procedure().ok()
                     {
-                        if let Some((Effect::Pure, f)) = &memory.primitives.get(primitive_id).on_apply
+                        if let Some((effect, f)) = &memory.primitives.get(primitive_id).on_apply
                         {
+                            match effect
+                            {
+                                Effect::Pure => (),
+                                Effect::PureIf(condition) =>
+                                {
+                                    match condition
+                                    {
+                                        PureCondition::ArgsBetween{start, end_inclusive} =>
+                                        {
+                                            if !(*start..=*end_inclusive).contains(&args.len())
+                                            {
+                                                return;
+                                            }
+                                        }
+                                    }
+                                },
+                                Effect::Impure => return
+                            }
+
                             let f = f.clone();
 
                             memory.set_register(Register::Argument, ());
 
                             for arg in args.iter().rev()
                             {
-                                if let InterRepr::Value(value) = arg.value
+                                let value = if let InterRepr::Value(value) = arg.value
                                 {
-                                    memory.set_register(Register::Temporary, value);
-
-                                    if let Err(err) = memory.cons(Register::Argument, Register::Temporary, Register::Argument)
-                                    {
-                                        eprintln!("error in apply_known args: {err}");
-
-                                        return;
-                                    }
+                                    value
+                                } else if let InterRepr::Quoted(AstPos{value: Ast::Value(value), ..}) = &arg.value
+                                {
+                                    Self::parse_primitive_text(memory, &value).unwrap()
                                 } else
                                 {
+                                    return;
+                                };
+
+                                memory.set_register(Register::Temporary, value);
+
+                                if let Err(err) = memory.cons(Register::Argument, Register::Temporary, Register::Argument)
+                                {
+                                    eprintln!("error in apply_known args: {err}");
+
                                     return;
                                 }
                             }

@@ -132,6 +132,11 @@ impl Tile
             return Ok(Tile::none());
         }
 
+        if let Ok(id) = value.as_integer()
+        {
+            return Ok(Tile(Some(TileExisting::new(id as usize, None))));
+        }
+
         let lst = value.as_list()?;
 
         let id = lst.car.as_integer()? as usize;
@@ -487,6 +492,11 @@ impl TileExisting
 
     pub fn as_lisp_value(&self, memory: &mut LispMemory) -> Result<LispValue, lisp::Error>
     {
+        if self.info.is_none()
+        {
+            return Ok((self.id as i32).into());
+        }
+
         let restore = memory.with_saved_registers([Register::Value, Register::Temporary]);
 
         memory.set_register(Register::Value, self.id as i32);
