@@ -13,30 +13,33 @@ use std::{
 
 use nalgebra::Vector3;
 
-use crate::common::{
-    with_error,
-    DebugRaw,
-    SeededRandom,
-    TileMap,
-    SaveLoad,
-    WeightedPicker,
-    WorldChunksBlock,
-    lisp::{self, *},
-    world::{
-        Pos3,
-        LocalPos,
-        GlobalPos,
-        ChunkLocal,
-        overmap::{
-            CommonIndexing,
-            OvermapIndexing,
-            FlatIndexer,
-            FlatChunksContainer,
-            ChunksContainer
-        },
-        chunk::{
-            PosDirection,
-            tile::{Tile, TileRotation}
+use crate::{
+    debug_config::*,
+    common::{
+        with_error,
+        DebugRaw,
+        SeededRandom,
+        TileMap,
+        SaveLoad,
+        WeightedPicker,
+        WorldChunksBlock,
+        lisp::{self, *},
+        world::{
+            Pos3,
+            LocalPos,
+            GlobalPos,
+            ChunkLocal,
+            overmap::{
+                CommonIndexing,
+                OvermapIndexing,
+                FlatIndexer,
+                FlatChunksContainer,
+                ChunksContainer
+            },
+            chunk::{
+                PosDirection,
+                tile::{Tile, TileRotation}
+            }
         }
     }
 };
@@ -473,6 +476,11 @@ impl ChunkGenerator
             ..Default::default()
         };
 
+        if DebugConfig::is_enabled(DebugTool::Lisp)
+        {
+            eprintln!("compiling {name} with {:?}", config.compile_config);
+        }
+
         let lisp = Lisp::new_with_config(config, &[&standard_code, &default_code, &chunk_code]).map_err(|err|
         {
             ParseError::new_named(PathBuf::from(name), err)
@@ -728,7 +736,7 @@ impl<S: SaveLoad<WorldChunksBlock>> WorldGenerator<S>
             );
         }
 
-        self.load_missing(world_chunks.iter_mut(), global_mapper);
+        crate::debug_time_this!{"load-surface-missing", self.load_missing(world_chunks.iter_mut(), global_mapper)}
 
         plane.0.iter_mut().zip(world_chunks.iter()).for_each(|((_, plane), (_, world))|
         {
@@ -752,7 +760,7 @@ impl<S: SaveLoad<WorldChunksBlock>> WorldGenerator<S>
             );
         }
 
-        wave_collapser.generate();
+        crate::debug_time_this!{"wfc-generate", wave_collapser.generate()}
     }
 
     pub fn generate_missing(
@@ -766,7 +774,7 @@ impl<S: SaveLoad<WorldChunksBlock>> WorldGenerator<S>
         debug_assert!(world_chunks.size().z == SERVER_OVERMAP_SIZE_Z);
         debug_assert!(global_mapper.size() == world_chunks.size());
 
-        self.load_missing(world_chunks.iter_mut(), global_mapper);
+        crate::debug_time_this!{"load-all-missing", self.load_missing(world_chunks.iter_mut(), global_mapper)}
 
         #[cfg(debug_assertions)]
         {
@@ -968,7 +976,13 @@ impl<S: SaveLoad<WorldChunksBlock>> WorldGenerator<S>
             return empty_worldchunk();
         }
 
-        self.generator.generate_chunk(info, id, self.rules.name(id), overmap_index, marker)
+        let world_chunk_name = self.rules.name(id);
+
+        crate::tool_time_this!{
+            format!("world-chunk({world_chunk_name})"),
+            DebugTool::DebugChunkTimings,
+            self.generator.generate_chunk(info, id, world_chunk_name, overmap_index, marker)
+        }
     }
 }
 

@@ -230,10 +230,19 @@ macro_rules! debug_time_this
 {
     ($name:expr, $($tt:tt)*) =>
     {
+        $crate::tool_time_this!($name, $crate::debug_config::DebugTool::DebugTimings, $($tt)*)
+    }
+}
+
+#[macro_export]
+macro_rules! tool_time_this
+{
+    ($name:expr, $tool:expr, $($tt:tt)*) =>
+    {
         {
             use $crate::debug_config::*;
 
-            if DebugConfig::is_enabled(DebugTool::DebugTimings)
+            if DebugConfig::is_enabled($tool)
             {
                 let (time, value) = $crate::get_time_this!($($tt)*);
 

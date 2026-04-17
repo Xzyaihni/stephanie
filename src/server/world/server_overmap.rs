@@ -342,7 +342,11 @@ impl<S: SaveLoad<WorldChunksBlock>> ServerOvermap<S>
 
         if let Some(local_pos) = self.to_local(world_pos)
         {
-            crate::debug_time_this!{"generate-existing-chunk", self.generate_existing_chunk(local_pos, marker)}
+            crate::tool_time_this!{
+                "generate-existing-chunk",
+                DebugTool::DebugChunkTimings,
+                self.generate_existing_chunk(local_pos, marker)
+            }
         } else
         {
             eprintln!(
@@ -420,12 +424,13 @@ impl<S: SaveLoad<WorldChunksBlock>> ServerOvermap<S>
 
     fn partially_fill(chunk: &mut Chunk, world_chunk: ChunksContainer<Tile>, pos: Pos3<usize>)
     {
-        let size = world_chunk.size();
-        for z in 0..size.z
+        debug_assert!(WORLD_CHUNK_SIZE == world_chunk.size());
+
+        for z in 0..WORLD_CHUNK_SIZE.z
         {
-            for y in 0..size.y
+            for y in 0..WORLD_CHUNK_SIZE.y
             {
-                for x in 0..size.x
+                for x in 0..WORLD_CHUNK_SIZE.x
                 {
                     let this_pos = Pos3::new(x, y, z);
                     chunk[ChunkLocal::from(pos + this_pos)] = world_chunk[this_pos];

@@ -869,6 +869,44 @@ enum Command
     Label(Label)
 }
 
+struct CommandDisplay<'a>
+{
+    memory: &'a LispMemory,
+    value: &'a Command
+}
+
+impl Debug for CommandDisplay<'_>
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
+    {
+        match self.value
+        {
+            Command::PutValue{value, register} =>
+            {
+                f.debug_struct("PutValue")
+                    .field("value", &DebugRaw(value.to_string(self.memory)))
+                    .field("register", register)
+                    .finish()
+            },
+            Command::LookupOuter{id, register} =>
+            {
+                f.debug_struct("LookupOuter")
+                    .field("id", &DebugRaw(LispValue::new_symbol_raw(*id).to_string(self.memory)))
+                    .field("register", register)
+                    .finish()
+            },
+            Command::Define{id, register} =>
+            {
+                f.debug_struct("Define")
+                    .field("id", &DebugRaw(LispValue::new_symbol_raw(*id).to_string(self.memory)))
+                    .field("register", register)
+                    .finish()
+            },
+            x => write!(f, "{x:?}")
+        }
+    }
+}
+
 impl Command
 {
     pub fn modifies_registers(&self) -> Vec<Register>
@@ -1048,7 +1086,7 @@ impl CompiledPart
         self.combine_preserving(proceed.into_compiled(), RegisterStates::one(Register::Return))
     }
 
-    fn print_program(&self)
+    fn print_program(&self, memory: &LispMemory)
     {
         let mut offset = 0;
         self.commands.iter().enumerate().for_each(|(index, WithPositionMaybe{value, position})|
@@ -1065,7 +1103,7 @@ impl CompiledPart
                 eprint!("{}: ", index - offset);
             }
 
-            eprint!("{value:?}");
+            eprint!("{:?}", CommandDisplay{memory, value});
 
             if let Some(position) = position
             {
@@ -1108,7 +1146,7 @@ impl CompiledPart
 
         if DebugConfig::is_enabled(DebugTool::Lisp)
         {
-            self.print_program();
+            self.print_program(&state.memory);
         }
 
         Self::verify_program(&self.commands, state.memory)?;
@@ -3012,6 +3050,19 @@ impl Debug for InterpretState
 
 impl InterpretState
 {
+    fn clear_compile_env_lookups(&mut self)
+    {
+        self.outer_lookups.clear();
+
+        self.compile_env.iter_mut().for_each(|depth_lookups|
+        {
+            depth_lookups.iter_mut().for_each(|lambda_lookups|
+            {
+                lambda_lookups.iter_mut().for_each(|(_id, lookup)| lookup.looked_up = false);
+            });
+        });
+    }
+
     fn compile_env_add(&mut self, name: SymbolId, value: Option<LispValue>) -> usize
     {
         let p = self.current_env_position.pos;
@@ -3208,13 +3259,13 @@ enum CommandRaw
     CallPrimitiveValueUnchecked{target: Register}
 }
 
-struct CommandRawDisplay<'a, 'b>
+struct CommandRawDisplay<'a>
 {
-    memory: &'a mut LispMemory,
-    value: &'b CommandRaw
+    memory: &'a LispMemory,
+    value: &'a CommandRaw
 }
 
-impl Debug for CommandRawDisplay<'_, '_>
+impl Debug for CommandRawDisplay<'_>
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
     {
@@ -3584,6 +3635,7 @@ impl CompiledProgram
     }
 }
 
+#[derive(Debug)]
 pub struct CompileConfig
 {
     pub type_checks: bool,
@@ -3659,6 +3711,8 @@ impl Program
 
         if !interpret_state.eval_encountered
         {
+            interpret_state.clear_compile_env_lookups();
+
             {
                 let mut call_stack = Vec::new();
 

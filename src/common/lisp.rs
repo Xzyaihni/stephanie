@@ -1941,6 +1941,8 @@ impl Lisp
 #[cfg(test)]
 mod tests
 {
+    use std::fs;
+
     use super::*;
 
     fn run_simple_integer_test_with(lisp: Lisp, result: i32)
@@ -3109,6 +3111,28 @@ mod tests
                 false
             }
         });
+    }
+
+    #[test]
+    fn optimize_away_stdlib()
+    {
+        let standard_code = fs::read_to_string("lisp/standard.scm").unwrap();
+
+        let code = "
+            (+ 2 5)
+        ";
+
+        let lisp = Lisp::new_with_config(
+            LispConfig{
+                compile_config: CompileConfig{type_checks: true, apply_known: true},
+                ..Default::default()
+            },
+            &[&standard_code, code]
+        ).unwrap();
+
+        assert!(lisp.program.code().commands_define_count() == 0);
+
+        run_simple_integer_test_with(lisp, 7);
     }
 
     #[test]
