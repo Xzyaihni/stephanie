@@ -1176,13 +1176,21 @@ impl CompiledPart
             }).collect::<HashMap<Label, usize>>()
         };
 
-        let (positions, commands) = self.commands.into_iter().filter(|command|
+        let (positions, mut commands): (Vec<_>, Vec<_>) = self.commands.into_iter().filter(|command|
         {
             !command.is_label()
         }).map(|WithPositionMaybe{position, value: command}|
         {
             (position, command.into_raw(&labels))
         }).unzip();
+
+        if let Some(CommandRaw::Jump(location)) = commands.last()
+        {
+            if *location == commands.len()
+            {
+                commands.pop();
+            }
+        }
 
         Ok(CompiledProgram{
             positions,
@@ -1995,7 +2003,7 @@ impl InterReprPos
                     else_body.process_lookups(interpret_state);
                 });
             },
-            InterRepr::Define(DefineStage::Parsed{name, body}) =>
+            InterRepr::Define(DefineStage::Parsed{name, body}) | InterRepr::Define(DefineStage::Processed{name, body, ..}) =>
             {
                 let redefine = {
                     let value = if let InterRepr::Value(x) = body.value
@@ -2029,7 +2037,6 @@ impl InterReprPos
                     unreachable!()
                 }
             },
-            InterRepr::Define(_) => unreachable!(),
             InterRepr::Lambda{name: _, params, body} =>
             {
                 let restore_position = interpret_state.lambda_begin_env();
@@ -2041,7 +2048,7 @@ impl InterReprPos
                 interpret_state.end_env(restore_position);
             },
             InterRepr::Quoted(_) => (),
-            InterRepr::Lookup(LookupStage::Parsed{symbol: id}) =>
+            InterRepr::Lookup(LookupStage::Parsed{symbol: id}) | InterRepr::Lookup(LookupStage::Processed{symbol: id, ..}) =>
             {
                 let pos = interpret_state.current_env_position.clone();
 
@@ -2097,7 +2104,7 @@ impl InterReprPos
             {
                 check.simple_replace(params, f) && then.simple_replace(params, f) && else_body.simple_replace(params, f)
             },
-            InterRepr::Define(DefineStage::Parsed{..}) =>
+            InterRepr::Define(DefineStage::Processed{..}) =>
             {
                 false
             },
@@ -2107,7 +2114,7 @@ impl InterReprPos
                 body.simple_replace(params, f)
             },
             InterRepr::Quoted(_) => true,
-            InterRepr::Lookup(LookupStage::Parsed{symbol: id}) =>
+            InterRepr::Lookup(LookupStage::Processed{symbol: id, pos: _}) =>
             {
                 if let Some(index) = params.iter().position(|param| param.value == *id)
                 {
@@ -2272,7 +2279,7 @@ impl InterReprPos
                     else_body.apply_known(memory);
                 }
             },
-            InterRepr::Define(DefineStage::Parsed{name: _, body}) =>
+            InterRepr::Define(DefineStage::Processed{name: _, position: _, body}) =>
             {
                 body.apply_known(memory);
             },
@@ -3426,6 +3433,12 @@ pub struct CompiledProgram
 impl CompiledProgram
 {
     #[cfg(test)]
+    pub fn commands_count(&self) -> usize
+    {
+        self.commands.len()
+    }
+
+    #[cfg(test)]
     pub fn commands_lookup_outer_count(&self) -> usize
     {
         self.commands.iter().filter(|x|
@@ -3733,12 +3746,15 @@ impl Program
             interpret_state.defined_symbols = Some(memory.symbols());
         }
 
+        ir.process_lookups(&mut interpret_state);
+
         if config.apply_known
         {
             ir.apply_known(&mut memory);
-        }
 
-        ir.process_lookups(&mut interpret_state);
+            interpret_state.compile_env = vec![vec![Vec::new()]];
+            ir.process_lookups(&mut interpret_state);
+        }
 
         if !interpret_state.eval_encountered
         {

@@ -3115,6 +3115,29 @@ mod tests
     }
 
     #[test]
+    fn optimize_away_nested_call()
+    {
+        let code = "
+            (define x 3)
+            (define y 4)
+
+            (+ x y)
+        ";
+
+        let lisp = Lisp::new_with_config(
+            LispConfig{
+                compile_config: CompileConfig{type_checks: true, apply_known: true},
+                ..Default::default()
+            },
+            &[code]
+        ).unwrap();
+
+        assert!(lisp.program.code().commands_count() == 1);
+
+        run_simple_integer_test_with(lisp, 7);
+    }
+
+    #[test]
     fn optimize_away_stdlib()
     {
         let standard_code = fs::read_to_string("lisp/standard.scm").unwrap();
