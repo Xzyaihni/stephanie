@@ -546,7 +546,7 @@ impl ChunkGenerator
             define_symbol("difficulty", info.difficulty.into())?;
             define_symbol("rotation", (rotation as i32).into())?;
 
-            let (memory, value): (LispMemory, LispValue) = this_chunk.run()
+            let (memory, value): (&LispMemory, LispValue) = this_chunk.run_precleared()
                 .map_err(|err|
                 {
                     let source = ["standard", "default", "chunk", "loaded file"].get(err.position.source).copied().unwrap_or("undefined");

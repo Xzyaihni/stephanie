@@ -205,7 +205,7 @@ macro_rules! get_time_this
 
             let value = $($tt)*;
 
-            (start_time.elapsed().as_micros() as f64 / 1000.0, value)
+            (start_time.elapsed().as_micros() as f64, value)
         }
     }
 }
@@ -218,7 +218,7 @@ macro_rules! time_this
         {
             let (time, value) = $crate::get_time_this!($($tt)*);
 
-            eprintln!("{} took {time:.2} ms", $name);
+            eprintln!("{} took {:.2} ms", $name, time / 1000.0);
 
             value
         }
@@ -246,7 +246,15 @@ macro_rules! tool_time_this
             {
                 let (time, value) = $crate::get_time_this!($($tt)*);
 
-                eprintln!("{} took {time:.2} ms", $name);
+                let formatted_time = if time < 100.0
+                {
+                    format!("{time:.2} us")
+                } else
+                {
+                    format!("{:.2} ms", time / 1000.0)
+                };
+
+                eprintln!("{} took {formatted_time}", $name);
 
                 value
             } else
@@ -528,7 +536,7 @@ macro_rules! frame_time_this
             {
                 let (_time, value) = $crate::get_time_this!($($tt)*);
 
-                $crate::frame_timed!([$($parent,)*] -> $name, _time);
+                $crate::frame_timed!([$($parent,)*] -> $name, (_time / 1000.0));
 
                 value
             } else

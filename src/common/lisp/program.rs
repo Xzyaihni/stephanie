@@ -23,7 +23,8 @@ pub use super::{
     LispValue,
     LispMemory,
     ValueTag,
-    OutputWrapper
+    OutputWrapper,
+    OutputWrapperRef
 };
 
 pub use parser::{PrimitiveType, CodePosition, WithPosition, WithPositionMaybe, WithPositionTrait};
@@ -4019,11 +4020,25 @@ impl Program
     pub fn eval(&self) -> Result<OutputWrapper, ErrorPos>
     {
         let mut memory = self.memory.clone();
-
         self.code.run(&mut memory)?;
 
         let value = memory.get_register(Register::Value);
         Ok(OutputWrapper{memory, value})
+    }
+
+    pub fn eval_mut(&mut self) -> Result<OutputWrapperRef<'_>, ErrorPos>
+    {
+        self.memory.clear();
+
+        self.eval_precleared()
+    }
+
+    pub fn eval_precleared(&mut self) -> Result<OutputWrapperRef<'_>, ErrorPos>
+    {
+        self.code.run(&mut self.memory)?;
+
+        let value = self.memory.get_register(Register::Value);
+        Ok(OutputWrapperRef{memory: &self.memory, value})
     }
 
     pub fn memory_mut(&mut self) -> &mut LispMemory

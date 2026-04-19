@@ -1924,6 +1924,16 @@ impl Lisp
         self.program.eval()
     }
 
+    pub fn run_mut(&mut self) -> Result<OutputWrapperRef<'_>, ErrorPos>
+    {
+        self.program.eval_mut()
+    }
+
+    pub fn run_precleared(&mut self) -> Result<OutputWrapperRef<'_>, ErrorPos>
+    {
+        self.program.eval_precleared()
+    }
+
     pub fn print_highlighted(sources: &[&str], position: CodePosition)
     {
         if let Some(line) = sources[position.source].lines().nth(position.line - 1)
@@ -1950,17 +1960,39 @@ mod tests
     {
         assert!(lisp.program.code().commands_lookup_outer_count() == 0);
 
-        let value = lisp.run().unwrap_or_else(|err|
         {
-            panic!("{err}")
-        });
+            let value = lisp.run().unwrap_or_else(|err|
+            {
+                panic!("{err}")
+            });
 
-        let value = value.as_integer().unwrap_or_else(|err|
+            let value = value.as_integer().unwrap_or_else(|err|
+            {
+                panic!("{err} ({value})")
+            });
+
+            assert_eq!(value, result);
+        }
+
+        let run_once = |lisp: &mut Lisp|
         {
-            panic!("{err} ({value})")
-        });
+            let value = lisp.run_mut().unwrap_or_else(|err|
+            {
+                panic!("{err}")
+            });
 
-        assert_eq!(value, result);
+            let value = value.as_integer().unwrap_or_else(|err|
+            {
+                panic!("{err} ({value})")
+            });
+
+            assert_eq!(value, result);
+        };
+
+        let mut lisp = lisp.clone();
+
+        run_once(&mut lisp);
+        run_once(&mut lisp);
     }
 
     fn run_tests_with_memory(memory: LispMemory, code: &str, mut f: impl FnMut(Lisp))
