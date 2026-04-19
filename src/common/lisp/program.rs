@@ -1356,6 +1356,7 @@ impl LambdaParams
 type MarkStackFunc<'a> = Box<dyn FnOnce(
     &mut Vec<MarkStackEntry<'a>>,
     &mut InterpretState,
+    &mut Vec<EnvPosition>,
     &mut HashMap<EnvPosition, LambdaDefineInfo<'a>>,
     &mut VecDeque<(u32, &'a InterReprPos)>,
     bool
@@ -1769,7 +1770,7 @@ impl InterReprPos
             InterRepr::Apply{op, args} =>
             {
                 call_stack.push(MarkStackEntry{
-                    func: Box::new(move |call_stack, _interpret_state, _lambda_defines, explore_queue, previous_skipped|
+                    func: Box::new(move |call_stack, _interpret_state, _visited, _lambda_defines, explore_queue, previous_skipped|
                     {
                         if previous_skipped
                         {
@@ -1784,14 +1785,14 @@ impl InterReprPos
                 });
 
                 call_stack.push(MarkStackEntry{
-                    func: Box::new(move |call_stack, _interpret_state, _lambda_defines, _explore_queue, _previous_skipped|
+                    func: Box::new(move |call_stack, _interpret_state, _visited, _lambda_defines, _explore_queue, _previous_skipped|
                     {
                         op.mark_lookups(call_stack, possibly_op + 1)
                     })
                 });
 
                 call_stack.push(MarkStackEntry{
-                    func: Box::new(move |call_stack, _interpret_state, _lambda_defines, explore_queue, _|
+                    func: Box::new(move |call_stack, _interpret_state, _visited, _lambda_defines, explore_queue, _|
                     {
                         let previous = explore_queue.clone();
                         *explore_queue = VecDeque::new();
@@ -1799,7 +1800,7 @@ impl InterReprPos
                         call_stack.extend(args.iter().rev().map(|arg|
                         {
                             MarkStackEntry{
-                                func: Box::new(move |call_stack, _interpret_state, _lambda_defines, _explore_queue, _previous_skipped|
+                                func: Box::new(move |call_stack, _interpret_state, _visited, _lambda_defines, _explore_queue, _previous_skipped|
                                 {
                                     arg.mark_lookups(
                                         call_stack,
@@ -1824,7 +1825,7 @@ impl InterReprPos
                     let is_last = index == 0;
 
                     MarkStackEntry{
-                        func: Box::new(move |call_stack, _interpret_state, _lambda_defines, _explore_queue, _previous_skipped|
+                        func: Box::new(move |call_stack, _interpret_state, _visited, _lambda_defines, _explore_queue, _previous_skipped|
                         {
                             value.mark_lookups(
                                 call_stack,
@@ -1839,21 +1840,21 @@ impl InterReprPos
             InterRepr::If{check, then, else_body} =>
             {
                 call_stack.push(MarkStackEntry{
-                    func: Box::new(move |call_stack, _interpret_state, _lambda_defines, _explore_queue, _previous_skipped|
+                    func: Box::new(move |call_stack, _interpret_state, _visited, _lambda_defines, _explore_queue, _previous_skipped|
                     {
                         else_body.mark_lookups(call_stack, possibly_op)
                     })
                 });
 
                 call_stack.push(MarkStackEntry{
-                    func: Box::new(move |call_stack, _interpret_state, _lambda_defines, _explore_queue, _previous_skipped|
+                    func: Box::new(move |call_stack, _interpret_state, _visited, _lambda_defines, _explore_queue, _previous_skipped|
                     {
                         then.mark_lookups(call_stack, possibly_op)
                     })
                 });
 
                 call_stack.push(MarkStackEntry{
-                    func: Box::new(move |call_stack, _interpret_state, _lambda_defines, _explore_queue, _previous_skipped|
+                    func: Box::new(move |call_stack, _interpret_state, _visited, _lambda_defines, _explore_queue, _previous_skipped|
                     {
                         check.mark_lookups(call_stack, 0)
                     })
@@ -1864,7 +1865,7 @@ impl InterReprPos
             InterRepr::Define(DefineStage::Processed{name: _, position, body}) =>
             {
                 call_stack.push(MarkStackEntry{
-                    func: Box::new(move |call_stack, _interpret_state, lambda_defines, _explore_queue, _previous_skipped|
+                    func: Box::new(move |call_stack, _interpret_state, _visited, lambda_defines, _explore_queue, _previous_skipped|
                     {
                         lambda_defines.insert(*position, LambdaDefineInfo{
                             last_possibly_op: 0,
@@ -1884,7 +1885,7 @@ impl InterReprPos
                 if possibly_op > 0
                 {
                     call_stack.push(MarkStackEntry{
-                        func: Box::new(move |call_stack, _interpret_state, _lambda_defines, _explore_queue, _previous_skipped|
+                        func: Box::new(move |call_stack, _interpret_state, _visited, _lambda_defines, _explore_queue, _previous_skipped|
                         {
                             body.mark_lookups(call_stack, possibly_op.saturating_sub(1))
                         })
@@ -1900,9 +1901,16 @@ impl InterReprPos
             InterRepr::Lookup(LookupStage::Processed{symbol: id, pos}) =>
             {
                 call_stack.push(MarkStackEntry{
-                    func: Box::new(move |_call_stack, interpret_state, lambda_defines, explore_queue, _previous_skipped|
+                    func: Box::new(move |_call_stack, interpret_state, visited, lambda_defines, explore_queue, _previous_skipped|
                     {
-                        let (found_pos, _) = Self::compile_env_lookup(interpret_state, *id, pos);
+                        let found_pos = if visited.contains(&pos.pos)
+                        {
+                            Self::compile_env_lookup_position(&interpret_state.compile_env, *id, pos)
+                        } else
+                        {
+                            visited.push(pos.pos);
+                            Self::compile_env_lookup(interpret_state, *id, pos).0
+                        };
 
                         if possibly_op > 0
                         {
@@ -2117,11 +2125,9 @@ impl InterReprPos
 
                             for arg in args.iter().rev()
                             {
-                                match &arg.value
+                                if arg.is_control_flow_dependent(apply_state)
                                 {
-                                    InterRepr::Value(_)
-                                    | InterRepr::Quoted(AstPos{value: Ast::Value(_), ..}) => (),
-                                    _ => return true
+                                    return true;
                                 }
                             }
 
@@ -2241,10 +2247,7 @@ impl InterReprPos
                 {
                     let control_flow_dependent = body.is_control_flow_dependent(apply_state);
 
-                    if control_flow_dependent
-                    {
-                        apply_state.discard_inlines.push(*position);
-                    } else
+                    if !control_flow_dependent
                     {
                         apply_state.inline_lookup.as_mut().unwrap().value = Some(body.clone());
                         return;
@@ -2946,6 +2949,136 @@ impl InterReprPos
                     after_operator,
                     RegisterStates::one(Register::Environment).set(Register::Return)
                 )
+            }
+        }
+    }
+
+    fn print_debug(&self, memory: &LispMemory, indent: usize)
+    {
+        let print_indent = ||
+        {
+            eprint!("{}", str::repeat("  ", indent));
+        };
+
+        match &self.value
+        {
+            InterRepr::Apply{op, args} =>
+            {
+                print_indent();
+                eprint!("(");
+
+                op.print_debug(memory, 0);
+
+                args.iter().for_each(|arg|
+                {
+                    eprint!(" ");
+
+                    arg.print_debug(memory, 0);
+                });
+
+                eprint!(")");
+            },
+            InterRepr::Sequence(sequence) =>
+            {
+                print_indent();
+                eprintln!("(begin");
+
+                sequence.iter().enumerate().for_each(|(index, x)|
+                {
+                    x.print_debug(memory, indent + 1);
+
+                    if (index + 1) != sequence.len()
+                    {
+                        eprintln!();
+                    }
+                });
+
+                eprint!(")");
+            },
+            InterRepr::If{check, then, else_body} =>
+            {
+                print_indent();
+                eprint!("(if ");
+
+                check.print_debug(memory, 0);
+                eprintln!();
+
+                then.print_debug(memory, indent + 1);
+                eprintln!();
+
+                else_body.print_debug(memory, indent + 1);
+
+                eprint!(")");
+            },
+            InterRepr::Define(DefineStage::Parsed{body, name, ..})
+            | InterRepr::Define(DefineStage::Processed{body, name, ..}) =>
+            {
+                print_indent();
+
+                let name = memory.get_symbol(*name);
+
+                if let InterRepr::Lambda{params: LambdaParams::Normal(symbols), body, ..} = &body.value
+                {
+                    eprintln!(
+                        "(define ({})",
+                        iter::once(name)
+                            .chain(symbols.iter().map(|symbol| memory.get_symbol(**symbol)))
+                            .reduce(|acc, x| acc + " " + &x).unwrap_or_default()
+                    );
+
+                    body.print_debug(memory, indent + 1);
+                } else
+                {
+                    eprintln!("(define {name}");
+
+                    body.print_debug(memory, indent + 1);
+                }
+
+                eprint!(")");
+            },
+            InterRepr::Lambda{params, body, ..} =>
+            {
+                let params = match params
+                {
+                    LambdaParams::Variadic(symbol) => memory.get_symbol(**symbol),
+                    LambdaParams::Normal(symbols) =>
+                    {
+                        format!("({})", symbols.iter().map(|symbol| memory.get_symbol(**symbol)).reduce(|acc, x| acc + " " + &x).unwrap_or_default())
+                    }
+                };
+
+                print_indent();
+                eprintln!("(lambda {params}");
+
+                body.print_debug(memory, indent + 1);
+
+                eprint!(")");
+            },
+            InterRepr::Quoted(ast) =>
+            {
+                print_indent();
+                eprint!("'{}", ast.to_string_pretty());
+            },
+            InterRepr::Lookup(LookupStage::Parsed{symbol, ..})
+            | InterRepr::Lookup(LookupStage::Processed{symbol, ..})
+            | InterRepr::Lookup(LookupStage::Final{symbol, ..}) =>
+            {
+                print_indent();
+                eprint!("{}", memory.get_symbol(*symbol));
+            },
+            InterRepr::Value(value) =>
+            {
+                print_indent();
+
+                let s = if let Ok(p) = value.as_primitive_procedure()
+                {
+                    memory.primitives.name_by_index(p).to_owned()
+                } else
+                {
+                    value.to_string(memory)
+                };
+
+                eprint!("{s}");
             }
         }
     }
@@ -3926,27 +4059,27 @@ impl Program
                         let discard_inlines = &mut *discard_inlines;
                         depth_env.iter().enumerate().find_map(move |(lambda_index, lambda_env)|
                         {
-                            let maybe_found = lambda_env.iter().enumerate().find(|(_, (name, info))|
-                            {
-                                info.looked_up == 1 && !interpret_state.outer_lookups.contains(name)
-                            }).map(move |(index, (id, _))|
-                            {
-                                InlineLookup{
-                                    id: *id,
-                                    position: EnvPosition{depth, lambda_index, index: index + 1},
-                                    value: None
-                                }
-                            });
+                            let outer_lookups = &interpret_state.outer_lookups;
+                            let discard_inlines = &mut *discard_inlines;
 
-                            if let Some(maybe_found) = maybe_found
+                            lambda_env.iter().enumerate().find_map(move |(index, (name, info))|
                             {
-                                if !discard_inlines.contains(&maybe_found.position)
+                                if info.looked_up == 1 && !outer_lookups.contains(name)
                                 {
-                                    return Some(maybe_found);
-                                }
-                            }
+                                    let maybe_found = InlineLookup{
+                                        id: *name,
+                                        position: EnvPosition{depth, lambda_index, index: index + 1},
+                                        value: None
+                                    };
 
-                            None
+                                    if !discard_inlines.contains(&maybe_found.position)
+                                    {
+                                        return Some(maybe_found);
+                                    }
+                                }
+
+                                None
+                            })
                         })
                     }),
                     compile_env: &interpret_state.compile_env,
@@ -3955,12 +4088,15 @@ impl Program
                     changed: false
                 };
 
-                let previous_discard_len = apply_state.discard_inlines.len();
-                ir.fill_inline(&mut apply_state);
-
-                if previous_discard_len != apply_state.discard_inlines.len()
+                if apply_state.inline_lookup.is_some()
                 {
-                    continue;
+                    ir.fill_inline(&mut apply_state);
+
+                    if apply_state.inline_lookup.as_ref().map(|x| x.value.is_none()).unwrap()
+                    {
+                        apply_state.discard_inlines.push(apply_state.inline_lookup.as_ref().unwrap().position);
+                        continue;
+                    }
                 }
 
                 ir.apply_known(&mut apply_state);
@@ -3977,6 +4113,7 @@ impl Program
                     {
                         let mut call_stack = Vec::new();
 
+                        let mut visited = Vec::new();
                         let mut lambda_defines = HashMap::new();
                         let mut explore_queue = VecDeque::new();
 
@@ -3987,6 +4124,7 @@ impl Program
                             last_any_skipped = (next_call.func)(
                                 &mut call_stack,
                                 &mut interpret_state,
+                                &mut visited,
                                 &mut lambda_defines,
                                 &mut explore_queue,
                                 last_any_skipped
@@ -4005,6 +4143,12 @@ impl Program
         }
 
         ir.parse_addresses(&interpret_state);
+
+        if DebugConfig::is_enabled(DebugTool::Lisp)
+        {
+            ir.print_debug(&memory, 0);
+            eprintln!();
+        }
 
         let code = {
             let mut state = CompileState::new(&mut memory, type_checks);

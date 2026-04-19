@@ -3183,7 +3183,6 @@ mod tests
     #[test]
     fn optimize_away_shadowing()
     {
-        // my compiler cant call functions yet to optimize this down to 1 instruction..,,
         let code = "
             (define (x) 5)
 
@@ -3202,8 +3201,7 @@ mod tests
             &[code]
         ).unwrap();
 
-        assert!(lisp.program.code().commands_define_count() == 1);
-        // assert!(lisp.program.code().commands_count() == 1);
+        assert!(lisp.program.code().commands_count() == 1);
 
         run_simple_integer_test_with(lisp, 10);
     }
