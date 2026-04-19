@@ -38,6 +38,9 @@ pub const BEGIN_PRIMITIVE: &str = "begin";
 pub const QUOTE_PRIMITIVE: &str = "quote";
 pub const MAKE_VECTOR_PRIMITIVE: &str = "make-vector";
 pub const VECTOR_SET_PRIMITIVE: &str = "vector-set!";
+pub const CONS_PRIMITIVE: &str = "cons";
+pub const CAR_PRIMITIVE: &str = "car";
+pub const CDR_PRIMITIVE: &str = "cdr";
 
 pub type OnApply = Rc<dyn Fn(&mut LispMemory, CodePosition, Register) -> Result<(), Error>>;
 pub type OnEval = Rc<dyn Fn(&mut InterpretState, &mut LispMemory, AstPos) -> Result<InterRepr, ErrorPos>>;
@@ -404,7 +407,7 @@ impl Default for Primitives
 
                     parse_rest(interpret_state, memory, args).map(|x| x.value)
                 }))),
-            ("cons",
+            (CONS_PRIMITIVE,
                 PrimitiveProcedureInfo::new_simple(2, Effect::PureAllocating, |mut args|
                 {
                     let restore = args.memory.with_saved_registers([Register::Value]);
@@ -422,7 +425,7 @@ impl Default for Primitives
 
                     Ok(value)
                 })),
-            ("car",
+            (CAR_PRIMITIVE,
                 PrimitiveProcedureInfo::new_simple(1, Effect::Pure, |mut args|
                 {
                     let arg = args.next().unwrap();
@@ -430,7 +433,7 @@ impl Default for Primitives
 
                     Ok(value)
                 })),
-            ("cdr",
+            (CDR_PRIMITIVE,
                 PrimitiveProcedureInfo::new_simple(1, Effect::Pure, |mut args|
                 {
                     let arg = args.next().unwrap();
@@ -2632,6 +2635,87 @@ impl InterReprPos
         }
     }
 
+    fn compile_cons(
+        state: &mut CompileState,
+        position: CodePosition,
+        target: Register,
+        args: Vec<Self>
+    ) -> CompiledPart
+    {
+        if args.len() != 2
+        {
+            return CompiledPart::from(Command::Error(Error::WrongArgumentsCount{
+                proc: CONS_PRIMITIVE.to_owned(),
+                expected: "2".to_owned(),
+                got: args.len()
+            }.with_position(position)));
+        }
+
+        let mut args = args.into_iter();
+
+        let other_register = if target == Register::Argument
+        {
+            Register::Value
+        } else
+        {
+            Register::Argument
+        };
+
+        let car_part = args.next().unwrap().compile(state, Some(target), Proceed::Next);
+        let cdr_part = args.next().unwrap().compile(state, Some(other_register), Proceed::Next);
+
+        let op_part = CompiledPart::from(Command::Cons{target, car: target, cdr: other_register})
+            .with_requires(RegisterStates::one(other_register));
+
+        let call_part = car_part.combine_preserving(op_part, RegisterStates::one(other_register));
+
+        cdr_part.combine_preserving(call_part, RegisterStates::one(Register::Environment).set(Register::Return))
+    }
+
+    fn compile_car(
+        state: &mut CompileState,
+        position: CodePosition,
+        target: Register,
+        args: Vec<Self>
+    ) -> CompiledPart
+    {
+        if args.len() != 1
+        {
+            return CompiledPart::from(Command::Error(Error::WrongArgumentsCount{
+                proc: CAR_PRIMITIVE.to_owned(),
+                expected: "1".to_owned(),
+                got: args.len()
+            }.with_position(position)));
+        }
+
+        let arg_part = args.into_iter().next().unwrap().compile(state, Some(target), Proceed::Next);
+        let op_part = CompiledPart::from(Command::Car{target, source: target});
+
+        arg_part.combine(op_part)
+    }
+
+    fn compile_cdr(
+        state: &mut CompileState,
+        position: CodePosition,
+        target: Register,
+        args: Vec<Self>
+    ) -> CompiledPart
+    {
+        if args.len() != 1
+        {
+            return CompiledPart::from(Command::Error(Error::WrongArgumentsCount{
+                proc: CDR_PRIMITIVE.to_owned(),
+                expected: "1".to_owned(),
+                got: args.len()
+            }.with_position(position)));
+        }
+
+        let arg_part = args.into_iter().next().unwrap().compile(state, Some(target), Proceed::Next);
+        let op_part = CompiledPart::from(Command::Cdr{target, source: target});
+
+        arg_part.combine(op_part)
+    }
+
     fn compile(
         self,
         state: &mut CompileState,
@@ -2796,6 +2880,40 @@ impl InterReprPos
             {
                 let is_known_primitive = op.is_known_primitive();
                 let is_known_compound = op.is_known_compound(state);
+
+                if state.apply_known
+                {
+                    if let InterRepr::Value(value) = &op.value
+                    {
+                        if let Ok(p) = value.as_primitive_procedure()
+                        {
+                            type FuncType = fn(&mut CompileState, CodePosition, Register, Vec<InterReprPos>) -> CompiledPart;
+
+                            if let Some(f) = if p == state.cons_symbol
+                            {
+                                Some::<FuncType>(Self::compile_cons)
+                            } else if p == state.car_symbol
+                            {
+                                Some::<FuncType>(Self::compile_car)
+                            } else if p == state.cdr_symbol
+                            {
+                                Some::<FuncType>(Self::compile_cdr)
+                            } else
+                            {
+                                None
+                            }
+                            {
+                                if let Some(target) = target
+                                {
+                                    return f(state, op.position, target, args).with_proceed(proceed);
+                                } else
+                                {
+                                    return CompiledPart::new().with_proceed(proceed)
+                                }
+                            }
+                        }
+                    }
+                }
 
                 let args_count = args.len();
 
@@ -3507,7 +3625,11 @@ struct CompileState<'a, 'b>
     pub memory: &'a mut LispMemory,
     compile_env: &'b [Vec<Vec<(SymbolId, CompileSymbolState)>>],
     type_checks: bool,
+    apply_known: bool,
     lambdas: Vec<CompiledPart>,
+    cons_symbol: u32,
+    car_symbol: u32,
+    cdr_symbol: u32,
     label_id: u32
 }
 
@@ -3516,14 +3638,25 @@ impl<'a, 'b> CompileState<'a, 'b>
     pub fn new(
         memory: &'a mut LispMemory,
         compile_env: &'b [Vec<Vec<(SymbolId, CompileSymbolState)>>],
-        type_checks: bool
+        type_checks: bool,
+        apply_known: bool
     ) -> Self
     {
+        let get_symbol = |name: &str| memory.primitives.index_by_name(name).unwrap();
+
+        let cons_symbol = get_symbol(CONS_PRIMITIVE);
+        let car_symbol = get_symbol(CAR_PRIMITIVE);
+        let cdr_symbol = get_symbol(CDR_PRIMITIVE);
+
         Self{
             memory,
             compile_env,
             type_checks,
+            apply_known,
             lambdas: Vec::new(),
+            cons_symbol,
+            car_symbol,
+            cdr_symbol,
             label_id: 0
         }
     }
@@ -4180,7 +4313,7 @@ impl Program
         }
 
         let code = {
-            let mut state = CompileState::new(&mut memory, &interpret_state.compile_env, type_checks);
+            let mut state = CompileState::new(&mut memory, &interpret_state.compile_env, type_checks, config.apply_known);
 
             let compiled = ir.compile(&mut state, Some(Register::Value), Proceed::Jump(Label::Halt));
 
