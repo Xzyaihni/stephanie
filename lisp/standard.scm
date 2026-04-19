@@ -178,7 +178,9 @@
         (begin (f) (repeat f (- n 1)))))
 
 (define (length xs)
-    (fold (lambda (_ acc) (+ acc 1)) 0 xs))
+    (if (null? xs)
+        0
+        (+ (length (cdr xs)) 1)))
 
 (define (not x) (if x #f #t))
 

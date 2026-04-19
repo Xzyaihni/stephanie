@@ -2196,9 +2196,17 @@ impl InterReprPos
                 false
             },
             InterRepr::Define(_) => unreachable!(),
-            InterRepr::Lambda{body, ..} =>
+            InterRepr::Lambda{body, params: lambda_params, ..} =>
             {
-                body.simple_replace(params, f)
+                let lambda_params: &[_] = match lambda_params
+                {
+                    LambdaParams::Variadic(x) => &[*x],
+                    LambdaParams::Normal(x) => &*x
+                };
+
+                let replace_params: Vec<_> = params.iter().filter(|param| !lambda_params.iter().any(|x| x.value == param.value)).copied().collect();
+
+                body.simple_replace(&replace_params, f)
             },
             InterRepr::Quoted(_) => true,
             InterRepr::Lookup(LookupStage::Processed{symbol: id, pos: _}) =>
@@ -2953,7 +2961,7 @@ impl InterReprPos
         }
     }
 
-    fn print_debug(&self, memory: &LispMemory, indent: usize)
+    fn print_debug(&self, memory: &LispMemory, static_indent: usize, indent: usize)
     {
         let print_indent = ||
         {
@@ -2967,13 +2975,13 @@ impl InterReprPos
                 print_indent();
                 eprint!("(");
 
-                op.print_debug(memory, 0);
+                op.print_debug(memory, static_indent, 0);
 
                 args.iter().for_each(|arg|
                 {
                     eprint!(" ");
 
-                    arg.print_debug(memory, 0);
+                    arg.print_debug(memory, static_indent, 0);
                 });
 
                 eprint!(")");
@@ -2985,7 +2993,7 @@ impl InterReprPos
 
                 sequence.iter().enumerate().for_each(|(index, x)|
                 {
-                    x.print_debug(memory, indent + 1);
+                    x.print_debug(memory, static_indent + 1, indent + 1);
 
                     if (index + 1) != sequence.len()
                     {
@@ -3000,13 +3008,13 @@ impl InterReprPos
                 print_indent();
                 eprint!("(if ");
 
-                check.print_debug(memory, 0);
+                check.print_debug(memory, static_indent, 0);
                 eprintln!();
 
-                then.print_debug(memory, indent + 1);
+                then.print_debug(memory, static_indent + 1, static_indent + 1);
                 eprintln!();
 
-                else_body.print_debug(memory, indent + 1);
+                else_body.print_debug(memory, static_indent + 1, static_indent + 1);
 
                 eprint!(")");
             },
@@ -3026,12 +3034,12 @@ impl InterReprPos
                             .reduce(|acc, x| acc + " " + &x).unwrap_or_default()
                     );
 
-                    body.print_debug(memory, indent + 1);
+                    body.print_debug(memory, static_indent + 1, static_indent + 1);
                 } else
                 {
                     eprintln!("(define {name}");
 
-                    body.print_debug(memory, indent + 1);
+                    body.print_debug(memory, static_indent + 1, static_indent + 1);
                 }
 
                 eprint!(")");
@@ -3050,7 +3058,7 @@ impl InterReprPos
                 print_indent();
                 eprintln!("(lambda {params}");
 
-                body.print_debug(memory, indent + 1);
+                body.print_debug(memory, static_indent + 1, static_indent + 1);
 
                 eprint!(")");
             },
@@ -4146,7 +4154,7 @@ impl Program
 
         if DebugConfig::is_enabled(DebugTool::Lisp)
         {
-            ir.print_debug(&memory, 0);
+            ir.print_debug(&memory, 0, 0);
             eprintln!();
         }
 
