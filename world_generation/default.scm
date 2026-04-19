@@ -121,7 +121,7 @@
                 ((= absolute-side side-up) (cons 0 -1))
                 ((= absolute-side side-down) (cons 0 1))
                 ((= absolute-side side-left) (cons -1 0))
-                ((= absolute-side side-right) (cons 1 0)))))
+                ((if debug-mode (= absolute-side side-right) #t) (cons 1 0)))))
             (let
                 ((i (car position)) (tail (cdr position)))
                 (let
@@ -132,7 +132,15 @@
                             (+ (car offset) x)
                             (cons (+ (cdr offset) (car tail)) (cdr tail)))))))))
 
+(define (bounds-check pos)
+    (if debug-mode
+        (if (or
+                (or (< (point-x pos) 0) (>= (point-x pos) size-x))
+                (or (< (point-y pos) 0) (>= (point-y pos) size-y)))
+            (begin (display "position out of bounds: ") (display pos) (newline) (error "out of bounds access")))))
+
 (define (put-tile chunk pos this-tile)
+    (bounds-check pos)
     (vector-set!
         chunk
         (index-of pos)
@@ -140,6 +148,7 @@
     chunk)
 
 (define (get-tile chunk pos)
+    (bounds-check pos)
     (vector-ref chunk (index-of pos)))
 
 (define (for-each-tile f area)

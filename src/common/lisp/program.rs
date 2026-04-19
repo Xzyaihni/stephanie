@@ -341,6 +341,12 @@ impl Default for Primitives
                 {
                     Ok(InterRepr::Quoted(args.car()))
                 }))),
+            ("error", PrimitiveProcedureInfo::new_simple(1, Effect::Impure, |mut args|
+                {
+                    let arg = args.next().unwrap();
+
+                    Err(Error::Custom(arg.as_string(args.memory)?))
+                })),
             ("if",
                 PrimitiveProcedureInfo::new_eval(2..=3, Rc::new(|interpret_state, memory, args|
                 {
@@ -2993,7 +2999,7 @@ impl InterReprPos
 
                 sequence.iter().enumerate().for_each(|(index, x)|
                 {
-                    x.print_debug(memory, static_indent + 1, indent + 1);
+                    x.print_debug(memory, static_indent + 1, static_indent + 1);
 
                     if (index + 1) != sequence.len()
                     {
