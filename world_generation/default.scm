@@ -83,12 +83,25 @@
             (random-integer-between (point-x start) (+ (point-x end) 1))
             (random-integer-between (point-y start) (+ (point-y end) 1)))))
 
+(define (side-verify side)
+    (if debug-mode
+        (if
+            (cond
+                ((= side side-up) #f)
+                ((= side side-left) #f)
+                ((= side side-right) #f)
+                ((= side side-down) #f)
+                (else #t))
+            (error "invalid side"))))
+
 (define (side-combine a b)
+    (side-verify a)
+    (side-verify b)
     (cond
         ((= a side-up) b)
-        ((= a side-right) (cond ((= b side-up) side-right) ((= b side-right) side-down) ((= b side-down) side-left) ((= b side-left) side-up)))
-        ((= a side-down) (cond ((= b side-up) side-down) ((= b side-right) side-left) ((= b side-down) side-up) ((= b side-left) side-right)))
-        (else (cond ((= b side-up) side-left) ((= b side-right) side-up) ((= b side-down) side-right) ((= b side-left) side-down)))))
+        ((= a side-right) (cond ((= b side-up) side-right) ((= b side-right) side-down) ((= b side-down) side-left) (else side-up)))
+        ((= a side-down) (cond ((= b side-up) side-down) ((= b side-right) side-left) ((= b side-down) side-up) (else side-right)))
+        (else (cond ((= b side-up) side-left) ((= b side-right) side-up) ((= b side-down) side-right) (else side-down)))))
 
 (define (side-horizontal? x) (or (= x side-left) (= x side-right)))
 (define (side-vertical? x) (not (side-horizontal? x)))

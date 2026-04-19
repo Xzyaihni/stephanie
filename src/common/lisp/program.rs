@@ -1262,13 +1262,13 @@ impl LambdaParams
         {
             Self::Variadic(param) =>
             {
-                interpret_state.compile_env_add(param.value, None);
+                interpret_state.compile_env_add(param.value, false, None);
             },
             Self::Normal(params) =>
             {
                 params.iter().for_each(|param|
                 {
-                    interpret_state.compile_env_add(param.value, None);
+                    interpret_state.compile_env_add(param.value, false, None);
                 });
             }
         }
@@ -1385,7 +1385,7 @@ pub enum LookupStage
 {
     Parsed{symbol: SymbolId},
     Processed{symbol: SymbolId, pos: CompileEnvPosition},
-    Final{symbol: SymbolId, location: Option<LexicalAddress>}
+    Final{symbol: SymbolId, pos: CompileEnvPosition, location: Option<LexicalAddress>}
 }
 
 #[derive(Debug, Clone)]
@@ -1670,11 +1670,20 @@ impl InterReprPos
         }
     }
 
-    fn is_known_compound(&self) -> bool
+    fn is_known_compound(&self, state: &CompileState) -> bool
     {
         if let InterRepr::Lambda{..} = self.value
         {
             true
+        } else if let InterRepr::Lookup(LookupStage::Final{symbol, pos, ..}) = &self.value
+        {
+            if let Some(pos) = Self::compile_env_lookup_position(state.compile_env, *symbol, pos)
+            {
+                state.compile_env[pos.depth][pos.lambda_index][pos.index - 1].1.is_lambda
+            } else
+            {
+                false
+            }
         } else
         {
             false
@@ -2035,7 +2044,9 @@ impl InterReprPos
                         None
                     };
 
-                    interpret_state.compile_env_add(*name, value)
+                    let is_lambda = matches!(body.value, InterRepr::Lambda{..});
+
+                    interpret_state.compile_env_add(*name, is_lambda, value)
                 }
 
                 self.value = InterRepr::Define(DefineStage::Processed{
@@ -2536,7 +2547,7 @@ impl InterReprPos
                         })
                     });
 
-                self.value = InterRepr::Lookup(LookupStage::Final{symbol: *id, location: found});
+                self.value = InterRepr::Lookup(LookupStage::Final{symbol: *id, pos: current_env_pos.clone(), location: found});
             },
             InterRepr::Lookup(_) => unreachable!(),
             InterRepr::Value(_) => ()
@@ -2640,7 +2651,7 @@ impl InterReprPos
                     CompiledPart::new()
                 }.with_proceed(proceed)
             },
-            InterRepr::Lookup(LookupStage::Final{symbol: id, location}) =>
+            InterRepr::Lookup(LookupStage::Final{symbol: id, pos: _, location}) =>
             {
                 if let Some(register) = target
                 {
@@ -2784,7 +2795,7 @@ impl InterReprPos
             InterRepr::Apply{op, args} =>
             {
                 let is_known_primitive = op.is_known_primitive();
-                let is_known_compound = op.is_known_compound();
+                let is_known_compound = op.is_known_compound(state);
 
                 let args_count = args.len();
 
@@ -3307,7 +3318,7 @@ impl Debug for InterpretStateDebugWithSymbols<'_>
                         key.to_string()
                     });
 
-                    let CompileSymbolState{looked_up, mark_removed, value} = value;
+                    let CompileSymbolState{looked_up, mark_removed, value, ..} = value;
 
                     let used_count: usize = *looked_up as usize;
 
@@ -3348,6 +3359,7 @@ pub struct CompileSymbolState
 {
     looked_up: u8,
     mark_removed: bool,
+    is_lambda: bool,
     value: Option<LispValue>
 }
 
@@ -3408,13 +3420,13 @@ impl InterpretState
         });
     }
 
-    fn compile_env_add(&mut self, name: SymbolId, value: Option<LispValue>)
+    fn compile_env_add(&mut self, name: SymbolId, is_lambda: bool, value: Option<LispValue>)
     {
         let p = self.current_env_position.pos;
 
         let this_env = &mut self.compile_env[p.depth][p.lambda_index];
 
-        this_env.push((name, CompileSymbolState{looked_up: 0, mark_removed: false, value}));
+        this_env.push((name, CompileSymbolState{looked_up: 0, mark_removed: false, is_lambda, value}));
         self.current_env_position.pos.index = this_env.len();
     }
 
@@ -3490,23 +3502,26 @@ struct ApplyState<'a, 'b, 'c>
 }
 
 #[derive(Debug)]
-struct CompileState<'a>
+struct CompileState<'a, 'b>
 {
     pub memory: &'a mut LispMemory,
+    compile_env: &'b [Vec<Vec<(SymbolId, CompileSymbolState)>>],
     type_checks: bool,
     lambdas: Vec<CompiledPart>,
     label_id: u32
 }
 
-impl<'a> CompileState<'a>
+impl<'a, 'b> CompileState<'a, 'b>
 {
     pub fn new(
         memory: &'a mut LispMemory,
+        compile_env: &'b [Vec<Vec<(SymbolId, CompileSymbolState)>>],
         type_checks: bool
     ) -> Self
     {
         Self{
             memory,
+            compile_env,
             type_checks,
             lambdas: Vec::new(),
             label_id: 0
@@ -4165,7 +4180,7 @@ impl Program
         }
 
         let code = {
-            let mut state = CompileState::new(&mut memory, type_checks);
+            let mut state = CompileState::new(&mut memory, &interpret_state.compile_env, type_checks);
 
             let compiled = ir.compile(&mut state, Some(Register::Value), Proceed::Jump(Label::Halt));
 
