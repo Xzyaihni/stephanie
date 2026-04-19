@@ -984,10 +984,7 @@ impl<S: SaveLoad<WorldChunksBlock>> WorldGenerator<S>
     {
         let id = this_chunk.id();
 
-        if id == WorldChunkId::none()
-        {
-            return empty_worldchunk();
-        }
+        debug_assert!(id != WorldChunkId::none());
 
         let world_chunk_name = self.rules.name(id);
 

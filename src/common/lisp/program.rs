@@ -103,6 +103,7 @@ pub enum Effect
 {
     Pure,
     PureIf(PureCondition),
+    PureAllocating,
     Impure
 }
 
@@ -397,7 +398,7 @@ impl Default for Primitives
                     parse_rest(interpret_state, memory, args).map(|x| x.value)
                 }))),
             ("cons",
-                PrimitiveProcedureInfo::new_simple(2, Effect::Impure, |mut args|
+                PrimitiveProcedureInfo::new_simple(2, Effect::PureAllocating, |mut args|
                 {
                     let restore = args.memory.with_saved_registers([Register::Value]);
 
@@ -578,7 +579,7 @@ impl Default for Primitives
                     }
                 })),
             (MAKE_VECTOR_PRIMITIVE,
-                PrimitiveProcedureInfo::new_with_target(2, Effect::Impure, |mut args, target|
+                PrimitiveProcedureInfo::new_with_target(2, Effect::PureAllocating, |mut args, target|
                 {
                     let len = args.next().unwrap().as_integer()? as usize;
                     let fill = args.next().unwrap();
@@ -1183,11 +1184,14 @@ impl CompiledPart
             (position, command.into_raw(&labels))
         }).unzip();
 
-        if let Some(CommandRaw::Jump(location)) = commands.last()
+        while let Some(CommandRaw::Jump(location)) = commands.last()
         {
             if *location == commands.len()
             {
                 commands.pop();
+            } else
+            {
+                break;
             }
         }
 
@@ -2093,7 +2097,7 @@ impl InterReprPos
                         {
                             match effect
                             {
-                                Effect::Pure => (),
+                                Effect::Pure | Effect::PureAllocating => (),
                                 Effect::PureIf(condition) =>
                                 {
                                     match condition
@@ -2297,7 +2301,7 @@ impl InterReprPos
                                         }
                                     }
                                 },
-                                Effect::Impure => return
+                                Effect::PureAllocating | Effect::Impure => return
                             }
 
                             let f = f.clone();

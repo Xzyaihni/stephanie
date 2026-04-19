@@ -6,6 +6,7 @@ use super::{
         WORLD_CHUNK_SIZE,
         CHUNK_RATIO,
         chunk_difficulty,
+        WorldChunkId,
         ConditionalInfo,
         WorldGenerator,
         WorldChunk
@@ -368,6 +369,10 @@ impl<S: SaveLoad<WorldChunksBlock>> ServerOvermap<S>
 
     fn generate_existing_chunk(&self, local_pos: LocalPos, mut marker: impl FnMut(MarkerTile)) -> Chunk
     {
+        let world_chunks = self.world_chunks.borrow();
+        let mut world_generator = self.world_generator.borrow_mut();
+        let world_generator = &mut *world_generator;
+
         let mut chunk = Chunk::new();
 
         for z in 0..CHUNK_RATIO.z
@@ -380,9 +385,12 @@ impl<S: SaveLoad<WorldChunksBlock>> ServerOvermap<S>
 
                     let local_pos = local_pos + Pos3{x, y, z: 0};
 
-                    let this_chunk = self.world_chunks.borrow()[local_pos].as_ref().map(|chunk| chunk[z].clone()).unwrap();
+                    let this_chunk = world_chunks[local_pos].as_ref().map(|chunk| chunk[z].clone()).unwrap();
 
-                    let mut world_generator = self.world_generator.borrow_mut();
+                    if this_chunk.id() == WorldChunkId::none()
+                    {
+                        continue;
+                    }
 
                     let info = {
                         let global_pos = self.to_global(local_pos);

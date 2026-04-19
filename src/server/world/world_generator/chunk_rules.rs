@@ -186,23 +186,23 @@ impl Default for WorldChunk
 
 impl WorldChunk
 {
-    pub fn new(id: WorldChunkId, tags: Vec<WorldChunkTag>) -> Self
+    pub const fn new(id: WorldChunkId, tags: Vec<WorldChunkTag>) -> Self
     {
         Self{id, tags}
     }
 
     #[allow(dead_code)]
-    pub fn none() -> Self
+    pub const fn none() -> Self
     {
         Self{id: WorldChunkId(0), tags: Vec::new()}
     }
 
-    pub fn is_none(&self) -> bool
+    pub const fn is_none(&self) -> bool
     {
         self.id.0 == 0
     }
 
-    pub fn id(&self) -> WorldChunkId
+    pub const fn id(&self) -> WorldChunkId
     {
         self.id
     }
