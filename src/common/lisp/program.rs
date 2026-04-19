@@ -1,7 +1,6 @@
 use std::{
     vec,
     iter,
-    convert,
     rc::Rc,
     io::{self, Write},
     fmt::{self, Debug, Display},
@@ -1352,7 +1351,7 @@ impl LambdaParams
 type MarkStackFunc<'a> = Box<dyn FnOnce(
     &mut Vec<MarkStackEntry<'a>>,
     &mut InterpretState,
-    &mut HashMap<EnvPosition, Vec<LambdaDefineInfo<'a>>>,
+    &mut HashMap<EnvPosition, LambdaDefineInfo<'a>>,
     &mut VecDeque<(u32, &'a InterReprPos)>,
     bool
 ) -> bool + 'a>;
@@ -1366,7 +1365,7 @@ struct MarkStackEntry<'a>
 pub enum DefineStage
 {
     Parsed{name: SymbolId, body: Box<InterReprPos>},
-    Processed{name: SymbolId, position: DefineEnvPosition, body: Box<InterReprPos>}
+    Processed{name: SymbolId, position: EnvPosition, body: Box<InterReprPos>}
 }
 
 #[derive(Debug, Clone)]
@@ -1432,28 +1431,40 @@ impl InterReprPos
         None
     }
 
+    fn compile_env_lookup_position(
+        compile_env: &[Vec<Vec<(SymbolId, CompileSymbolState)>>],
+        symbol: SymbolId,
+        pos: &CompileEnvPosition
+    ) -> Option<EnvPosition>
+    {
+        Self::compile_env_lookup_with(pos, |EnvPosition{depth, lambda_index, index}|
+        {
+            let this_env = &compile_env[depth][lambda_index][..index];
+
+            this_env.iter().rposition(|(key, _)| symbol == *key).map(|found_index|
+            {
+                EnvPosition{depth, lambda_index, index: found_index + 1}
+            })
+        })
+    }
+
     fn compile_env_lookup(
         interpret_state: &mut InterpretState,
         id: SymbolId,
         pos: &CompileEnvPosition
-    ) -> Option<LispValue>
+    ) -> (Option<EnvPosition>, Option<LispValue>)
     {
         enum FoundResult
         {
             Value(LispValue),
-            Lookup
+            Lookup(EnvPosition)
         }
 
-        let found: Option<FoundResult> = Self::compile_env_lookup_with(pos, |EnvPosition{depth, lambda_index}|
+        let found: Option<FoundResult> = Self::compile_env_lookup_with(pos, |EnvPosition{depth, lambda_index, index}|
         {
-            let this_env = &mut interpret_state.compile_env[depth][lambda_index];
+            let this_env = &mut interpret_state.compile_env[depth][lambda_index][..index];
 
-            let found_position = this_env.iter().rposition(|(key, _)|
-            {
-                id == *key
-            });
-
-            found_position.map(|symbol_index|
+            this_env.iter().rposition(|(key , _)| id == *key).map(|symbol_index|
             {
                 let this_symbol = &mut this_env[symbol_index].1;
 
@@ -1462,17 +1473,17 @@ impl InterReprPos
                     return FoundResult::Value(value);
                 }
 
-                this_symbol.looked_up = true;
+                this_symbol.looked_up = this_symbol.looked_up.saturating_add(1);
 
-                FoundResult::Lookup
+                FoundResult::Lookup(EnvPosition{depth, lambda_index, index: symbol_index + 1})
             })
         });
 
-        let is_found = match found
+        let (position, is_found) = match found
         {
-            None => false,
-            Some(FoundResult::Lookup) => true,
-            Some(FoundResult::Value(value)) => return Some(value)
+            None => (None, false),
+            Some(FoundResult::Lookup(position)) => (Some(position), true),
+            Some(FoundResult::Value(value)) => return (None, Some(value))
         };
 
         if !is_found
@@ -1480,7 +1491,7 @@ impl InterReprPos
             interpret_state.outer_lookups.push(id);
         }
 
-        None
+        (position, None)
     }
 
     fn parse(
@@ -1689,42 +1700,28 @@ impl InterReprPos
                 then.remove_unused_defines(interpret_state);
                 else_body.remove_unused_defines(interpret_state);
             },
-            InterRepr::Define(DefineStage::Processed{name, position, body}) =>
+            InterRepr::Define(DefineStage::Processed{name, position: p, body}) =>
             {
                 body.remove_unused_defines(interpret_state);
 
-                let p = position.position;
-
-                let result = interpret_state.compile_env[p.depth][p.lambda_index].iter().find_map(|(key, value)|
+                let result = interpret_state.compile_env[p.depth][p.lambda_index][..p.index].iter().rev().find_map(|(key, value)|
                 {
                     (key == name).then(||
                     {
-                        let this_looked_up = if position.redefine == value.redefines.len()
-                        {
-                            value.looked_up
-                        } else
-                        {
-                            value.redefines[position.redefine]
-                        };
-
-                        let is_unused = !this_looked_up;
-
                         let replaced = value.value.is_some();
-                        let is_unused = is_unused || replaced;
+                        let is_unused = value.looked_up == 0 || replaced;
 
-                        let any_looked_up = value.redefines.iter().copied().any(convert::identity) || value.looked_up;
-
-                        (is_unused, !any_looked_up)
+                        is_unused
                     })
                 });
 
                 let is_removed = result.is_none();
-                let (is_unused, all_unused) = if p.depth == 0 && interpret_state.outer_lookups.contains(name)
+                let is_unused = if p.depth == 0 && interpret_state.outer_lookups.contains(name)
                 {
-                    (false, false)
+                    false
                 } else
                 {
-                    result.unwrap_or((true, true))
+                    result.unwrap_or(true)
                 };
 
                 if is_unused
@@ -1732,15 +1729,12 @@ impl InterReprPos
                     if !is_removed
                     {
                         let env = &mut interpret_state.compile_env[p.depth][p.lambda_index];
-                        let index = env.iter().position(|(key, _value)|
+                        let index = env[..p.index].iter().rposition(|(key, _value)|
                         {
                             key == name
                         }).expect("must be defined");
 
-                        if all_unused
-                        {
-                            env.remove(index);
-                        }
+                        env[index].1.mark_removed = true;
                     }
 
                     return false;
@@ -1862,29 +1856,16 @@ impl InterReprPos
 
                 false
             },
-            InterRepr::Define(DefineStage::Processed{name, position, body}) =>
+            InterRepr::Define(DefineStage::Processed{name: _, position, body}) =>
             {
                 call_stack.push(MarkStackEntry{
                     func: Box::new(move |call_stack, _interpret_state, lambda_defines, _explore_queue, _previous_skipped|
                     {
-                        let p = position.position;
-
-                        let this_info = || LambdaDefineInfo{id: *name, position: self.position, last_possibly_op: 0, last_lookup_position: None, value: body};
-                        if let Some(these_lambdas) = lambda_defines.get_mut(&p)
-                        {
-                            let defined_before = these_lambdas.iter().any(|x|
-                            {
-                                body.position == x.position
-                            });
-
-                            if !defined_before
-                            {
-                                these_lambdas.push(this_info());
-                            }
-                        } else
-                        {
-                            lambda_defines.insert(p, vec![this_info()]);
-                        }
+                        lambda_defines.insert(*position, LambdaDefineInfo{
+                            last_possibly_op: 0,
+                            last_lookup_position: None,
+                            value: body
+                        });
 
                         body.mark_lookups(call_stack, 0)
                     })
@@ -1916,36 +1897,57 @@ impl InterReprPos
                 call_stack.push(MarkStackEntry{
                     func: Box::new(move |_call_stack, interpret_state, lambda_defines, explore_queue, _previous_skipped|
                     {
-                        Self::compile_env_lookup(interpret_state, *id, pos);
+                        let (found_pos, _) = Self::compile_env_lookup(interpret_state, *id, pos);
 
                         if possibly_op > 0
                         {
-                            Self::compile_env_lookup_with(pos, |this_pos|
+                            let found_pos = if let Some(x) = found_pos
                             {
-                                if let Some(these_lambdas) = &mut lambda_defines.get_mut(&this_pos)
+                                x
+                            } else
+                            {
+                                if interpret_state.outer_lookups.contains(id)
                                 {
-                                    if let Some(index) = these_lambdas.iter().rposition(|LambdaDefineInfo{id: key, ..}| *id == *key)
+                                    if let Some(outer_position) = interpret_state.compile_env[0][0].iter().rposition(|(key, _)|
                                     {
-                                        let last_possibly_op = these_lambdas[index].last_possibly_op;
-                                        if possibly_op > last_possibly_op
-                                        {
-                                            let same_call = these_lambdas[index].last_lookup_position == Some(self.position);
-
-                                            these_lambdas[index].last_lookup_position = Some(self.position);
-                                            these_lambdas[index].last_possibly_op = possibly_op;
-
-                                            explore_queue.push_back((possibly_op, these_lambdas[index].value));
-
-                                            return Some(if same_call { false } else { true });
-                                        } else
-                                        {
-                                            return Some(false);
-                                        }
+                                        *id == *key
+                                    }).map(|found_index|
+                                    {
+                                        EnvPosition{depth: 0, lambda_index: 0, index: found_index + 1}
+                                    })
+                                    {
+                                        outer_position
+                                    } else
+                                    {
+                                        return false;
                                     }
+                                } else
+                                {
+                                    return false;
                                 }
+                            };
 
-                                None
-                            }).unwrap_or(false)
+                            if let Some(this_lambda) = &mut lambda_defines.get_mut(&found_pos)
+                            {
+                                let last_possibly_op = this_lambda.last_possibly_op;
+                                if possibly_op > last_possibly_op
+                                {
+                                    let same_call = this_lambda.last_lookup_position == Some(self.position);
+
+                                    this_lambda.last_lookup_position = Some(self.position);
+                                    this_lambda.last_possibly_op = possibly_op;
+
+                                    explore_queue.push_back((possibly_op, this_lambda.value));
+
+                                    if same_call { false } else { true }
+                                } else
+                                {
+                                    false
+                                }
+                            } else
+                            {
+                                false
+                            }
                         } else
                         {
                             true
@@ -2005,7 +2007,7 @@ impl InterReprPos
             },
             InterRepr::Define(DefineStage::Parsed{name, body}) | InterRepr::Define(DefineStage::Processed{name, body, ..}) =>
             {
-                let redefine = {
+                {
                     let value = if let InterRepr::Value(x) = body.value
                     {
                         Some(x)
@@ -2015,15 +2017,12 @@ impl InterReprPos
                     };
 
                     interpret_state.compile_env_add(*name, value)
-                };
+                }
 
                 self.value = InterRepr::Define(DefineStage::Processed{
                     name: *name,
                     body: body.clone(),
-                    position: DefineEnvPosition{
-                        position: interpret_state.current_env_position.pos,
-                        redefine
-                    }
+                    position: interpret_state.current_env_position.pos
                 });
 
                 if let InterRepr::Define(DefineStage::Processed{name: _, body, position: _}) = &mut self.value
@@ -2052,7 +2051,7 @@ impl InterReprPos
             {
                 let pos = interpret_state.current_env_position.clone();
 
-                self.value = Self::compile_env_lookup(interpret_state, *id, &pos).map(|value|
+                self.value = Self::compile_env_lookup(interpret_state, *id, &pos).1.map(|value|
                 {
                     InterRepr::Value(value)
                 }).unwrap_or_else(||
@@ -2067,15 +2066,92 @@ impl InterReprPos
 
     fn has_side_effects(&self) -> bool
     {
-        match self.value
+        match &self.value
         {
             InterRepr::Apply{..} => true,
-            InterRepr::Sequence(_) => true,
-            InterRepr::If{..} => true,
+            InterRepr::Sequence(sequence) => sequence.iter().any(|x| x.has_side_effects()),
+            InterRepr::If{check, then, else_body} => check.has_side_effects() || then.has_side_effects() || else_body.has_side_effects(),
             InterRepr::Define{..} => true,
             InterRepr::Lambda{..} => false,
             InterRepr::Quoted(_) => false,
             InterRepr::Lookup(_) => false,
+            InterRepr::Value(_) => false
+        }
+    }
+
+    fn is_control_flow_dependent(&self, apply_state: &ApplyState) -> bool
+    {
+        match &self.value
+        {
+            InterRepr::Apply{op, args} =>
+            {
+                if let InterRepr::Value(value) = op.value
+                {
+                    if let Some(primitive_id) = value.as_primitive_procedure().ok()
+                    {
+                        if let Some((effect, _)) = &apply_state.memory.primitives.get(primitive_id).on_apply
+                        {
+                            match effect
+                            {
+                                Effect::Pure => (),
+                                Effect::PureIf(condition) =>
+                                {
+                                    match condition
+                                    {
+                                        PureCondition::ArgsBetween{start, end_inclusive} =>
+                                        {
+                                            if !(*start..=*end_inclusive).contains(&args.len())
+                                            {
+                                                return true;
+                                            }
+                                        }
+                                    }
+                                },
+                                Effect::Impure => return true
+                            }
+
+                            for arg in args.iter().rev()
+                            {
+                                match &arg.value
+                                {
+                                    InterRepr::Value(_)
+                                    | InterRepr::Quoted(AstPos{value: Ast::Value(_), ..}) => (),
+                                    _ => return true
+                                }
+                            }
+
+                            return false;
+                        }
+                    }
+
+                    true
+                } else if let InterRepr::Lambda{body, ..} = &op.value
+                {
+                    body.is_control_flow_dependent(apply_state)
+                } else
+                {
+                    true
+                }
+            },
+            InterRepr::Sequence(sequence) => sequence.iter().any(|x| x.is_control_flow_dependent(apply_state)),
+            InterRepr::If{check, then, else_body} =>
+            {
+                check.is_control_flow_dependent(apply_state)
+                    || then.is_control_flow_dependent(apply_state)
+                    || else_body.is_control_flow_dependent(apply_state)
+            },
+            InterRepr::Define(DefineStage::Processed{body, ..}) =>
+            {
+                body.is_control_flow_dependent(apply_state)
+            },
+            InterRepr::Define(_) => unreachable!(),
+            InterRepr::Lambda{..} => false,
+            InterRepr::Quoted(_) => false,
+            InterRepr::Lookup(LookupStage::Processed{symbol, pos}) =>
+            {
+                Self::compile_env_lookup_position(apply_state.compile_env, *symbol, pos).is_none()
+            },
+            InterRepr::Lookup(_) => unreachable!(),
             InterRepr::Value(_) => false
         }
     }
@@ -2128,27 +2204,82 @@ impl InterReprPos
         }
     }
 
+    fn fill_inline(&self, apply_state: &mut ApplyState)
+    {
+        match &self.value
+        {
+            InterRepr::Apply{op, args} =>
+            {
+                op.fill_inline(apply_state);
+
+                args.iter().for_each(|arg|
+                {
+                    arg.fill_inline(apply_state);
+                });
+            },
+            InterRepr::Sequence(sequence) =>
+            {
+                sequence.iter().for_each(|value|
+                {
+                    value.fill_inline(apply_state);
+                });
+            },
+            InterRepr::If{check, then, else_body} =>
+            {
+                check.fill_inline(apply_state);
+                then.fill_inline(apply_state);
+                else_body.fill_inline(apply_state);
+            },
+            InterRepr::Define(DefineStage::Processed{position, body, ..}) =>
+            {
+                if apply_state.inline_lookup.as_ref().map(|x| x.position == *position).unwrap_or(false)
+                {
+                    let control_flow_dependent = body.is_control_flow_dependent(apply_state);
+
+                    if control_flow_dependent
+                    {
+                        apply_state.discard_inlines.push(*position);
+                    } else
+                    {
+                        apply_state.inline_lookup.as_mut().unwrap().value = Some(body.clone());
+                        return;
+                    }
+                }
+
+                body.fill_inline(apply_state);
+            },
+            InterRepr::Define(_) => unreachable!(),
+            InterRepr::Lambda{name: _, params: _, body} =>
+            {
+                body.fill_inline(apply_state);
+            },
+            InterRepr::Quoted(_) => (),
+            InterRepr::Lookup(_) => (),
+            InterRepr::Value(_) => ()
+        }
+    }
+
     fn apply_known(
         &mut self,
-        memory: &mut LispMemory
+        apply_state: &mut ApplyState
     )
     {
         match &mut self.value
         {
             InterRepr::Apply{op, args} =>
             {
-                op.apply_known(memory);
+                op.apply_known(apply_state);
 
                 args.iter_mut().for_each(|arg|
                 {
-                    arg.apply_known(memory);
+                    arg.apply_known(apply_state);
                 });
 
                 if let InterRepr::Value(value) = op.value
                 {
                     if let Some(primitive_id) = value.as_primitive_procedure().ok()
                     {
-                        if let Some((effect, f)) = &memory.primitives.get(primitive_id).on_apply
+                        if let Some((effect, f)) = &apply_state.memory.primitives.get(primitive_id).on_apply
                         {
                             match effect
                             {
@@ -2171,7 +2302,7 @@ impl InterReprPos
 
                             let f = f.clone();
 
-                            memory.set_register(Register::Argument, ());
+                            apply_state.memory.set_register(Register::Argument, ());
 
                             for arg in args.iter().rev()
                             {
@@ -2180,15 +2311,15 @@ impl InterReprPos
                                     value
                                 } else if let InterRepr::Quoted(AstPos{value: Ast::Value(value), ..}) = &arg.value
                                 {
-                                    Self::parse_primitive_text(memory, &value).unwrap()
+                                    Self::parse_primitive_text(apply_state.memory, &value).unwrap()
                                 } else
                                 {
                                     return;
                                 };
 
-                                memory.set_register(Register::Temporary, value);
+                                apply_state.memory.set_register(Register::Temporary, value);
 
-                                if let Err(err) = memory.cons(Register::Argument, Register::Temporary, Register::Argument)
+                                if let Err(err) = apply_state.memory.cons(Register::Argument, Register::Temporary, Register::Argument)
                                 {
                                     eprintln!("error in apply_known args: {err}");
 
@@ -2196,11 +2327,12 @@ impl InterReprPos
                                 }
                             }
 
-                            match f(memory, self.position, Register::Value)
+                            match f(apply_state.memory, self.position, Register::Value)
                             {
                                 Ok(_) =>
                                 {
-                                    self.value = InterRepr::Value(memory.get_register(Register::Value))
+                                    apply_state.changed = true;
+                                    self.value = InterRepr::Value(apply_state.memory.get_register(Register::Value))
                                 },
                                 Err(err) => eprintln!("error in apply_known: {err}")
                             }
@@ -2228,6 +2360,7 @@ impl InterReprPos
 
                     body.simple_replace(params, &mut |lookup_repr, index| *lookup_repr = args[index].clone());
 
+                    apply_state.changed = true;
                     *self = *body.clone();
                 }
             },
@@ -2235,7 +2368,7 @@ impl InterReprPos
             {
                 sequence.iter_mut().for_each(|value|
                 {
-                    value.apply_known(memory);
+                    value.apply_known(apply_state);
                 });
 
                 let useless_head = sequence.iter().take(sequence.len().saturating_sub(1)).all(|x|
@@ -2243,16 +2376,19 @@ impl InterReprPos
                     !x.has_side_effects()
                 });
 
-                debug_assert!(!sequence.is_empty());
-
-                if useless_head || sequence.len() == 1
+                if sequence.is_empty()
                 {
+                    apply_state.changed = true;
+                    self.value = InterRepr::Value(LispValue::new_empty_list());
+                } else if useless_head || sequence.len() == 1
+                {
+                    apply_state.changed = true;
                     *self = sequence.into_iter().last().unwrap().clone();
                 }
             },
             InterRepr::If{check, then, else_body} =>
             {
-                check.apply_known(memory);
+                check.apply_known(apply_state);
 
                 let known_boolean = if let InterRepr::Value(value) = check.value
                 {
@@ -2264,6 +2400,7 @@ impl InterReprPos
 
                 if let Some(known_boolean) = known_boolean
                 {
+                    apply_state.changed = true;
                     *self = if known_boolean
                     {
                         *then.clone()
@@ -2272,24 +2409,41 @@ impl InterReprPos
                         *else_body.clone()
                     };
 
-                    self.apply_known(memory);
+                    self.apply_known(apply_state);
                 } else
                 {
-                    then.apply_known(memory);
-                    else_body.apply_known(memory);
+                    then.apply_known(apply_state);
+                    else_body.apply_known(apply_state);
                 }
             },
             InterRepr::Define(DefineStage::Processed{name: _, position: _, body}) =>
             {
-                body.apply_known(memory);
+                body.apply_known(apply_state);
             },
             InterRepr::Define(_) => unreachable!(),
             InterRepr::Lambda{name: _, params: _, body} =>
             {
-                body.apply_known(memory);
+                body.apply_known(apply_state);
             },
             InterRepr::Quoted(_) => (),
-            InterRepr::Lookup(_) => (),
+            InterRepr::Lookup(LookupStage::Processed{symbol, pos}) =>
+            {
+                if apply_state.inline_lookup.as_ref().map(|x| x.id == *symbol).unwrap_or(false)
+                {
+                    if let Some(found_position) = Self::compile_env_lookup_position(apply_state.compile_env, *symbol, pos)
+                    {
+                        if apply_state.inline_lookup.as_ref().map(|x| x.position == found_position).unwrap()
+                        {
+                            if let Some(inline_lookup) = apply_state.inline_lookup.take().unwrap().value.take()
+                            {
+                                apply_state.changed = true;
+                                *self = *inline_lookup;
+                            }
+                        }
+                    }
+                }
+            },
+            InterRepr::Lookup(_) => unreachable!(),
             InterRepr::Value(_) => ()
         }
     }
@@ -2340,22 +2494,22 @@ impl InterReprPos
                 let found = iter::once(current_env_pos.pos)
                     .chain(current_env_pos.indices.iter().copied().rev())
                     .enumerate()
-                    .find_map(|(nest_index, EnvPosition{depth: env_depth, lambda_index})|
+                    .find_map(|(nest_index, EnvPosition{depth: env_depth, lambda_index, index})|
                     {
                         let from_start = current_env_depth - env_depth;
 
-                        let this_env = &interpret_state.compile_env[env_depth][lambda_index];
+                        let this_env = &interpret_state.compile_env[env_depth][lambda_index][..index];
 
-                        let found_index = this_env.iter().rposition(|(key, _)|
+                        this_env.iter().rposition(|(key, _)|
                         {
                             *id == *key
-                        });
-
-                        found_index.map(|symbol_index|
+                        }).map(|symbol_index|
                         {
+                            let skip_amount = this_env[..symbol_index].iter().filter(|x| x.1.mark_removed).count();
+
                             LexicalAddress{
                                 up_env: from_start,
-                                index: current_env_pos.offset(interpret_state, nest_index) + symbol_index
+                                index: current_env_pos.offset(interpret_state, nest_index) + (symbol_index - skip_amount)
                             }
                         })
                     });
@@ -2901,8 +3055,6 @@ impl InterRepr
 #[derive(Debug, Clone)]
 struct LambdaDefineInfo<'a>
 {
-    id: SymbolId,
-    position: CodePosition,
     last_possibly_op: u32,
     last_lookup_position: Option<CodePosition>,
     value: &'a Box<InterReprPos>
@@ -2919,14 +3071,8 @@ pub struct LexicalAddress
 pub struct EnvPosition
 {
     depth: usize,
-    lambda_index: usize
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct DefineEnvPosition
-{
-    position: EnvPosition,
-    redefine: usize
+    lambda_index: usize,
+    index: usize
 }
 
 #[derive(Debug, Clone)]
@@ -2943,7 +3089,8 @@ impl Default for CompileEnvPosition
         Self{
             pos: EnvPosition{
                 depth: 0,
-                lambda_index: 0
+                lambda_index: 0,
+                index: 0
             },
             indices: Vec::new()
         }
@@ -2974,7 +3121,7 @@ impl CompileEnvPosition
                 break;
             }
 
-            offset += env[x.lambda_index].len();
+            offset += env[x.lambda_index].iter().filter(|x| !x.1.mark_removed).count();
         }
 
         offset
@@ -3008,10 +3155,9 @@ impl Debug for InterpretStateDebugWithSymbols<'_>
                         key.to_string()
                     });
 
-                    let CompileSymbolState{looked_up, redefines, value} = value;
+                    let CompileSymbolState{looked_up, mark_removed, value} = value;
 
-                    let used_count: usize = *looked_up as usize + redefines.iter().map(|x| *x as usize).sum::<usize>();
-                    let max_used = redefines.len() + 1;
+                    let used_count: usize = *looked_up as usize;
 
                     let x = if let Some(value) = value
                     {
@@ -3021,18 +3167,17 @@ impl Debug for InterpretStateDebugWithSymbols<'_>
                         name
                     };
 
-                    let encountered = if used_count == max_used
+                    let encountered = if used_count > 0
                     {
-                        ""
-                    } else if used_count == 0
-                    {
-                        "(UNUSED) "
+                        format!("{used_count} ")
                     } else
                     {
-                        "(PARTIALLY UNUSED) "
+                        "(UNUSED) ".to_owned()
                     };
 
-                    DebugRaw(encountered.to_owned() + &x)
+                    let needs_removal = if *mark_removed { "TO-REMOVE " } else { "" };
+
+                    DebugRaw(needs_removal.to_owned() + &encountered + &x)
                 }).collect()
             }).collect()
         }).collect();
@@ -3046,10 +3191,11 @@ impl Debug for InterpretStateDebugWithSymbols<'_>
     }
 }
 
+#[derive(Debug)]
 pub struct CompileSymbolState
 {
-    looked_up: bool,
-    redefines: Vec<bool>,
+    looked_up: u8,
+    mark_removed: bool,
     value: Option<LispValue>
 }
 
@@ -3088,42 +3234,36 @@ impl Debug for InterpretState
 
 impl InterpretState
 {
+    fn reset_compile_env(&mut self)
+    {
+        self.current_env_position = CompileEnvPosition::default();
+        self.outer_lookups.clear();
+        self.compile_env = vec![vec![Vec::new()]];
+    }
+
     fn clear_compile_env_lookups(&mut self)
     {
+        self.current_env_position = CompileEnvPosition::default();
+
         self.outer_lookups.clear();
 
         self.compile_env.iter_mut().for_each(|depth_lookups|
         {
             depth_lookups.iter_mut().for_each(|lambda_lookups|
             {
-                lambda_lookups.iter_mut().for_each(|(_id, lookup)| lookup.looked_up = false);
+                lambda_lookups.iter_mut().for_each(|(_id, lookup)| lookup.looked_up = 0);
             });
         });
     }
 
-    fn compile_env_add(&mut self, name: SymbolId, value: Option<LispValue>) -> usize
+    fn compile_env_add(&mut self, name: SymbolId, value: Option<LispValue>)
     {
         let p = self.current_env_position.pos;
 
         let this_env = &mut self.compile_env[p.depth][p.lambda_index];
 
-        if let Some(found_index) = this_env.iter().position(|(key, _)| *key == name)
-        {
-            let this_symbol = &mut this_env[found_index].1;
-
-            this_symbol.redefines.push(this_symbol.looked_up);
-            let redefine = this_symbol.redefines.len();
-
-            this_symbol.looked_up = false;
-            this_symbol.value = value;
-
-            redefine
-        } else
-        {
-            this_env.push((name, CompileSymbolState{looked_up: false, redefines: Vec::new(), value}));
-
-            0
-        }
+        this_env.push((name, CompileSymbolState{looked_up: 0, mark_removed: false, value}));
+        self.current_env_position.pos.index = this_env.len();
     }
 
     fn with_new_env<T>(&mut self, f: impl FnOnce(&mut Self) -> T) -> T
@@ -3146,6 +3286,7 @@ impl InterpretState
         self.compile_env[self.current_env_position.pos.depth].push(Vec::new());
 
         self.current_env_position.pos.lambda_index = self.compile_env[self.current_env_position.pos.depth].len() - 1;
+        self.current_env_position.pos.index = 0;
 
         previous_env_position
     }
@@ -3172,9 +3313,28 @@ impl InterpretState
         }
 
         self.current_env_position.pos.lambda_index = self.compile_env[self.current_env_position.pos.depth].len() - 1;
+        self.current_env_position.pos.index = 0;
 
         previous_env_position
     }
+}
+
+#[derive(Debug)]
+struct InlineLookup
+{
+    id: SymbolId,
+    position: EnvPosition,
+    value: Option<Box<InterReprPos>>
+}
+
+#[derive(Debug)]
+struct ApplyState<'a, 'b, 'c>
+{
+    inline_lookup: Option<InlineLookup>,
+    compile_env: &'a [Vec<Vec<(SymbolId, CompileSymbolState)>>],
+    discard_inlines: &'b mut Vec<EnvPosition>,
+    memory: &'c mut LispMemory,
+    changed: bool
 }
 
 #[derive(Debug)]
@@ -3750,37 +3910,93 @@ impl Program
 
         if config.apply_known
         {
-            ir.apply_known(&mut memory);
+            let mut discard_inlines = Vec::new();
 
-            interpret_state.compile_env = vec![vec![Vec::new()]];
-            ir.process_lookups(&mut interpret_state);
-        }
-
-        if !interpret_state.eval_encountered
-        {
-            interpret_state.clear_compile_env_lookups();
-
+            loop
             {
-                let mut call_stack = Vec::new();
+                let mut apply_state = ApplyState{
+                    inline_lookup: interpret_state.compile_env.iter().enumerate().find_map(|(depth, depth_env)|
+                    {
+                        let interpret_state = &interpret_state;
+                        let discard_inlines = &mut *discard_inlines;
+                        depth_env.iter().enumerate().find_map(move |(lambda_index, lambda_env)|
+                        {
+                            let maybe_found = lambda_env.iter().enumerate().find(|(_, (name, info))|
+                            {
+                                info.looked_up == 1 && !interpret_state.outer_lookups.contains(name)
+                            }).map(move |(index, (id, _))|
+                            {
+                                InlineLookup{
+                                    id: *id,
+                                    position: EnvPosition{depth, lambda_index, index: index + 1},
+                                    value: None
+                                }
+                            });
 
-                let mut lambda_defines = HashMap::new();
-                let mut explore_queue = VecDeque::new();
+                            if let Some(maybe_found) = maybe_found
+                            {
+                                if !discard_inlines.contains(&maybe_found.position)
+                                {
+                                    return Some(maybe_found);
+                                }
+                            }
 
-                let mut last_any_skipped = ir.mark_lookups(&mut call_stack, 0);
+                            None
+                        })
+                    }),
+                    compile_env: &interpret_state.compile_env,
+                    discard_inlines: &mut discard_inlines,
+                    memory: &mut memory,
+                    changed: false
+                };
 
-                while let Some(next_call) = call_stack.pop()
+                let previous_discard_len = apply_state.discard_inlines.len();
+                ir.fill_inline(&mut apply_state);
+
+                if previous_discard_len != apply_state.discard_inlines.len()
                 {
-                    last_any_skipped = (next_call.func)(
-                        &mut call_stack,
-                        &mut interpret_state,
-                        &mut lambda_defines,
-                        &mut explore_queue,
-                        last_any_skipped
-                    );
+                    continue;
+                }
+
+                ir.apply_known(&mut apply_state);
+
+                let changed = apply_state.changed;
+
+                interpret_state.reset_compile_env();
+                ir.process_lookups(&mut interpret_state);
+
+                if !interpret_state.eval_encountered
+                {
+                    interpret_state.clear_compile_env_lookups();
+
+                    {
+                        let mut call_stack = Vec::new();
+
+                        let mut lambda_defines = HashMap::new();
+                        let mut explore_queue = VecDeque::new();
+
+                        let mut last_any_skipped = ir.mark_lookups(&mut call_stack, 0);
+
+                        while let Some(next_call) = call_stack.pop()
+                        {
+                            last_any_skipped = (next_call.func)(
+                                &mut call_stack,
+                                &mut interpret_state,
+                                &mut lambda_defines,
+                                &mut explore_queue,
+                                last_any_skipped
+                            );
+                        }
+                    }
+
+                    ir.remove_unused_defines(&mut interpret_state);
+                }
+
+                if !changed
+                {
+                    break;
                 }
             }
-
-            ir.remove_unused_defines(&mut interpret_state);
         }
 
         ir.parse_addresses(&interpret_state);

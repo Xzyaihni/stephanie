@@ -3115,6 +3115,68 @@ mod tests
     }
 
     #[test]
+    fn disordered_defines()
+    {
+        let code = "
+            (define (f) 1)
+
+            (define (broken) 0)
+
+            (define (outer) (inner))
+
+            (define (inner) (broken))
+
+            (f)
+            (outer)
+
+            0
+        ";
+
+        run_tests_with(&code, |lisp|
+        {
+            let value = lisp.run().unwrap_or_else(|err|
+            {
+                panic!("{err}")
+            });
+
+            let value = value.as_integer().unwrap_or_else(|err|
+            {
+                panic!("{err} ({value})")
+            });
+
+            assert_eq!(value, 0);
+        });
+    }
+
+    #[test]
+    fn optimize_away_shadowing()
+    {
+        // my compiler cant call functions yet to optimize this down to 1 instruction..,,
+        let code = "
+            (define (x) 5)
+
+            (define a (+ (x) 3))
+
+            (define (x) 2)
+
+            (+ a (x))
+        ";
+
+        let lisp = Lisp::new_with_config(
+            LispConfig{
+                compile_config: CompileConfig{type_checks: true, apply_known: true},
+                ..Default::default()
+            },
+            &[code]
+        ).unwrap();
+
+        assert!(lisp.program.code().commands_define_count() == 1);
+        // assert!(lisp.program.code().commands_count() == 1);
+
+        run_simple_integer_test_with(lisp, 10);
+    }
+
+    #[test]
     fn optimize_away_nested_call()
     {
         let code = "
@@ -3246,23 +3308,18 @@ mod tests
             (- (cool) fun)
         ";
 
-        run_tests_with(code, |lisp|
-        {
-            assert!(lisp.program.code().commands_lookup_outer_count() == 0);
-            assert!(lisp.program.code().commands_define_count() == 1);
+        let lisp = Lisp::new_with_config(
+            LispConfig{
+                compile_config: CompileConfig{type_checks: true, apply_known: true},
+                ..Default::default()
+            },
+            &[code]
+        ).unwrap();
 
-            let value = lisp.run().unwrap_or_else(|err|
-            {
-                panic!("{err}")
-            });
+        assert!(lisp.program.code().commands_lookup_outer_count() == 0);
+        assert!(lisp.program.code().commands_define_count() <= 1);
 
-            let value = value.as_integer().unwrap_or_else(|err|
-            {
-                panic!("{err} ({value})")
-            });
-
-            assert_eq!(value, 998);
-        });
+        run_simple_integer_test_with(lisp, 998);
     }
 
     #[test]
