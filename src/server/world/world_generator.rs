@@ -486,6 +486,7 @@ impl ChunkGenerator
                 }))
             },
             memory,
+            env_variables: vec!["height".to_owned(), "difficulty".to_owned(), "rotation".to_owned(), "position".to_owned()],
             ..Default::default()
         };
 

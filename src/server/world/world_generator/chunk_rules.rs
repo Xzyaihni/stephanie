@@ -21,7 +21,7 @@ use crate::{
         some_or_return,
         BiMap,
         generic_info::Symmetry,
-        lisp::{self, CompileConfig, Program, Primitives, LispMemory, LispValue, Register},
+        lisp::{self, LispConfig, Program, Primitives, LispMemory, LispValue, Register},
         world::{
             CHUNK_SIZE,
             LocalPos,
@@ -403,9 +403,10 @@ impl ChunkRuleTag
     ) -> Self
     {
         let content = Program::parse(
-            CompileConfig::default(),
-            None,
-            LispMemory::new(primitives, 64, 64),
+            LispConfig{
+                memory: LispMemory::new(primitives, 64, 64),
+                ..Default::default()
+            },
             &[&raw_tag.content]
         ).unwrap_or_else(|err|
         {

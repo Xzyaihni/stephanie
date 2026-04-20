@@ -1840,6 +1840,7 @@ pub struct LispConfig
 {
     pub compile_config: CompileConfig,
     pub load_handler: Option<Box<dyn Fn(&str) -> Option<String>>>,
+    pub env_variables: Vec<String>,
     pub memory: LispMemory
 }
 
@@ -1850,6 +1851,7 @@ impl Default for LispConfig
         LispConfig{
             compile_config: CompileConfig::default(),
             load_handler: None,
+            env_variables: Vec::new(),
             memory: LispMemory::default()
         }
     }
@@ -1877,9 +1879,7 @@ impl Lisp
     ) -> Result<Self, ErrorPos>
     {
         let program = Program::parse(
-            config.compile_config,
-            config.load_handler,
-            config.memory,
+            config,
             code
         )?;
 

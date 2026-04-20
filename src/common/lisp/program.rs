@@ -15,6 +15,8 @@ use crate::{
     common::{DebugRaw, SeededRandom}
 };
 
+use super::{LispConfig, OutputWrapperRef};
+
 pub use super::{
     Symbols,
     Error,
@@ -23,8 +25,7 @@ pub use super::{
     LispValue,
     LispMemory,
     ValueTag,
-    OutputWrapper,
-    OutputWrapperRef
+    OutputWrapper
 };
 
 pub use parser::{PrimitiveType, CodePosition, WithPosition, WithPositionMaybe, WithPositionTrait};
@@ -2181,6 +2182,7 @@ impl InterReprPos
             InterRepr::Lookup(LookupStage::Processed{symbol, pos}) =>
             {
                 Self::compile_env_lookup_position(apply_state.compile_env, *symbol, pos).is_none()
+                    && !apply_state.env_variables.contains(symbol)
             },
             InterRepr::Lookup(_) => unreachable!(),
             InterRepr::Value(_) => false
@@ -3614,6 +3616,7 @@ struct ApplyState<'a, 'b, 'c>
 {
     inline_lookup: Option<InlineLookup>,
     compile_env: &'a [Vec<Vec<(SymbolId, CompileSymbolState)>>],
+    env_variables: &'a Vec<SymbolId>,
     discard_inlines: &'b mut Vec<EnvPosition>,
     memory: &'c mut LispMemory,
     changed: bool
@@ -4163,9 +4166,12 @@ pub struct Program
 impl Program
 {
     pub fn parse(
-        config: CompileConfig,
-        load_handler: Option<Box<dyn Fn(&str) -> Option<String>>>,
-        mut memory: LispMemory,
+        LispConfig{
+            compile_config: config,
+            load_handler,
+            env_variables,
+            mut memory
+        }: LispConfig,
         code: &[&str]
     ) -> Result<Self, ErrorPos>
     {
@@ -4206,6 +4212,7 @@ impl Program
 
         if config.apply_known
         {
+            let env_variables = env_variables.into_iter().map(|x| memory.new_symbol_id(&x)).collect();
             let mut discard_inlines = Vec::new();
 
             loop
@@ -4241,6 +4248,7 @@ impl Program
                         })
                     }),
                     compile_env: &interpret_state.compile_env,
+                    env_variables: &env_variables,
                     discard_inlines: &mut discard_inlines,
                     memory: &mut memory,
                     changed: false

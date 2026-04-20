@@ -1017,8 +1017,8 @@ impl Game
 
         let config = LispConfig{
             compile_config: CompileConfig{type_checks: true, apply_known: true},
-            load_handler: None,
-            memory: LispMemory::new(self.info.borrow().console.primitives.as_ref().unwrap().clone(), 2048, 1 << 16)
+            memory: LispMemory::new(self.info.borrow().console.primitives.as_ref().unwrap().clone(), 2048, 1 << 16),
+            ..Default::default()
         };
 
         let lisp = {
