@@ -4052,17 +4052,13 @@ impl CompiledProgram
                 },
                 CommandRaw::Car{target, source} =>
                 {
-                    let value = memory.get_register(*source).as_list(memory)
-                        .expect("must be a list")
-                        .car;
+                    let value = memory.get_car(memory.get_register(*source).as_list_id().expect("must be a list"));
 
                     memory.set_register(*target, value);
                 },
                 CommandRaw::Cdr{target, source} =>
                 {
-                    let value = memory.get_register(*source).as_list(memory)
-                        .expect("must be a list")
-                        .cdr;
+                    let value = memory.get_cdr(memory.get_register(*source).as_list_id().expect("must be a list"));
 
                     memory.set_register(*target, value);
                 },

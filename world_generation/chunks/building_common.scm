@@ -834,7 +834,7 @@
             ((eq? part 'm) (generate-left-room) (generate-right-room))
             ((eq? part 'bl) (generate-left-room) (generate-bottom-room))
             ((eq? part 'b) (generate-bottom-room) (generate-left-room) (generate-right-room))
-            ((eq? part 'br) (generate-right-room) (generate-bottom-room)))
+            (else (generate-right-room) (generate-bottom-room)))
         this-chunk))
 
 ))
