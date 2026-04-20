@@ -166,7 +166,7 @@ pub fn inherit_infos<T>(
     {
         let this_inherit_name = some_or_return!(inherit_name(&infos[index]));
 
-        if let Some(inherit_index) = infos.iter().position(|x| info_name(&x) == this_inherit_name)
+        if let Some(inherit_index) = infos.iter().position(|x| info_name(x) == this_inherit_name)
         {
             infos[index] = info_combine(&infos[inherit_index], &infos[index]);
         } else

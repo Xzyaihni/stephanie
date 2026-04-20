@@ -322,7 +322,7 @@ impl ChunkGenerator
                 }));
 
         fn read_chunk_info<T>(
-            overmaps_world_chunks: &Vec<Rc<RefCell<WorldPlane>>>,
+            overmaps_world_chunks: &[Rc<RefCell<WorldPlane>>],
             args: &mut PrimitiveArgs,
             allow_out_of_range: bool,
             f: impl FnOnce(&mut PrimitiveArgs, &WorldChunk) -> T
@@ -431,7 +431,7 @@ impl ChunkGenerator
                         with_error(tag.as_lisp_value(name_mappings, args.memory))
                     }).collect();
 
-                    args.memory.cons_list(tag_values.into_iter())
+                    args.memory.cons_list(tag_values)
                 }).flatten()
             }));
 
@@ -556,7 +556,7 @@ impl ChunkGenerator
                 })?
                 .destructure();
 
-            let output = value.as_vector_ref(&memory).map_err(|err|
+            let output = value.as_vector_ref(memory).map_err(|err|
             {
                 ChunkGenerationError::WrongOutput(err)
             })?;
@@ -631,7 +631,7 @@ impl ChunkGenerator
             const SPAN: usize = WORLD_CHUNK_SIZE.x;
             match rotation
             {
-                TileRotation::Up => process(&memory, marker, chunk_name, rotation, output.iter()),
+                TileRotation::Up => process(memory, marker, chunk_name, rotation, output.iter()),
                 TileRotation::Right =>
                 {
                     let values = (0..SPAN).flat_map(|x|
@@ -639,7 +639,7 @@ impl ChunkGenerator
                         (0..SPAN).rev().map(move |y| y * SPAN + x)
                     }).map(|index| &output[index]);
 
-                    process(&memory, marker, chunk_name, rotation, values)
+                    process(memory, marker, chunk_name, rotation, values)
                 },
                 TileRotation::Left =>
                 {
@@ -648,9 +648,9 @@ impl ChunkGenerator
                         (0..SPAN).map(move |y| y * SPAN + x)
                     }).map(|index| &output[index]);
 
-                    process(&memory, marker, chunk_name, rotation, values)
+                    process(memory, marker, chunk_name, rotation, values)
                 },
-                TileRotation::Down => process(&memory, marker, chunk_name, rotation, output.iter().rev())
+                TileRotation::Down => process(memory, marker, chunk_name, rotation, output.iter().rev())
             }
         };
 
@@ -1390,8 +1390,8 @@ impl<'a> WaveCollapser<'a>
                             direction.opposite().flip_y(),
                             direction_pos.pos,
                             pos.pos,
-                            other.format_states(&self.rules),
-                            this.format_states(&self.rules)
+                            other.format_states(self.rules),
+                            this.format_states(self.rules)
                         );
                     }
                 }
@@ -1402,7 +1402,7 @@ impl<'a> WaveCollapser<'a>
                 {
                     if self.verbose_constrain
                     {
-                        eprintln!("after: {}", other.format_states(&self.rules));
+                        eprintln!("after: {}", other.format_states(self.rules));
                     }
                 }
 
@@ -1412,7 +1412,7 @@ impl<'a> WaveCollapser<'a>
                     {
                         x.map(|x|
                         {
-                            let states = self.entropies.get(x).format_states(&self.rules);
+                            let states = self.entropies.get(x).format_states(self.rules);
 
                             format!("{}: {states}", direction.flip_y())
                         })

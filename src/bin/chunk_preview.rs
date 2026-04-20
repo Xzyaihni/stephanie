@@ -495,8 +495,8 @@ impl ChunkPreviewer
 
         let depend_paths: Rc<RefCell<Vec<PathBuf>>> = Rc::new(RefCell::new(vec![
             standard_path.into(),
-            default_path.into(),
-            filepath.into()
+            default_path,
+            filepath
         ]));
 
         let config = LispConfig{
@@ -975,7 +975,7 @@ impl YanyaApp for ChunkPreviewer
             let mut markers = Vec::new();
             let mut create_chunk_at = |chunk_pos: Pos3<usize>|
             {
-                let pos_offset: Vector3<f32> = Vector3::from(chunk_pos.map(|x| x as i32) - Pos3::new(2 as i32, 2 as i32, 0)).cast();
+                let pos_offset: Vector3<f32> = Vector3::from(chunk_pos.map(|x| x as i32) - Pos3::new(2_i32, 2_i32, 0)).cast();
 
                 let chunk_info = ConditionalInfo{
                     position: LocalPos::new(chunk_pos, Pos3::new(3, 3, 1)),
@@ -986,7 +986,7 @@ impl YanyaApp for ChunkPreviewer
                 let chunk_name = {
                     let world_chunk_id = self.world_chunks.borrow().0[chunk_pos].as_ref().map(|x| x.id()).unwrap_or(WorldChunkId::none());
 
-                    some_or_unexpected_return!(self.rules.name_mappings().world_chunk.get_back(&world_chunk_id).clone()).1.clone()
+                    some_or_unexpected_return!(self.rules.name_mappings().world_chunk.get_back(&world_chunk_id)).1.clone()
                 };
 
                 let chunk_code = {
@@ -1099,8 +1099,7 @@ impl YanyaApp for ChunkPreviewer
                             }
                         };
 
-                        let chunk_offset = (pos_offset.xy().map(|x| x as f32)
-                            .component_mul(&Vector3::from(WORLD_CHUNK_SIZE).xy().map(|x| x as f32))) * TILE_SIZE;
+                        let chunk_offset = (pos_offset.xy().component_mul(&Vector3::from(WORLD_CHUNK_SIZE).xy().map(|x| x as f32))) * TILE_SIZE;
 
                         let pos = pos + chunk_offset;
 
@@ -1126,7 +1125,7 @@ impl YanyaApp for ChunkPreviewer
                             }
 
                             chunk_builder.create(
-                                &tiles_factory.tilemap(),
+                                tiles_factory.tilemap(),
                                 Pos3::new(pos.x, pos.y, 0).into(),
                                 Some(MaybeGroup{
                                     this: *tile,

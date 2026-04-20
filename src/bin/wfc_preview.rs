@@ -268,7 +268,7 @@ fn parse_rules() -> Option<Rc<ChunkRulesGroup>>
         eprintln!("error creating chunk_rules: {err}");
     }
 
-    rules.ok().map(|rules| Rc::new(rules))
+    rules.ok().map(Rc::new)
 }
 
 struct AssetsDependent
@@ -404,8 +404,8 @@ impl ChunkPreviewer
 
         let depend_paths: Rc<RefCell<Vec<PathBuf>>> = Rc::new(RefCell::new(vec![
             standard_path.into(),
-            default_path.into(),
-            filepath.into()
+            default_path,
+            filepath
         ]));
 
         let config = LispConfig{
@@ -524,15 +524,12 @@ impl YanyaApp for ChunkPreviewer
     {
         let mut info = partial_info.to_full(&self.ui_camera);
 
-        if self.update_timer <= 0.0
+        if self.update_timer <= 0.0 && self.assets_dependent.modified_check()
         {
-            if self.assets_dependent.modified_check()
-            {
-                eprintln!("hot reloading assets");
-                self.assets_dependent.reload(&mut info);
+            eprintln!("hot reloading assets");
+            self.assets_dependent.reload(&mut info);
 
-                self.regenerate = true;
-            }
+            self.regenerate = true;
         }
 
         let mut controls = self.controls.changed_this_frame();
@@ -611,7 +608,7 @@ impl YanyaApp for ChunkPreviewer
                     ..Default::default()
                 });
 
-                logical_position = tiled_position.map(|x| x as i32);
+                logical_position = tiled_position;
 
                 let tile_info_text = format!(
                     "{}, {} (entropy: {})",
@@ -1296,7 +1293,7 @@ impl ChunkPreviewer
         let chunk_name = {
             let rules = some_or_return!(self.assets_dependent.rules.as_ref());
 
-            some_or_unexpected_return!(rules.name_mappings().world_chunk.get_back(&world_chunk_id).clone()).1.clone()
+            some_or_unexpected_return!(rules.name_mappings().world_chunk.get_back(&world_chunk_id)).1.clone()
         };
 
         let chunk_code = {
@@ -1336,7 +1333,7 @@ impl ChunkPreviewer
                     }
 
                     chunk_builder.create(
-                        &tiles_factory.tilemap(),
+                        tiles_factory.tilemap(),
                         Pos3::new(pos.x, pos.y, 0).into(),
                         Some(MaybeGroup{
                             this: *tile,

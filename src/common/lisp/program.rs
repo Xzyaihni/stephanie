@@ -1164,7 +1164,7 @@ impl CompiledPart
 
         if DebugConfig::is_enabled(DebugTool::Lisp)
         {
-            self.print_program(&state.memory);
+            self.print_program(state.memory);
         }
 
         Self::verify_program(&self.commands, state.memory)?;
@@ -1971,7 +1971,7 @@ impl InterReprPos
 
                                     explore_queue.push_back((possibly_op, this_lambda.value));
 
-                                    if same_call { false } else { true }
+                                    !same_call
                                 } else
                                 {
                                     false
@@ -2121,7 +2121,7 @@ impl InterReprPos
             {
                 if let InterRepr::Value(value) = op.value
                 {
-                    if let Some(primitive_id) = value.as_primitive_procedure().ok()
+                    if let Ok(primitive_id) = value.as_primitive_procedure()
                     {
                         if let Some((effect, _)) = &apply_state.memory.primitives.get(primitive_id).on_apply
                         {
@@ -2315,7 +2315,7 @@ impl InterReprPos
 
                 if let InterRepr::Value(value) = op.value
                 {
-                    if let Some(primitive_id) = value.as_primitive_procedure().ok()
+                    if let Ok(primitive_id) = value.as_primitive_procedure()
                     {
                         if let Some((effect, f)) = &apply_state.memory.primitives.get(primitive_id).on_apply
                         {
@@ -2349,7 +2349,7 @@ impl InterReprPos
                                     value
                                 } else if let InterRepr::Quoted(AstPos{value: Ast::Value(value), ..}) = &arg.value
                                 {
-                                    Self::parse_primitive_text(apply_state.memory, &value).unwrap()
+                                    Self::parse_primitive_text(apply_state.memory, value).unwrap()
                                 } else
                                 {
                                     return;
@@ -2421,7 +2421,7 @@ impl InterReprPos
                 } else if useless_head || sequence.len() == 1
                 {
                     apply_state.changed = true;
-                    *self = sequence.into_iter().last().unwrap().clone();
+                    *self = sequence.iter().last().unwrap().clone();
                 }
             },
             InterRepr::If{check, then, else_body} =>
@@ -3340,7 +3340,7 @@ struct LambdaDefineInfo<'a>
 {
     last_possibly_op: u32,
     last_lookup_position: Option<CodePosition>,
-    value: &'a Box<InterReprPos>
+    value: &'a InterReprPos
 }
 
 #[derive(Debug, Clone, Copy)]
