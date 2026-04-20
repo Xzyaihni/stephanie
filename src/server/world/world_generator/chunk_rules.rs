@@ -648,7 +648,8 @@ enum ConditionalVariable
 #[derive(Debug, Clone, Deserialize)]
 enum RangeNumberRaw
 {
-    Number(i32)
+    Number(i32),
+    Constant(String)
 }
 
 #[derive(Debug, Deserialize)]
@@ -660,9 +661,17 @@ struct ConditionalRuleRaw
 }
 
 #[derive(Debug, Deserialize)]
+struct RuleConstant
+{
+    name: String,
+    value: i32
+}
+
+#[derive(Debug, Deserialize)]
 struct CityRulesRaw
 {
-    rules: Vec<ConditionalRuleRaw>
+    rules: Vec<ConditionalRuleRaw>,
+    constants: Vec<RuleConstant>
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -674,12 +683,27 @@ enum RangeNumber
 impl RangeNumber
 {
     fn from_raw(
+        constants: &[RuleConstant],
         value: RangeNumberRaw
     ) -> Self
     {
         match value
         {
-            RangeNumberRaw::Number(x) => Self::Number(x)
+            RangeNumberRaw::Number(x) => Self::Number(x),
+            RangeNumberRaw::Constant(name) =>
+            {
+                let n = constants.iter().find_map(|x|
+                {
+                    (x.name == name).then_some(x.value)
+                }).unwrap_or_else(||
+                {
+                    eprintln!("couldnt find a constant named `{name}`, using 0 instead");
+
+                    0
+                });
+
+                Self::Number(n)
+            }
         }
     }
 
@@ -702,14 +726,17 @@ struct ConditionalRule
 
 impl ConditionalRule
 {
-    fn from_raw_empty(rule: ConditionalRuleRaw) -> Self
+    fn from_raw_empty(
+        constants: &[RuleConstant],
+        rule: ConditionalRuleRaw
+    ) -> Self
     {
         Self{
             name: WorldChunkId::none(),
             variable: rule.variable.unwrap_or(ConditionalVariable::Height),
             range: Range{
-                start: RangeNumber::from_raw(rule.range.start),
-                end: RangeNumber::from_raw(rule.range.end)
+                start: RangeNumber::from_raw(constants, rule.range.start),
+                end: RangeNumber::from_raw(constants, rule.range.end)
             }
         }
     }
@@ -777,7 +804,7 @@ impl CityRules
         rules.rules.into_iter().for_each(|rule|
         {
             let name = rule.name.clone();
-            let rule = ConditionalRule::from_raw_empty(rule);
+            let rule = ConditionalRule::from_raw_empty(&rules.constants, rule);
 
             TileRotation::iter().for_each(|rotation|
             {

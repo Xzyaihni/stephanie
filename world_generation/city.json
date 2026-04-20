@@ -7,7 +7,7 @@
                     "Number": 0
                 },
                 "end": {
-                    "Number": 25
+                    "Constant": "BuildingMaxHeight"
                 }
             }
         },
@@ -18,7 +18,7 @@
                     "Number": 0
                 },
                 "end": {
-                    "Number": 25
+                    "Constant": "BuildingMaxHeight"
                 }
             }
         },
@@ -29,7 +29,7 @@
                     "Number": 0
                 },
                 "end": {
-                    "Number": 25
+                    "Constant": "BuildingMaxHeight"
                 }
             }
         },
@@ -40,7 +40,7 @@
                     "Number": 0
                 },
                 "end": {
-                    "Number": 25
+                    "Constant": "BuildingMaxHeight"
                 }
             }
         },
@@ -51,7 +51,7 @@
                     "Number": 0
                 },
                 "end": {
-                    "Number": 25
+                    "Constant": "BuildingMaxHeight"
                 }
             }
         },
@@ -62,7 +62,7 @@
                     "Number": 0
                 },
                 "end": {
-                    "Number": 25
+                    "Constant": "BuildingMaxHeight"
                 }
             }
         },
@@ -73,7 +73,7 @@
                     "Number": 0
                 },
                 "end": {
-                    "Number": 25
+                    "Constant": "BuildingMaxHeight"
                 }
             }
         },
@@ -84,7 +84,7 @@
                     "Number": 0
                 },
                 "end": {
-                    "Number": 25
+                    "Constant": "BuildingMaxHeight"
                 }
             }
         },
@@ -95,7 +95,7 @@
                     "Number": 0
                 },
                 "end": {
-                    "Number": 25
+                    "Constant": "BuildingMaxHeight"
                 }
             }
         },
@@ -131,6 +131,12 @@
                     "Number": 3
                 }
             }
+        }
+    ],
+    "constants": [
+        {
+            "name": "BuildingMaxHeight",
+            "value": 20
         }
     ]
 }
