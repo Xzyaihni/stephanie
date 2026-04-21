@@ -38,7 +38,25 @@ impl FrameLimit
         match self
         {
             Self::RefreshRate => PresentMode::Fifo,
-            Self::Unlimited => PresentMode::Mailbox
+            Self::Unlimited => PresentMode::Immediate
+        }
+    }
+
+    pub fn as_str(self) -> &'static str
+    {
+        match self
+        {
+            Self::RefreshRate => "vsync",
+            Self::Unlimited => "unlimited"
+        }
+    }
+
+    pub fn next(self) -> Self
+    {
+        match self
+        {
+            Self::RefreshRate => Self::Unlimited,
+            Self::Unlimited => Self::RefreshRate
         }
     }
 }

@@ -531,6 +531,10 @@ impl YanyaApp for App
                     {
                         x.rebind(control, key);
                     },
+                    MenuAction::SetFrameLimit(limit) =>
+                    {
+                        self.engine_events.push_back(EngineEvent::SetPresentMode(limit.as_present_mode()));
+                    },
                     MenuAction::Quit => self.exit(),
                     MenuAction::Start =>
                     {

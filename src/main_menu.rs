@@ -116,6 +116,7 @@ enum OptionsPartId
 {
     Menu,
     Controls(ButtonPartId),
+    FrameLimitToggle(ButtonPartId),
     DebugToggle(ButtonPartId),
     Back(ButtonPartId)
 }
@@ -196,6 +197,7 @@ pub enum MenuAction
 {
     None,
     Rebind(GameControl, KeyMapping),
+    SetFrameLimit(FrameLimit),
     Quit,
     Start
 }
@@ -288,10 +290,11 @@ struct Binding
     pub duplicate: bool
 }
 
-struct UiInfo<'a, 'b, 'c, 'd, 'e, 'f>
+struct UiInfo<'a, 'b, 'c, 'd, 'e, 'f, 'g>
 {
     controls: &'b mut UiControls<MainMenuId>,
     bindings: &'e mut UiList<Binding>,
+    settings_config: &'g mut Stateful<GameSettings>,
     sliced_textures: &'a HashMap<String, SlicedTexture>,
     fonts: &'a FontsContainer,
     info: &'c mut MenuClientInfo,
@@ -801,6 +804,7 @@ impl MainMenu
         let id = |part| MainMenuId::Options(part);
 
         let mut state = ui_info.state;
+        let mut action = MenuAction::None;
 
         let menu = {
             let width = outer_menu.try_width().unwrap_or(0.0);
@@ -835,6 +839,15 @@ impl MainMenu
 
         button_pad();
 
+        let frame_limit_text = format!("frame limit: {}", ui_info.settings_config.value().frame_limit.as_str());
+        if Self::update_main_button(ui_info.controls, menu, |part| id(OptionsPartId::FrameLimitToggle(part)), &frame_limit_text)
+        {
+            let config = ui_info.settings_config.value_mut();
+            config.frame_limit = config.frame_limit.next();
+
+            action = MenuAction::SetFrameLimit(config.frame_limit);
+        }
+
         let debug_mode_text = format!("debug mode: {}", if ui_info.info.debug { "on" } else { "off" });
         if Self::update_main_button(ui_info.controls, menu, |part| id(OptionsPartId::DebugToggle(part)), &debug_mode_text)
         {
@@ -850,7 +863,7 @@ impl MainMenu
 
         add_padding_vertical(menu, UiSize::Rest(1.0).into());
 
-        (state, MenuAction::None)
+        (state, action)
     }
 
     fn update_controls(
@@ -1383,6 +1396,7 @@ impl MainMenu
             let ui_info = UiInfo{
                 controls: &mut controls,
                 bindings: &mut self.bindings,
+                settings_config: &mut self.settings_config,
                 sliced_textures: &self.sliced_textures,
                 fonts: &self.fonts,
                 info: &mut self.info,
