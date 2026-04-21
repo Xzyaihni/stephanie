@@ -185,12 +185,14 @@ enum WorldButtonPartId
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 enum ButtonPartId
 {
+    PanelOuter,
     Panel,
     Body,
     Text,
     BarOuter,
     Bar,
-    BarText
+    BarText,
+    TextValue
 }
 
 pub enum MenuAction
@@ -530,6 +532,37 @@ impl MainMenu
         }).collect()
     }
 
+    fn menu_button_width() -> UiElementSize<MainMenuId>
+    {
+        UiElementSize{
+            minimum_size: Some(UiMinimumSize::FitChildren),
+            size: UiSize::Rest(1.0)
+        }
+    }
+
+    fn menu_button_height() -> UiElementSize<MainMenuId>
+    {
+        UiElementSize{
+            minimum_size: Some(UiMinimumSize::Pixels(85.0)),
+            size: UiSize::Absolute(BUTTON_SIZE)
+        }
+    }
+
+    fn menu_button_padding_left() -> UiElementSize<MainMenuId>
+    {
+        0.013.into()
+    }
+
+    fn menu_button_padding_right() -> UiElementSize<MainMenuId>
+    {
+        0.01.into()
+    }
+
+    fn menu_font_size(screen_size: Vector2<f32>, height: f32) -> u32
+    {
+        (screen_size.max() * height * 0.6) as u32
+    }
+
     fn update_main_button(
         controls: &mut UiControls<MainMenuId>,
         parent: TreeInserter<MainMenuId>,
@@ -539,18 +572,12 @@ impl MainMenu
     {
         Self::update_button(controls, parent, id, ButtonInfo{
             name: name.to_owned(),
-            width: UiElementSize{
-                minimum_size: Some(UiMinimumSize::FitChildren),
-                size: UiSize::Rest(1.0)
-            },
-            height: UiElementSize{
-                minimum_size: Some(UiMinimumSize::Pixels(85.0)),
-                size: UiSize::Absolute(BUTTON_SIZE)
-            },
+            width: Self::menu_button_width(),
+            height: Self::menu_button_height(),
             body_width: UiSize::FitChildren.into(),
             override_font_size: None,
-            padding_left: 0.013.into(),
-            padding_right: 0.01.into(),
+            padding_left: Self::menu_button_padding_left(),
+            padding_right: Self::menu_button_padding_right(),
             align_left: true,
             disabled: false,
             invert_colors: false
@@ -611,7 +638,7 @@ impl MainMenu
 
         let font_size = info.override_font_size.unwrap_or_else(||
         {
-            (body.screen_size().max() * height * 0.6) as u32
+            Self::menu_font_size(body.screen_size(), height)
         });
 
         let bar_id = id(ButtonPartId::Bar);
@@ -839,8 +866,56 @@ impl MainMenu
 
         button_pad();
 
-        let frame_limit_text = format!("frame limit: {}", ui_info.settings_config.value().frame_limit.as_str());
-        if Self::update_main_button(ui_info.controls, menu, |part| id(OptionsPartId::FrameLimitToggle(part)), &frame_limit_text)
+        fn setting_button(
+            controls: &mut UiControls<MainMenuId>,
+            parent: TreeInserter<MainMenuId>,
+            id: impl Fn(ButtonPartId) -> MainMenuId,
+            text: String,
+            value: String
+        ) -> bool
+        {
+            let panel = parent.update(id(ButtonPartId::PanelOuter), UiElement{
+                width: MainMenu::menu_button_width(),
+                height: MainMenu::menu_button_height(),
+                children_layout: UiLayout::Horizontal,
+                ..Default::default()
+            });
+
+            let height = some_or_value!(panel.try_height(), false);
+
+            let is_clicked = MainMenu::update_button(controls, panel, &id, ButtonInfo{
+                name: text.to_owned(),
+                width: UiSize::FitChildren.into(),
+                height: MainMenu::menu_button_height(),
+                body_width: UiSize::FitChildren.into(),
+                override_font_size: None,
+                padding_left: MainMenu::menu_button_padding_left(),
+                padding_right: 0.0.into(),
+                align_left: true,
+                disabled: false,
+                invert_colors: false
+            });
+
+            add_padding_horizontal(panel, UiSize::Rest(1.0).into());
+
+            panel.update(id(ButtonPartId::TextValue), UiElement{
+                texture: UiTexture::Text(TextInfo::new_simple(MainMenu::menu_font_size(panel.screen_size(), height), value)),
+                mix: Some(MixColorLch::color(BACKGROUND_COLOR)),
+                ..UiElement::fit_content()
+            });
+
+            add_padding_horizontal(panel, 0.1.into());
+
+            is_clicked
+        }
+
+        if setting_button(
+            ui_info.controls,
+            menu,
+            |part| id(OptionsPartId::FrameLimitToggle(part)),
+            "frame limit".to_owned(),
+            (ui_info.settings_config.value().frame_limit.as_str()).to_owned()
+        )
         {
             let config = ui_info.settings_config.value_mut();
             config.frame_limit = config.frame_limit.next();
@@ -848,8 +923,15 @@ impl MainMenu
             action = MenuAction::SetFrameLimit(config.frame_limit);
         }
 
-        let debug_mode_text = format!("debug mode: {}", if ui_info.info.debug { "on" } else { "off" });
-        if Self::update_main_button(ui_info.controls, menu, |part| id(OptionsPartId::DebugToggle(part)), &debug_mode_text)
+        button_pad();
+
+        if setting_button(
+            ui_info.controls,
+            menu,
+            |part| id(OptionsPartId::DebugToggle(part)),
+            "debug mode".to_owned(),
+            (if ui_info.info.debug { "on" } else { "off" }).to_owned()
+        )
         {
             ui_info.info.debug = !ui_info.info.debug;
         }
