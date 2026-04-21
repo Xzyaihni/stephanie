@@ -129,6 +129,69 @@ macro_rules! some_or_unexpected_return
     }
 }
 
+fn true_fn() -> bool { true }
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct Stateful<T>
+{
+    #[serde(skip, default="true_fn")]
+    changed: bool,
+    value: T
+}
+
+impl<T> From<T> for Stateful<T>
+{
+    fn from(value: T) -> Self
+    {
+        Self{changed: false, value}
+    }
+}
+
+impl<T> Stateful<T>
+{
+    pub fn new_changed(value: T) -> Self
+    {
+        Self{changed: true, value}
+    }
+
+    pub fn set_value(&mut self, value: T)
+    where
+        T: PartialEq
+    {
+        if self.value != value
+        {
+            self.value = value;
+            self.changed = true;
+        }
+    }
+
+    pub fn value(&self) -> &T
+    {
+        &self.value
+    }
+
+    pub fn value_mut(&mut self) -> &mut T
+    {
+        self.changed = true;
+
+        &mut self.value
+    }
+
+    pub fn dirty(&mut self)
+    {
+        self.changed = true;
+    }
+
+    pub fn changed(&mut self) -> bool
+    {
+        let state = self.changed;
+
+        self.changed = false;
+
+        state
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Serialize, Deserialize)]
 pub struct SimpleF32(f32);
 

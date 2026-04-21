@@ -147,7 +147,7 @@ impl ControlState
     }
 }
 
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, Serialize, Deserialize)]
 pub enum KeyMapping
 {
     Keyboard(KeyCode),

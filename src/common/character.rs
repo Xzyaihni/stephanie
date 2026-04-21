@@ -52,6 +52,7 @@ use crate::{
         item::*,
         anatomy::*,
         clothing::EquipSlot,
+        Stateful,
         Sprite,
         Side1d,
         Side2d,
@@ -104,11 +105,6 @@ impl<T> Index<SpriteState> for CharacterSprites<T>
             SpriteState::Lying => &self.lying
         }
     }
-}
-
-fn true_fn() -> bool
-{
-    true
 }
 
 fn hair_offset_of(offset: Vector2<i8>, pixel_offset: Vector2<f32>) -> Vector3<f32>
@@ -236,58 +232,6 @@ fn held_item_entity(
 ) -> EntityInfo
 {
     heldlike_item_entity(character, hand_item, is_player, Some(parent), false)
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-pub struct Stateful<T>
-{
-    #[serde(skip, default="true_fn")]
-    changed: bool,
-    value: T
-}
-
-impl<T> From<T> for Stateful<T>
-{
-    fn from(value: T) -> Self
-    {
-        Self{
-            changed: true,
-            value
-        }
-    }
-}
-
-impl<T> Stateful<T>
-{
-    pub fn set_state(&mut self, value: T)
-    where
-        T: PartialEq
-    {
-        if self.value != value
-        {
-            self.value = value;
-            self.changed = true;
-        }
-    }
-
-    pub fn value(&self) -> &T
-    {
-        &self.value
-    }
-
-    pub fn dirty(&mut self)
-    {
-        self.changed = true;
-    }
-
-    pub fn changed(&mut self) -> bool
-    {
-        let state = self.changed;
-
-        self.changed = false;
-
-        state
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -544,7 +488,7 @@ impl Character
             knockback_recovery: 1.0,
             bash_side: Side1d::Left,
             actions: Vec::new(),
-            sprite_state: SpriteState::Normal.into()
+            sprite_state: Stateful::new_changed(SpriteState::Normal)
         }
     }
 
@@ -778,7 +722,7 @@ impl Character
 
     pub fn with_previous(&mut self, previous: Self)
     {
-        self.sprite_state.set_state(*previous.sprite_state.value());
+        self.sprite_state.set_value(*previous.sprite_state.value());
         self.sprite_state.dirty();
 
         self.info = previous.info;
@@ -3182,6 +3126,6 @@ impl Character
 
     fn set_sprite(&mut self, state: SpriteState)
     {
-        self.sprite_state.set_state(state);
+        self.sprite_state.set_value(state);
     }
 }

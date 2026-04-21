@@ -47,6 +47,8 @@ pub enum DebugTool
     SpatialFull,
     FreezeUi,
     SkipLoading,
+    SkipMenu,
+    ExitAfterLoad,
     DamagePoints,
     LoadPosition,
     DamagingAllResults,

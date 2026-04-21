@@ -1382,6 +1382,14 @@ impl GameState
         self.is_loading = value.is_some();
 
         self.ui.borrow_mut().set_loading(value);
+
+        if DebugConfig::is_enabled(DebugTool::ExitAfterLoad)
+        {
+            if value.is_none()
+            {
+                self.running = false;
+            }
+        }
     }
 
     fn check_resize_camera(&mut self, dt: f32)

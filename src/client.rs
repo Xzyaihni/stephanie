@@ -110,6 +110,14 @@ pub fn create_screen_object(info: &ObjectCreatePartialInfo) -> SolidObject
     )
 }
 
+fn blank_draw(info: &mut DrawInfo)
+{
+    info.next_subpass();
+    info.next_subpass();
+    info.next_subpass();
+    info.next_subpass();
+}
+
 pub struct Client
 {
     pub client_info: Option<ClientInfo>,
@@ -259,7 +267,7 @@ impl Client
         &mut self,
         info: &mut UpdateBuffersInfo,
         dt: f32
-    )
+    ) -> bool
     {
         crate::frame_time_this!{
             [] -> update,
@@ -293,9 +301,12 @@ impl Client
                 if !game_state.borrow().running
                 {
                     self.exit();
+                    return false;
                 }
+
+                true
             }
-        };
+        }
     }
 
     pub fn update_buffers(&mut self, info: &mut UpdateBuffersInfo)
@@ -308,10 +319,16 @@ impl Client
 
     pub fn draw(&mut self, mut info: DrawInfo)
     {
-        crate::frame_time_this!{
-            [] -> draw,
-            some_or_return!(self.game_state.as_ref()).borrow().draw(&mut info)
-        };
+        if let Some(game_state) = self.game_state.as_ref()
+        {
+            crate::frame_time_this!{
+                [] -> draw,
+                game_state.borrow().draw(&mut info)
+            };
+        } else
+        {
+            blank_draw(&mut info);
+        }
     }
 
     pub fn input(&mut self, control: yanyaengine::Control) -> bool

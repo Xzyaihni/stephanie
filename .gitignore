@@ -6,7 +6,8 @@
 
 Cargo.lock
 
-anatomy_colors.png
+/anatomy_colors.png
+/settings.json
 
 callgrind*
 massif*

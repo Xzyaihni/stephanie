@@ -18,7 +18,7 @@ use vulkano::{
 use yanyaengine::Rendering;
 
 use super::shaders::{DARKEN, SHADOW_COLOR};
-use stephanie::{BACKGROUND_COLOR, app::{App, TimestampQuery}, common::lerp};
+use stephanie::{BACKGROUND_COLOR, settings::load_settings_config, app::{App, TimestampQuery}, common::lerp};
 
 
 pub fn create() -> Rendering<App, TimestampQuery>
@@ -99,6 +99,7 @@ pub fn create() -> Rendering<App, TimestampQuery>
                 ]
             ).unwrap()
         }),
+        present_mode: load_settings_config().frame_limit.as_present_mode(),
         attachments: Box::new(|_setup, allocator: Arc<StandardMemoryAllocator>, view: Arc<ImageView>|
         {
             let create_depth = ||

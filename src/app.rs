@@ -3,7 +3,7 @@ use std::{
     rc::Rc,
     thread::{self, JoinHandle},
     sync::{mpsc, Arc},
-    collections::HashMap
+    collections::{VecDeque, HashMap}
 };
 
 use nalgebra::{vector, Vector2};
@@ -25,6 +25,7 @@ use vulkano::{
 };
 
 use yanyaengine::{
+    EngineEvent,
     YanyaApp,
     Control,
     ShaderId,
@@ -329,7 +330,7 @@ pub struct App
     data_infos: DataInfos,
     tilemap: TileMapWithTextures,
     server_loot_info: ServerLootInfo,
-    exit: bool,
+    engine_events: VecDeque<EngineEvent>,
     server_handle: Option<JoinHandle<()>>,
     slow_mode: <SlowMode as SlowModeTrait>::State
 }
@@ -493,13 +494,13 @@ impl YanyaApp for App
             data_infos,
             tilemap,
             server_loot_info,
-            exit: false,
+            engine_events: VecDeque::new(),
             server_handle: None,
             slow_mode: Default::default()
         }
     }
 
-    fn early_exit(&self) -> bool { self.exit }
+    fn take_engine_event(&mut self) -> Option<EngineEvent> { self.engine_events.pop_front() }
 
     fn update(&mut self, partial_info: UpdateBuffersPartialInfo, dt: f32)
     {
@@ -515,7 +516,13 @@ impl YanyaApp for App
             },
             Scene::Menu(x) =>
             {
-                let (partial_info, action) = x.update(partial_info, dt);
+                let (partial_info, action) = if DebugConfig::is_enabled(DebugTool::SkipMenu)
+                {
+                    (partial_info, MenuAction::Start)
+                } else
+                {
+                    x.update(partial_info, dt)
+                };
 
                 match action
                 {
@@ -524,7 +531,7 @@ impl YanyaApp for App
                     {
                         x.rebind(control, key);
                     },
-                    MenuAction::Quit => self.exit = true,
+                    MenuAction::Quit => self.exit(),
                     MenuAction::Start =>
                     {
                         let client_info = x.info.clone();
@@ -711,23 +718,36 @@ impl App
         &self.client
     }
 
+    fn exit(&mut self)
+    {
+        self.engine_events.push_back(EngineEvent::Exit);
+    }
+
     fn update_game(&mut self, info: &mut UpdateBuffersInfo, dt: f32)
     {
-        if SlowMode::as_bool()
+        let status = if SlowMode::as_bool()
         {
             if self.slow_mode.running()
             {
-                self.client.update(info, dt);
+                self.client.update(info, dt)
             } else if self.slow_mode.run_frame()
             {
-                self.client.update(info, 1.0 / 60.0);
+                self.client.update(info, 1.0 / 60.0)
             } else
             {
                 self.client.no_update();
+
+                true
             }
         } else
         {
-            self.client.update(info, dt);
+            self.client.update(info, dt)
+        };
+
+        if !status
+        {
+            self.exit();
+            return;
         }
 
         info.update_camera(&self.client.camera.read());

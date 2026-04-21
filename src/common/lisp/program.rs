@@ -430,7 +430,7 @@ impl Default for Primitives
                 PrimitiveProcedureInfo::new_simple(1, Effect::Pure, |mut args|
                 {
                     let arg = args.next().unwrap();
-                    let value = arg.as_list(args.memory)?.car;
+                    let value = args.memory.get_car(arg.as_list_id()?);
 
                     Ok(value)
                 })),
@@ -438,7 +438,7 @@ impl Default for Primitives
                 PrimitiveProcedureInfo::new_simple(1, Effect::Pure, |mut args|
                 {
                     let arg = args.next().unwrap();
-                    let value = arg.as_list(args.memory)?.cdr;
+                    let value = args.memory.get_cdr(arg.as_list_id()?);
 
                     Ok(value)
                 })),
@@ -494,9 +494,9 @@ impl Default for Primitives
 
                 let is_compound = ||
                 {
-                    value.as_list(args.memory).map(|x|
+                    value.as_list_id().map(|x|
                     {
-                        x.cdr.tag == ValueTag::Address
+                        args.memory.get_cdr(x).tag == ValueTag::Address
                     }).unwrap_or(false)
                 };
 

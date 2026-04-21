@@ -24,6 +24,7 @@ use yanyaengine::{
 
 use crate::{
     VERSION,
+    settings::*,
     app::ProgramShaders,
     client::{
         self,
@@ -33,18 +34,20 @@ use crate::{
             KeyMapping,
             UiControls,
             ControlsController,
-            Control as GameControl,
-            default_bindings
+            Control as GameControl
         }
     },
     common::{
+        with_error,
         sanitized_name,
         from_upper_camel,
         world_path,
         world_save_path,
         player_save_path,
+        some_or_return,
         some_or_value,
         render_info::*,
+        Stateful,
         EntityInfo,
         world::WorldSave,
         chunk_saver::{load_world_file, json_loader},
@@ -314,8 +317,26 @@ pub struct MainMenu
     animation: f32,
     controls_taken: Option<GameControl>,
     bindings: UiList<Binding>,
+    settings_config: Stateful<GameSettings>,
     world_check_names: Vec<String>,
     worlds: UiList<WorldInfo>
+}
+
+impl Drop for MainMenu
+{
+    fn drop(&mut self)
+    {
+        if self.settings_config.changed()
+        {
+            eprintln!("saving new settings");
+            let settings_s = some_or_return!(with_error(serde_json::to_string(self.settings_config.value())));
+
+            if let Err(err) = fs::write(DEFAULT_SETTINGS_PATH, settings_s)
+            {
+                eprintln!("error saving settings: {err}");
+            }
+        }
+    }
 }
 
 impl MainMenu
@@ -423,7 +444,9 @@ impl MainMenu
 
         worlds.sort_by(|a, b| a.display_name.cmp(&b.display_name));
 
-        let current_bindings = default_bindings();
+        let settings_config = load_settings_config();
+
+        let current_bindings = settings_config.key_bindings.clone();
 
         let mut bindings = GameControl::iter().map(|control|
         {
@@ -451,6 +474,7 @@ impl MainMenu
             animation: 0.0,
             controls_taken: None,
             bindings: bindings.into(),
+            settings_config: settings_config.into(),
             world_check_names,
             worlds: worlds.into(),
             info
@@ -468,6 +492,8 @@ impl MainMenu
             binding.mapping = Some(key);
 
             self.check_duplicates();
+
+            self.settings_config.value_mut().key_bindings = self.bindings();
         }
     }
 
