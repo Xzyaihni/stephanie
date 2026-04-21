@@ -4150,7 +4150,7 @@ impl Default for CompileConfig
     fn default() -> Self
     {
         Self{
-            type_checks: cfg!(debug_assertions),
+            type_checks: cfg!(debug_assertions) && DebugConfig::is_disabled(DebugTool::LispDisableChecks),
             apply_known: !cfg!(test)
         }
     }
@@ -4179,8 +4179,6 @@ impl Program
 
         let ast = Parser::parse(0, code)?;
 
-        let type_checks = config.type_checks && DebugConfig::is_disabled(DebugTool::LispDisableChecks);
-
         let mut interpret_state = InterpretState{
             eval_encountered: false,
             outer_lookups: Vec::new(),
@@ -4192,7 +4190,7 @@ impl Program
                 (load_symbol, code.len(), x)
             }),
             debug_mode_symbol: memory.new_symbol_id("debug-mode"),
-            debug_mode: type_checks,
+            debug_mode: config.type_checks,
             #[cfg(debug_assertions)]
             defined_symbols: None
         };
@@ -4317,7 +4315,7 @@ impl Program
         }
 
         let code = {
-            let mut state = CompileState::new(&mut memory, &interpret_state.compile_env, type_checks, config.apply_known);
+            let mut state = CompileState::new(&mut memory, &interpret_state.compile_env, config.type_checks, config.apply_known);
 
             let compiled = ir.compile(&mut state, Some(Register::Value), Proceed::Jump(Label::Halt));
 

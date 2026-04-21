@@ -1227,6 +1227,8 @@ impl Character
             }
         }
 
+        self.reset_held_lighting(entities);
+
         some_or_return!(entities.lazy_transform_mut_no_change(hand_right)).connection = if holding_state
         {
             Connection::Ignore
