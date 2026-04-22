@@ -292,7 +292,7 @@ macro_rules! time_this_additive
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct TimingField<T>
 {
     pub total: Option<f64>,
@@ -300,13 +300,34 @@ pub struct TimingField<T>
     pub child: T
 }
 
+impl<T> TimingField<T>
+{
+    fn get(&self) -> f64
+    {
+        self.total.unwrap_or(0.0)
+    }
+}
+
 pub trait TimingsTrait
 {
+    fn zip_map(&self, other: &Self, f: &mut impl FnMut(f64, f64) -> f64) -> Self;
+    fn map(&self, f: &mut impl FnMut(f64) -> f64) -> Self;
+
     fn display(&self, depth: usize) -> Option<String>;
 }
 
 impl TimingsTrait for ()
 {
+    fn zip_map(&self, _other: &Self, _f: &mut impl FnMut(f64, f64) -> f64) -> Self
+    {
+        self.clone()
+    }
+
+    fn map(&self, _f: &mut impl FnMut(f64) -> f64) -> Self
+    {
+        self.clone()
+    }
+
     fn display(&self, _depth: usize) -> Option<String> { None }
 }
 
@@ -328,7 +349,7 @@ macro_rules! define_timings
             )?
         )*
 
-        #[derive(Default)]
+        #[derive(Default, Clone)]
         pub struct $name
         {
             $(pub $field: $crate::get_field_type!($($inner_name)?),)*
@@ -336,6 +357,44 @@ macro_rules! define_timings
 
         impl TimingsTrait for $name
         {
+            fn zip_map(&self, other: &Self, f: &mut impl FnMut(f64, f64) -> f64) -> Self
+            {
+                Self{
+                    $(
+                        $field: {
+                            if self.$field.times > 0 || other.$field.times > 0
+                            {
+                                TimingField{
+                                    total: Some(f(self.$field.get(), other.$field.get())),
+                                    times: self.$field.times + other.$field.times,
+                                    child: self.$field.child.zip_map(&other.$field.child, f)
+                                }
+                            } else
+                            {
+                                self.$field.clone()
+                            }
+                        },
+                    )*
+                }
+            }
+
+            fn map(&self, f: &mut impl FnMut(f64) -> f64) -> Self
+            {
+                Self{
+                    $(
+                        $field: {
+                            if self.$field.times > 0
+                            {
+                                TimingField{total: Some(f(self.$field.get())), times: self.$field.times, child: self.$field.child.map(f)}
+                            } else
+                            {
+                                self.$field.clone()
+                            }
+                        },
+                    )*
+                }
+            }
+
             fn display(&self, depth: usize) -> Option<String>
             {
                 let mut s = String::new();
@@ -487,17 +546,24 @@ define_timings!
     }
 }
 
-#[cfg(any(debug_assertions, stimings))]
+#[cfg(any(debug_assertions, feature = "stimings"))]
 pub static THIS_FRAME_TIMINGS: LazyLock<Mutex<Timings>> = LazyLock::new(|| Mutex::new(Timings::default()));
 
-pub const TARGET_FPS: u32 = 60;
+pub enum TimingsMode
+{
+    Average,
+    Worst
+}
+
+pub const TIMINGS_MODE: TimingsMode = TimingsMode::Average;
+pub const TARGET_FPS: u32 = 120;
 
 #[macro_export]
 macro_rules! frame_timed
 {
     ([$($parent:ident),* $(,)?] -> $name:ident, $time_ms:expr) =>
     {
-        #[cfg(any(debug_assertions, stimings))]
+        #[cfg(any(debug_assertions, feature = "stimings"))]
         {
             let time = $time_ms;
             let mut timings = $crate::common::THIS_FRAME_TIMINGS.lock();
@@ -532,7 +598,7 @@ macro_rules! frame_time_this
                 eprintln!("currently in {}", stringify!($name));
             }
 
-            if DebugConfig::is_enabled(DebugTool::FrameTimings) || cfg!(stimings)
+            if DebugConfig::is_enabled(DebugTool::FrameTimings) || cfg!(feature = "stimings")
             {
                 let (_time, value) = $crate::get_time_this!($($tt)*);
 

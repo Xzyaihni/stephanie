@@ -757,7 +757,7 @@ impl<S: SaveLoad<WorldChunksBlock>> WorldGenerator<S>
             *plane = world.as_ref().map(|chunk| chunk[0].clone());
         });
 
-        let mut wave_collapser = WaveCollapser::new(&self.rules.surface, &mut plane.0);
+        let mut wave_collapser = crate::debug_time_this!{"wfc-new", WaveCollapser::new(&self.rules.surface, &mut plane.0)};
 
         if let Some(local) = global_mapper.to_local(GlobalPos::new(0, 0, 0))
         {

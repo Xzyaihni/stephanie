@@ -358,19 +358,47 @@ impl Client
 
     fn check_timings(&self)
     {
-        #[cfg(any(debug_assertions, stimings))]
+        #[cfg(any(debug_assertions, feature = "stimings"))]
         {
-            use crate::common::TimingsTrait;
+            use std::sync::LazyLock;
+            use parking_lot::Mutex;
+
+            use crate::common::{TimingsMode, TimingsTrait, Timings};
 
             let mut timings = crate::common::THIS_FRAME_TIMINGS.lock();
 
-            let frame_time = timings.update.total.unwrap_or(0.0)
-                + timings.update_buffers.total.unwrap_or(0.0)
-                + timings.draw.total.unwrap_or(0.0);
-
-            if frame_time > (1000.0 / crate::common::TARGET_FPS as f64)
+            if let TimingsMode::Worst = crate::common::TIMINGS_MODE
             {
-                eprintln!("{}", timings.display(0).unwrap());
+                let frame_time = timings.update.total.unwrap_or(0.0)
+                    + timings.update_buffers.total.unwrap_or(0.0)
+                    + timings.draw.total.unwrap_or(0.0);
+
+                if frame_time > (1000.0 / crate::common::TARGET_FPS as f64)
+                {
+                    eprintln!("{}", timings.display(0).unwrap());
+                }
+            } else
+            {
+                const AVERAGE_FRAMES: usize = 200;
+
+                static CURRENT_INDEX: Mutex<usize> = Mutex::new(0);
+                static AVERAGED_TIMINGS: LazyLock<Mutex<Vec<Timings>>> = LazyLock::new(|| Mutex::new(vec![Timings::default(); AVERAGE_FRAMES]));
+
+                let mut averaged_timings = AVERAGED_TIMINGS.lock();
+
+                averaged_timings[*CURRENT_INDEX.lock()] = timings.clone();
+                *CURRENT_INDEX.lock() += 1;
+
+                if *CURRENT_INDEX.lock() == AVERAGE_FRAMES
+                {
+                    *CURRENT_INDEX.lock() = 0;
+
+                    let averaged = averaged_timings.iter()
+                        .fold(Timings::default(), |acc, x| acc.zip_map(x, &mut |a, b| a + b))
+                        .map(&mut |x| x / AVERAGE_FRAMES as f64);
+
+                    eprintln!("{}", averaged.display(0).unwrap());
+                }
             }
 
             *timings = Default::default();
@@ -381,7 +409,7 @@ impl Client
     {
         some_or_return!(self.game_state.as_ref()).borrow_mut().render_pass_ended();
 
-        if DebugConfig::is_enabled(DebugTool::FrameTimings) || cfg!(stimings)
+        if DebugConfig::is_enabled(DebugTool::FrameTimings) || cfg!(feature = "stimings")
         {
             self.check_timings()
         }

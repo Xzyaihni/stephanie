@@ -21,9 +21,6 @@ serde_bare = { version = "0.5", features = ["std"] }
 arboard = "3.6"
 serde_with = "3.12.0"
 
-[lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(stimings)'] }
-
 [profile.release]
 strip = true
 
@@ -35,6 +32,10 @@ opt-level = 1
 inherits = "dev"
 debug = true
 
-[profile.release-debug]
+[profile.release-symbols]
 inherits = "release"
-debug = true
+strip = false
+debug = false
+
+[features]
+stimings = []
