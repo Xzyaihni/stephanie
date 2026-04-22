@@ -44,6 +44,7 @@ use crate::{
         AnyEntities,
         Entity,
         World,
+        spatial::SpatialInfo,
         player::{WEAK_SCREENSHAKE, MEDIUM_SCREENSHAKE, MEDIUM_KICK, StatId},
         enemy_creator::ENEMY_MASS,
         entity::{iterate_components_with, ClientEntities},
@@ -922,7 +923,7 @@ fn destroy_tile_dependent(
         }
     };
 
-    let _ = space.try_for_each_near(tile_pos, |entity| -> ControlFlow<(), ()>
+    let _ = space.try_for_each_near(tile_pos, |SpatialInfo{entity, ..}| -> ControlFlow<(), ()>
     {
         try_collide(entity);
 

@@ -21,6 +21,7 @@ use crate::{
         EntityInfo,
         AnyEntities,
         SpatialGrid,
+        spatial::SpatialInfo,
         entity::{
             iterate_components_with,
             ClientEntities
@@ -373,7 +374,7 @@ where
 {
     space.z_nodes[zs].iter().try_for_each(|node|
     {
-        node.try_fold((), &mut |_, entity|
+        node.try_fold((), &mut |_, SpatialInfo{entity, ..}|
         {
             let collider = some_or_value!(entities.collider(entity), ControlFlow::Continue(()));
             if before_raycast(&collider, entity)

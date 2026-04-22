@@ -24,6 +24,7 @@ use crate::{
         EntityInfo,
         AnyEntities,
         Parent,
+        spatial::SpatialInfo,
         systems::damaging_system,
         physics::SLEEPING_VELOCITY,
         anatomy::FALL_VELOCITY,
@@ -220,26 +221,26 @@ pub fn update(
 
     crate::frame_time_this!{
         [update, update_pre, collider_system_update] -> collision,
-        space.possible_pairs(|entity: Entity, other_entity: Entity|
+        space.possible_pairs(|
+            SpatialInfo{entity, position, half_scale},
+            SpatialInfo{entity: other_entity, position: other_position, half_scale: other_half_scale}
+        |
         {
+            {
+                let this_scale = half_scale.x.hypot(half_scale.y);
+                let other_scale = other_half_scale.x.hypot(other_half_scale.y);
+
+                if (this_scale + other_scale) < position.metric_distance(&other_position)
+                {
+                    return;
+                }
+            }
+
             let mut this;
             maybe_colliding_info!{this, entity};
 
             let other;
             maybe_colliding_info!{other, other_entity};
-
-            {
-                let this = &this.transform;
-                let other = &other.transform;
-
-                let this_scale = this.scale.x.hypot(this.scale.y);
-                let other_scale = other.scale.x.hypot(other.scale.y);
-
-                if (this_scale + other_scale) * 0.5 < this.position.xy().metric_distance(&other.position.xy())
-                {
-                    return;
-                }
-            }
 
             let before_collision_contacts = contacts.len();
             this.collide(other, |contact| contacts.push(contact));

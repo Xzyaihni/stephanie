@@ -39,6 +39,7 @@ use crate::common::{ENTITY_SCALE, with_z, line_info};
 pub const NODES_Z: usize = CHUNK_SIZE * CLIENT_OVERMAP_SIZE_Z;
 
 const MAX_DEPTH: usize = 5;
+const RANDOM_SAMPLE_AMOUNT: usize = 16;
 
 fn node_z(mapper: &ZMapper, TilePos{chunk, local}: TilePos) -> Option<usize>
 {
@@ -66,12 +67,26 @@ fn halfspace(median: f32, position: f32, half_scale: f32) -> Ordering
     }
 }
 
-#[derive(Debug, Clone)]
+fn axis_sort(values: &mut [SpatialInfo], axis_i: usize)
+{
+    values.sort_unstable_by(|a, b|
+    {
+        a.position.index(axis_i).partial_cmp(b.position.index(axis_i))
+            .unwrap_or(Ordering::Equal)
+    });
+}
+
+fn get_axis(values: &[SpatialInfo], axis_i: usize, index: usize) -> f32
+{
+    *values[index].position.index(axis_i)
+}
+
+#[derive(Debug, Clone, Copy)]
 pub struct SpatialInfo
 {
     pub entity: Entity,
-    pub position: Vector3<f32>,
-    pub half_scale: Vector3<f32>
+    pub position: Vector2<f32>,
+    pub half_scale: Vector2<f32>
 }
 
 #[derive(Debug)]
@@ -82,7 +97,7 @@ pub enum KNode
         right: Box<KNode>,
         median: f32
     },
-    Leaf{entities: Vec<Entity>}
+    Leaf{entities: Vec<SpatialInfo>}
 }
 
 impl KNode
@@ -93,47 +108,26 @@ impl KNode
         Self::Leaf{entities: Vec::new()}
     }
 
-    fn new_leaf(infos: Vec<SpatialInfo>) -> Self
+    fn new_leaf(entities: Vec<SpatialInfo>) -> Self
     {
-        Self::Leaf{entities: infos.into_iter().map(|x| x.entity).collect()}
+        Self::Leaf{entities}
     }
 
-    fn random_sample<const AMOUNT: usize, T: Clone>(values: &[T]) -> Vec<T>
+    fn with_random_sample(values: &mut [SpatialInfo], axis_i: usize) -> f32
     {
-        const OVERSAMPLE: usize = 2;
+        fn with_samples(random_sample: &mut [SpatialInfo], axis_i: usize) -> f32
+        {
+            axis_sort(random_sample, axis_i);
+
+            (get_axis(random_sample, axis_i, RANDOM_SAMPLE_AMOUNT / 2 - 1) + get_axis(random_sample, axis_i, RANDOM_SAMPLE_AMOUNT / 2)) / 2.0
+        }
 
         let total = values.len();
 
-        let difference = total - AMOUNT;
-        if difference < AMOUNT / 2
-        {
-            return values.iter().skip(fastrand::usize(0..(difference + 1))).take(AMOUNT).cloned().collect();
-        }
+        let difference = total - RANDOM_SAMPLE_AMOUNT;
 
-        let indices = (0..AMOUNT * OVERSAMPLE).try_fold(Vec::new(), |mut state, _|
-        {
-            let value = fastrand::usize(0..total);
-
-            if !state.contains(&value)
-            {
-                state.push(value);
-
-                if state.len() == AMOUNT
-                {
-                    return ControlFlow::Break(state);
-                }
-            }
-
-            ControlFlow::Continue(state)
-        });
-
-        let indices = match indices
-        {
-            ControlFlow::Continue(x) => x,
-            ControlFlow::Break(x) => x
-        };
-
-        indices.into_iter().map(|index| values[index].clone()).collect()
+        let start = fastrand::usize(0..(difference + 1));
+        with_samples(&mut values[start..(start + RANDOM_SAMPLE_AMOUNT)], axis_i)
     }
 
     pub fn new(mut infos: Vec<SpatialInfo>, depth: usize) -> Self
@@ -146,33 +140,14 @@ impl KNode
         let axis_i = depth % 2;
 
         let median = {
-            const AMOUNT: usize = 16;
-
-            let axis_sort = |values: &mut [SpatialInfo]|
+            if infos.len() < RANDOM_SAMPLE_AMOUNT
             {
-                values.sort_unstable_by(|a, b|
-                {
-                    a.position.index(axis_i).partial_cmp(b.position.index(axis_i))
-                        .unwrap_or(Ordering::Equal)
-                });
-            };
+                axis_sort(&mut infos, axis_i);
 
-            let get_axis = |values: &[SpatialInfo], index: usize|
-            {
-                *values[index].position.index(axis_i)
-            };
-
-            if infos.len() < AMOUNT
-            {
-                axis_sort(&mut infos);
-
-                (get_axis(&infos, infos.len() / 2 - 1) + get_axis(&infos, infos.len() / 2)) / 2.0
+                (get_axis(&infos, axis_i, infos.len() / 2 - 1) + get_axis(&infos, axis_i, infos.len() / 2)) / 2.0
             } else
             {
-                let mut random_sample = Self::random_sample::<AMOUNT, SpatialInfo>(&infos);
-                axis_sort(&mut random_sample);
-
-                (get_axis(&random_sample, AMOUNT / 2 - 1) + get_axis(&random_sample, AMOUNT / 2)) / 2.0
+                Self::with_random_sample(&mut infos, axis_i)
             }
         };
 
@@ -187,7 +162,7 @@ impl KNode
                 {
                     // in both halfspaces
 
-                    left_infos.push(info.clone());
+                    left_infos.push(info);
                     right_infos.push(info);
                 },
                 Ordering::Less =>
@@ -217,7 +192,7 @@ impl KNode
         position: Vector2<f32>,
         half_scale: Vector2<f32>,
         depth: usize,
-        f: &mut impl FnMut(Entity) -> ControlFlow<Break, ()>
+        f: &mut impl FnMut(SpatialInfo) -> ControlFlow<Break, ()>
     ) -> ControlFlow<Break, ()>
     {
         match self
@@ -255,13 +230,13 @@ impl KNode
         &self,
         position: Vector2<f32>,
         half_scale: Vector2<f32>,
-        mut f: impl FnMut(Entity) -> ControlFlow<Break, ()>
+        mut f: impl FnMut(SpatialInfo) -> ControlFlow<Break, ()>
     ) -> ControlFlow<Break, ()>
     {
         self.try_possible_collisions_with_inner(position, half_scale, 0, &mut f)
     }
 
-    fn possible_pairs(&self, f: &mut impl FnMut(Entity, Entity))
+    fn possible_pairs(&self, f: &mut impl FnMut(SpatialInfo, SpatialInfo))
     {
         match self
         {
@@ -283,7 +258,7 @@ impl KNode
     pub fn try_fold<State, Break>(
         &self,
         s: State,
-        f: &mut impl FnMut(State, Entity) -> ControlFlow<Break, State>
+        f: &mut impl FnMut(State, SpatialInfo) -> ControlFlow<Break, State>
     ) -> ControlFlow<Break, State>
     {
         match self
@@ -334,9 +309,10 @@ impl KNode
             },
             Self::Leaf{entities} =>
             {
-                entities.iter().for_each(|entity|
+                entities.iter().for_each(|info|
                 {
-                    if let Some(transform) = client_entities.transform(*entity)
+                    let entity = info.entity;
+                    if let Some(transform) = client_entities.transform(entity)
                     {
                         let z = transform.position.z;
                         let thickness = ENTITY_SCALE * 0.02;
@@ -581,8 +557,8 @@ impl SpatialGrid
 
             let info = SpatialInfo{
                 entity,
-                half_scale,
-                position
+                half_scale: half_scale.xy(),
+                position: position.xy()
             };
 
             queued[z].push(info);
@@ -658,7 +634,7 @@ impl SpatialGrid
         node_z_value(&self.z_mapper, value)
     }
 
-    pub fn possible_pairs(&self, mut f: impl FnMut(Entity, Entity))
+    pub fn possible_pairs(&self, mut f: impl FnMut(SpatialInfo, SpatialInfo))
     {
         self.z_nodes.iter().for_each(|node|
         {
@@ -669,7 +645,7 @@ impl SpatialGrid
     pub fn try_fold<State, Break>(
         &self,
         s: State,
-        mut f: impl FnMut(State, Entity) -> ControlFlow<Break, State>
+        mut f: impl FnMut(State, SpatialInfo) -> ControlFlow<Break, State>
     ) -> ControlFlow<Break, State>
     {
         self.z_nodes.iter().try_fold(s, |s, node| node.try_fold(s, &mut f))
@@ -677,7 +653,7 @@ impl SpatialGrid
 
     pub fn try_for_each<Break>(
         &self,
-        mut f: impl FnMut(Entity) -> ControlFlow<Break, ()>
+        mut f: impl FnMut(SpatialInfo) -> ControlFlow<Break, ()>
     ) -> ControlFlow<Break, ()>
     {
         self.try_fold((), move |_, x| f(x))
@@ -686,7 +662,7 @@ impl SpatialGrid
     pub fn try_for_each_near<Break>(
         &self,
         pos: TilePos,
-        f: impl FnMut(Entity) -> ControlFlow<Break, ()>
+        f: impl FnMut(SpatialInfo) -> ControlFlow<Break, ()>
     ) -> ControlFlow<Break, ()>
     {
         let z = some_or_value!(node_z(&self.z_mapper, pos), ControlFlow::Continue(()));

@@ -33,6 +33,7 @@ use crate::{
         Pos3,
         SpatialGrid,
         SpecialTile,
+        spatial::SpatialInfo,
         entity::iterate_components_with,
         world::{
             TILE_SIZE,
@@ -505,7 +506,7 @@ impl Pathfinder<'_>
 
         let control = if inside_simulated
         {
-            self.space.try_for_each_near(position, |entity|
+            self.space.try_for_each_near(position, |SpatialInfo{entity, ..}|
             {
                 let this_collider = some_or_value!(self.entities.collider(entity), ControlFlow::Continue(()));
 
