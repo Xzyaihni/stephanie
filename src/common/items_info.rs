@@ -101,7 +101,7 @@ impl Ranged
     }
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AmmoInfoRaw
 {
@@ -116,11 +116,12 @@ pub enum SpecialPart<T>
     GunTop{speed: f32, amount: f32, texture: T}
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ItemInfoRaw
 {
     name: String,
+    inherit: Option<String>,
     ranged: Option<Ranged>,
     special_part: Option<SpecialPart<String>>,
     usage: Option<ItemUsage>,
@@ -136,6 +137,38 @@ pub struct ItemInfoRaw
     lighting: Option<f32>,
     tags: Option<Vec<String>>,
     texture: Option<String>
+}
+
+impl ItemInfoRaw
+{
+    fn combine(&self, other: &Self) -> Self
+    {
+        let mut this = self.clone();
+
+        this.name = other.name.clone();
+
+        inherit_with_fields!(
+            this,
+            other,
+            ranged,
+            special_part,
+            usage,
+            clothing,
+            rarity_rolls,
+            damage_scale,
+            ammo,
+            comfort,
+            sharpness,
+            side_sharpness,
+            mass,
+            durability,
+            lighting,
+            tags,
+            texture
+        );
+
+        this
+    }
 }
 
 pub type ItemsInfoRaw = Vec<ItemInfoRaw>;
@@ -431,12 +464,19 @@ impl ItemsInfo
     {
         let info = some_or_value!(with_error(File::open(info)), Self::empty());
 
-        let items: ItemsInfoRaw = serde_json::from_reader(info).unwrap_or_else(|err|
+        let mut items: ItemsInfoRaw = serde_json::from_reader(info).unwrap_or_else(|err|
         {
             eprintln!("error parsing items: {err}");
 
             Vec::new()
         });
+
+        inherit_infos(
+            &mut items,
+            |this_info| this_info.inherit.as_ref(),
+            |this_info| &this_info.name,
+            |a, b| a.combine(b)
+        );
 
         let item_names: HashMap<String, ItemId> = items.iter().enumerate().map(|(index, item)| (item.name.clone(), ItemId(index))).collect();
 

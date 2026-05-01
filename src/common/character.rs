@@ -28,7 +28,6 @@ use crate::{
         some_or_unexpected_return,
         some_or_return,
         some_or_value,
-        some_or_false,
         define_layers,
         angle_between,
         opposite_angle,
@@ -151,15 +150,6 @@ fn default_lazy_rotation(is_player: bool) -> Rotation
     )
 }
 
-fn fast_lazy_rotation() -> Rotation
-{
-    Rotation::EaseOut(EaseOutRotation{
-        decay: 15.0,
-        speed_significant: 10.0,
-        momentum: 0.5
-    }.into())
-}
-
 fn heldlike_item_entity(
     character: Entity,
     hand_item: &ItemInfo,
@@ -261,7 +251,7 @@ pub enum CharacterAction
     Reload{item: Option<InventoryItem>},
     Throw{state: bool, target: Vector3<f32>},
     Poke{state: bool},
-    Bash,
+    Bash{state: bool},
     Ranged{state: bool, target: Vector3<f32>}
 }
 
@@ -405,12 +395,10 @@ struct CachedInfo
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-enum AttackState
+pub enum AttackStance
 {
-    None,
-    Poke,
-    Aim,
-    Throw
+    Forward,
+    Side
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -439,6 +427,16 @@ impl<T> CharacterEquips<T>
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CharacterAnimation
+{
+    Bash,
+    Poke,
+    Throw,
+    Reload,
+    Pickup(Entity)
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Character
 {
@@ -448,10 +446,9 @@ pub struct Character
     jiggle: f32,
     holding: Option<InventoryItem>,
     equips: CharacterEquips<Option<InventoryItem>>,
-    hands_infront: bool,
     #[serde(skip, default)]
     cached: CachedInfo,
-    attack_state: AttackState,
+    stance: AttackStance,
     #[serde(skip, default)]
     info: Option<AfterInfo>,
     held_update: bool,
@@ -479,9 +476,8 @@ impl Character
             info: None,
             holding: None,
             equips: CharacterEquips::default(),
-            hands_infront: false,
             cached: CachedInfo::default(),
-            attack_state: AttackState::None,
+            stance: AttackStance::Side,
             held_update: true,
             clothing_update: false,
             attack_cooldown: 0.0,
@@ -694,6 +690,189 @@ impl Character
         }
     }
 
+    pub fn set_animation(
+        &mut self,
+        combined_info: CombinedInfo,
+        animation: CharacterAnimation
+    )
+    {
+        let entities = combined_info.entities;
+
+        if self.info.is_none()
+        {
+            return;
+        }
+
+        let remove_start_comments = ();
+        match animation
+        {
+            /*CharacterAnimation::BashStart =>
+            {
+                let info = self.info.as_ref().unwrap();
+
+                let target_entity = if self.holding.is_some()
+                {
+                    info.hand_left
+                } else
+                {
+                    match self.bash_side
+                    {
+                        Side1d::Left => info.hand_left,
+                        Side1d::Right => info.hand_right
+                    }
+                };
+
+                let is_flip = if let Side1d::Left = self.bash_side { true } else { false };
+
+                let side_offset = 0.7;
+                let offset = if is_flip { -side_offset } else { side_offset };
+
+                let mut lazy = some_or_return!(entities.lazy_transform_mut_no_change(target_entity));
+                lazy.rotation = Rotation::EaseOut(
+                    EaseOutRotation{
+                        decay: 4.0,
+                        speed_significant: 10.0,
+                        momentum: 0.5
+                    }.into()
+                );
+
+                lazy.target().rotation = f32::consts::FRAC_PI_2 + offset;
+            },*/
+            CharacterAnimation::Bash =>
+            {
+                let info = self.info.as_mut().unwrap();
+
+                let this_entity = info.this;
+                self.update_hands_rotation(combined_info.entities);
+
+                entities.add_watcher(this_entity, Watcher{
+                    kind: WatcherType::Lifetime(0.5.into()),
+                    action: Box::new(move |entities, entity|
+                    {
+                        some_or_return!(entities.character(entity)).reset_stance(entities);
+                    }),
+                    ..Default::default()
+                });
+            },
+            CharacterAnimation::Poke =>
+            {
+                let info = self.info.as_ref().unwrap();
+
+                let mut lazy = some_or_return!(entities.lazy_transform_mut_no_change(info.hand_left));
+
+                let lifetime = self.attack_cooldown.min(0.5);
+                let extend_time = lifetime * 0.2;
+
+                lazy.rotation = Rotation::EaseOut(
+                    EaseOutRotation{
+                        decay: 16.0,
+                        speed_significant: 10.0,
+                        momentum: 0.5
+                    }.into()
+                );
+
+                let target = lazy.target();
+
+                let item_position = self.held_position(combined_info.characters_info, target.scale);
+
+                target.position.x = item_position.x + POKE_DISTANCE * ENTITY_SCALE;
+
+                let end = extend_time + extend_time;
+
+                entities.add_watcher(info.this, Watcher{
+                    kind: WatcherType::Lifetime(end.into()),
+                    action: Box::new(move |entities, entity|
+                    {
+                        some_or_return!(entities.character(entity)).reset_stance(entities);
+                    }),
+                    ..Default::default()
+                });
+            },
+            CharacterAnimation::Throw =>
+            {
+                let info = self.info.as_mut().unwrap();
+
+                let mut hand_right_lazy = some_or_return!(entities.lazy_transform_mut(info.hand_right));
+
+                hand_right_lazy.connection = Connection::EaseOut{
+                    decay: 6.0,
+                    limit: None
+                };
+
+                let mut hand_right_transform = some_or_unexpected_return!(entities.transform_mut(info.hand_right));
+                hand_right_transform.position += *angle_to_direction_3d(info.rotation) * (ENTITY_SCALE * 0.5);
+
+                entities.add_watcher(info.this, Watcher{
+                    kind: WatcherType::Lifetime(0.5.into()),
+                    action: Box::new(move |entities, entity|
+                    {
+                        some_or_return!(entities.character(entity)).reset_stance(entities);
+                    }),
+                    ..Default::default()
+                });
+            },
+            CharacterAnimation::Reload =>
+            {
+                let add_this = ();
+            },
+            CharacterAnimation::Pickup(item_entity) =>
+            {
+                let info = self.info.as_ref().unwrap();
+
+                if let Some(mut hand_right_transform) = entities.transform_mut(info.hand_right)
+                {
+                    if let Some(item_transform) = entities.transform(item_entity)
+                    {
+                        if let Some(mut hand_right_lazy) = entities.lazy_transform_mut(info.hand_right)
+                        {
+                            let item_direction = (item_transform.position - hand_right_transform.position).normalize();
+
+                            hand_right_lazy.connection = Connection::EaseOut{
+                                decay: 6.0,
+                                limit: None
+                            };
+
+                            hand_right_transform.position += item_direction * (ENTITY_SCALE * 0.5);
+
+                            entities.add_watcher(info.this, Watcher{
+                                kind: WatcherType::Lifetime(0.5.into()),
+                                action: Box::new(move |entities, entity|
+                                {
+                                    some_or_return!(entities.character(entity)).reset_stance(entities);
+                                }),
+                                ..Default::default()
+                            });
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    pub fn stance(&self) -> AttackStance
+    {
+        self.stance
+    }
+
+    pub fn set_stance(&mut self, entities: &ClientEntities, stance: AttackStance)
+    {
+        if self.stance != stance
+        {
+            self.stance = stance;
+
+            self.reset_stance(entities);
+        }
+    }
+
+    fn reset_stance(&self, entities: &ClientEntities)
+    {
+        match self.stance
+        {
+            AttackStance::Forward => self.forward_stance(entities),
+            AttackStance::Side => self.side_stance(entities)
+        }
+    }
+
     fn hair_select<'a, T>(&self, base: &'a BaseHair<T>) -> &'a T
     {
         &base[*self.sprite_state.value()]
@@ -880,6 +1059,8 @@ impl Character
                 }
             }
         });
+
+        self.set_animation(combined_info, CharacterAnimation::Reload);
     }
 
     pub fn on_removed_item(&mut self, item: InventoryItem)
@@ -1136,8 +1317,6 @@ impl Character
             let mut render = some_or_unexpected_return!(entities.render_mut(holding_entity.entity));
             render.set_texture(texture);
 
-            self.update_hands_rotation(combined_info);
-
             if let Some(special_part) = item.special_part.as_ref()
             {
                 match special_part
@@ -1181,20 +1360,6 @@ impl Character
             default_connection()
         };
 
-        let set_for = |entity, y|
-        {
-            let mut lazy = entities.lazy_transform_mut_no_change(entity).unwrap();
-            let target = lazy.target();
-
-            target.position = self.held_position(combined_info.characters_info, target.scale);
-
-            let info = combined_info.characters_info.get(self.id);
-            target.position.y = y * info.normal.scale.max();
-        };
-
-        set_for(hand_left, HAND_LEFT_Y);
-        set_for(hand_right, -HAND_LEFT_Y);
-
         let lazy_for = |entity|
         {
             entities.end_sync(entity, |mut current, target|
@@ -1217,12 +1382,14 @@ impl Character
             lazy_for(holding_entity.entity);
         }
 
-        if !holding_state
+        some_or_return!(self.info.as_mut()).last_held_item = Some(held_item_id);
+
+        if self.holding.is_none()
         {
-            self.unhanded_point(combined_info);
+            self.set_stance(entities, AttackStance::Side);
         }
 
-        some_or_return!(self.info.as_mut()).last_held_item = Some(held_item_id);
+        self.reset_stance(entities);
 
         self.held_update = false;
     }
@@ -1365,141 +1532,131 @@ impl Character
 
         self.stop_buffered(BufferedAction::Throw);
 
-        let hand_left = some_or_return!(self.info.as_ref()).hand_left;
-
-        let entities = combined_info.entities;
-
-        some_or_return!(entities.lazy_transform_mut_no_change(hand_left)).rotation = fast_lazy_rotation();
-
-        self.forward_point(combined_info);
-
-        self.attack_state = AttackState::Throw;
+        self.set_stance(combined_info.entities, AttackStance::Forward);
     }
 
     fn throw_held(
         &mut self,
         combined_info: CombinedInfo,
         target: Vector3<f32>
-    ) -> bool
+    )
     {
         self.stop_buffered(BufferedAction::Throw);
 
-        if self.attack_state != AttackState::Throw
+        if self.stance != AttackStance::Forward
         {
-            return false;
+            return;
         }
 
         if !self.can_throw(combined_info)
         {
-            return false;
+            return;
         }
 
         let entities = &combined_info.entities;
-        let strength = some_or_value!(self.newtons(entities), false) * 0.2;
+        let strength = some_or_return!(self.newtons(entities)) * 0.2;
 
-        if let Some(item) = self.held_item(entities)
+        let item = some_or_return!(self.held_item(entities));
+        let held = some_or_return!(self.holding.take());
+
+        let item_info = combined_info.items_info.get(item.id);
+        let damage_scale = item.damage_scale().unwrap_or(1.0);
+
+        let info = some_or_return!(self.info.as_ref());
+
+        let holding_entity = some_or_unexpected_return!(info.holding);
+
+        let level = if let Some(player) = combined_info.entities.player(info.this)
         {
-            let held = some_or_value!(self.holding.take(), false);
+            player.get_stat(StatId::Throw).level()
+        } else
+        {
+            0
+        };
 
-            let item_info = combined_info.items_info.get(item.id);
-            let damage_scale = item.damage_scale().unwrap_or(1.0);
+        let level_buff = 1.0 + level as f32 * 0.1;
 
-            let info = some_or_value!(self.info.as_ref(), false);
+        let collider = item_collider();
 
-            let holding_entity = some_or_unexpected_return!(info.holding);
+        let entity_info = {
+            let holding_transform = entities.transform(holding_entity.entity).unwrap();
 
-            let level = if let Some(player) = combined_info.entities.player(info.this)
-            {
-                player.get_stat(StatId::Throw).level()
-            } else
-            {
-                0
+            let direction = {
+                let rotation = angle_between(
+                    holding_transform.position,
+                    target
+                );
+
+                *angle_to_direction_3d(rotation)
             };
 
-            let level_buff = 1.0 + level as f32 * 0.1;
+            let mut physical: Physical = item_physical(item_info).into();
 
-            let collider = item_collider();
+            let throw_limit = 50.0 * item_info.mass * (1.0 + level as f32 * 0.01);
+            let throw_amount = (strength * 2.0 * (1.0 + level as f32 * 0.5)).min(throw_limit);
 
-            let entity_info = {
-                let holding_transform = entities.transform(holding_entity.entity).unwrap();
+            physical.add_force(direction * throw_amount);
 
-                let direction = {
-                    let rotation = angle_between(
-                        holding_transform.position,
-                        target
-                    );
+            let damage = item_info.poke_damage() * (damage_scale * level_buff);
 
-                    *angle_to_direction_3d(rotation)
-                };
-
-                let mut physical: Physical = item_physical(item_info).into();
-
-                let throw_limit = 50.0 * item_info.mass * (1.0 + level as f32 * 0.01);
-                let throw_amount = (strength * 2.0 * (1.0 + level as f32 * 0.5)).min(throw_limit);
-
-                physical.add_force(direction * throw_amount);
-
-                let damage = item_info.poke_damage() * (damage_scale * level_buff);
-
-                EntityInfo{
-                    physical: Some(physical),
-                    lazy_transform: Some(item_lazy_transform(item_info, holding_transform.position, holding_transform.rotation).into()),
-                    render: Some(RenderInfo{
-                        object: Some(RenderObjectKind::TextureId{
-                            id: item_info.item_texture.unwrap_or(item_info.texture).id
-                        }.into()),
-                        z_level: ZLevel::Elbow,
-                        ..Default::default()
-                    }),
-                    collider: Some(collider.clone().into()),
-                    light: Some(item_info.lighting),
-                    item: Some(item),
-                    damaging: Some(DamagingInfo{
-                        damage: DamagingType::Mass(damage),
-                        faction: Some(self.faction),
-                        source: Some(info.this),
-                        on_hit_gain: Some((StatId::Throw, 1.5)),
-                        ..Default::default()
+            EntityInfo{
+                physical: Some(physical),
+                lazy_transform: Some(item_lazy_transform(item_info, holding_transform.position, holding_transform.rotation).into()),
+                render: Some(RenderInfo{
+                    object: Some(RenderObjectKind::TextureId{
+                        id: item_info.item_texture.unwrap_or(item_info.texture).id
                     }.into()),
+                    z_level: ZLevel::Elbow,
                     ..Default::default()
-                }
-            };
-
-            let throw_projectile_entity = entities.push(true, entity_info);
-            let disappear_watcher = item_disappear_watcher(combined_info.common_textures);
-
-            entities.add_watcher(throw_projectile_entity, Watcher{
-                kind: WatcherType::Collision,
-                action: Box::new(move |entities, entity|
-                {
-                    entities.set_damaging(entity, None);
-
-                    entities.set_collider(entity, Some(ColliderInfo{
-                        layer: ColliderLayer::ThrownDecal,
-                        ..collider
-                    }.into()));
-
-                    entities.add_watcher(entity, disappear_watcher);
-
-                    if let Some(mut render) = entities.render_mut_no_change(entity)
-                    {
-                        render.set_z_level(ZLevel::BelowFeet);
-                    }
                 }),
+                collider: Some(collider.clone().into()),
+                light: Some(item_info.lighting),
+                item: Some(item),
+                damaging: Some(DamagingInfo{
+                    damage: DamagingType::Mass(damage),
+                    faction: Some(self.faction),
+                    source: Some(info.this),
+                    on_hit_gain: Some((StatId::Throw, 1.5)),
+                    ..Default::default()
+                }.into()),
                 ..Default::default()
-            });
+            }
+        };
 
-            inventory_remove_item_with(entities, info.this, held, ||
+        let throw_projectile_entity = entities.push(true, entity_info);
+        let disappear_watcher = item_disappear_watcher(combined_info.common_textures);
+
+        entities.add_watcher(throw_projectile_entity, Watcher{
+            kind: WatcherType::Collision,
+            action: Box::new(move |entities, entity|
             {
-                self.on_removed_item(held);
-            });
+                entities.set_damaging(entity, None);
 
-            self.consume_attack_oxygen(combined_info);
-        }
+                entities.set_collider(entity, Some(ColliderInfo{
+                    layer: ColliderLayer::ThrownDecal,
+                    ..collider
+                }.into()));
+
+                entities.add_watcher(entity, disappear_watcher);
+
+                if let Some(mut render) = entities.render_mut_no_change(entity)
+                {
+                    render.set_z_level(ZLevel::BelowFeet);
+                }
+            }),
+            ..Default::default()
+        });
+
+        inventory_remove_item_with(entities, info.this, held, ||
+        {
+            self.on_removed_item(held);
+        });
+
+        self.consume_attack_oxygen(combined_info);
+
+        self.set_animation(combined_info, CharacterAnimation::Throw);
 
         self.held_update = true;
-
-        true
     }
 
     pub fn can_move(&self, combined_info: CombinedInfo) -> bool
@@ -1577,11 +1734,11 @@ impl Character
         self.hand_rotation_with(self.bash_side)
     }
 
-    fn update_hands_rotation(&mut self, combined_info: CombinedInfo)
+    fn update_hands_rotation(&self, entities: &ClientEntities)
     {
         let info = some_or_return!(self.info.as_ref());
 
-        let is_player = combined_info.entities.player_exists(info.this);
+        let is_player = entities.player_exists(info.this);
 
         let (holding, holding_is_left) = if self.holding.is_some()
         {
@@ -1595,21 +1752,21 @@ impl Character
             }
         };
 
-        let start_rotation_holding = some_or_return!(self.default_held_rotation(combined_info, holding_is_left));
+        let start_rotation_holding = some_or_return!(self.default_held_rotation(entities, holding_is_left));
 
-        let mut lazy = some_or_return!(combined_info.entities.lazy_transform_mut_no_change(holding));
-        let swing_time = some_or_return!(self.bash_attack_cooldown(combined_info.entities));
+        let mut lazy = some_or_return!(entities.lazy_transform_mut_no_change(holding));
+        let swing_time = some_or_return!(self.bash_attack_cooldown(entities));
 
         let new_rotation = self.current_hand_rotation();
 
         if let Rotation::EaseOut(x) = &mut lazy.rotation
         {
-            x.set_decay(70.0);
+            x.set_decay(120.0);
         }
 
         lazy.target().rotation = start_rotation_holding - new_rotation;
 
-        combined_info.entities.add_watcher(holding, Watcher{
+        entities.add_watcher(holding, Watcher{
             kind: WatcherType::Lifetime(0.2.into()),
             action: Box::new(move |entities, entity|
             {
@@ -1624,7 +1781,7 @@ impl Character
         if self.holding.is_some()
         {
             let holding_entity = some_or_unexpected_return!(info.holding);
-            let mut target = some_or_return!(combined_info.entities.target(holding_entity.entity));
+            let mut target = some_or_return!(entities.target(holding_entity.entity));
             target.scale.x = match self.bash_side
             {
                 Side1d::Left => target.scale.x.abs(),
@@ -1632,7 +1789,7 @@ impl Character
             };
         } else
         {
-            combined_info.entities.add_watcher(holding, Watcher{
+            entities.add_watcher(holding, Watcher{
                 kind: WatcherType::Lifetime((swing_time.min(1.0) * 0.8).into()),
                 action: Box::new(move |entities, entity|
                 {
@@ -1644,8 +1801,11 @@ impl Character
                 ..Default::default()
             });
         }
+    }
 
-        self.hands_infront = false;
+    fn bash_attack_start(&mut self, combined_info: CombinedInfo)
+    {
+        self.set_stance(combined_info.entities, AttackStance::Side);
     }
 
     fn bash_attack(&mut self, combined_info: CombinedInfo, buffer: bool)
@@ -1660,6 +1820,11 @@ impl Character
             return;
         }
 
+        if self.stance != AttackStance::Side
+        {
+            return;
+        }
+
         self.stop_buffered(BufferedAction::Bash);
 
         self.attack_cooldown = self.attack_cooldown.max(some_or_return!(self.bash_attack_cooldown(combined_info.entities)));
@@ -1670,93 +1835,110 @@ impl Character
 
         self.bash_projectile(combined_info);
 
-        self.update_hands_rotation(combined_info);
+        self.set_animation(combined_info, CharacterAnimation::Bash);
     }
 
-    fn origin_rotation(&self, combined_info: CombinedInfo) -> Option<f32>
+    fn origin_rotation(&self, entities: &ClientEntities) -> Option<f32>
     {
-        Some(-combined_info.entities
+        Some(-entities
             .lazy_transform(self.info.as_ref()?.holding?.entity)?
             .origin_rotation())
     }
 
-    fn default_held_rotation(&self, combined_info: CombinedInfo, is_left: bool) -> Option<f32>
+    fn default_held_rotation(&self, entities: &ClientEntities, is_left: bool) -> Option<f32>
     {
-        let origin_rotation = self.origin_rotation(combined_info)?;
+        let origin_rotation = self.origin_rotation(entities)?;
 
         let hand_offset = if is_left { 0.1 } else { -0.1 };
 
         Some(origin_rotation + hand_offset)
     }
 
-    fn hands_reset_rotation(&mut self, combined_info: CombinedInfo)
+    fn forward_stance(&self, entities: &ClientEntities)
+    {
+        debug_assert!(self.holding.is_some());
+
+        let info = some_or_return!(self.info.as_ref());
+
+        let f = |entity|
+        {
+            let mut lazy = some_or_return!(entities.lazy_transform_mut_no_change(entity));
+
+            let start_rotation = some_or_return!(self.origin_rotation(entities));
+
+            lazy.target().rotation = start_rotation;
+        };
+
+        f(info.hand_left);
+        f(info.hand_right);
+
+        self.reset_hands_position(entities);
+    }
+
+    fn side_stance(&self, entities: &ClientEntities)
     {
         let info = some_or_return!(self.info.as_ref());
 
+        let is_player = entities.player_exists(info.this);
+
         let f = |entity, is_left|
         {
-            if let Some(mut lazy) = combined_info.entities.lazy_transform_mut_no_change(entity)
-            {
-                let start_rotation = some_or_return!(self.default_held_rotation(combined_info, is_left));
+            let mut lazy = some_or_return!(entities.lazy_transform_mut_no_change(entity));
 
-                lazy.target().rotation = start_rotation;
-            }
+            lazy.rotation = default_lazy_rotation(is_player);
+
+            let start_rotation = some_or_return!(self.default_held_rotation(entities, is_left));
+
+            let target = lazy.target();
+
+            target.rotation = start_rotation;
+        };
+
+        f(info.hand_left, true);
+        f(info.hand_right, false);
+
+        self.reset_hands_position(entities);
+
+        self.update_hands_rotation(entities);
+    }
+
+    fn reset_hands_position(&self, entities: &ClientEntities)
+    {
+        let info = some_or_return!(self.info.as_ref());
+
+        let characters_info = &entities.infos().characters_info;
+
+        let item_position = {
+            let scale = some_or_return!(entities.lazy_transform(info.hand_left)).target_ref().scale;
+
+            self.held_position(characters_info, scale)
+        };
+
+        let f = |entity, is_left|
+        {
+            let mut lazy = some_or_return!(entities.lazy_transform_mut_no_change(entity));
+            let target = lazy.target();
+
+            let character_info = characters_info.get(self.id);
+
+            let y = if is_left { HAND_LEFT_Y } else { -HAND_LEFT_Y };
+            let held_position = Vector3::new(item_position.x, y * character_info.normal.scale.max(), 0.0);
+
+            target.position = held_position;
         };
 
         f(info.hand_left, true);
         f(info.hand_right, false);
     }
 
-    fn unhanded_point(&mut self, combined_info: CombinedInfo)
-    {
-        self.hands_reset_rotation(combined_info);
-
-        let info = some_or_return!(self.info.as_ref());
-
-        if let Some(mut lazy) = combined_info.entities.lazy_transform_mut_no_change(info.hand_left)
-        {
-            let info = combined_info.characters_info.get(self.id);
-
-            lazy.target().position.y = HAND_LEFT_Y * info.normal.scale.max();
-        }
-    }
-
-    fn forward_point(&mut self, combined_info: CombinedInfo)
-    {
-        let info = some_or_return!(self.info.as_ref());
-
-        let f = |entity|
-        {
-            if let Some(mut lazy) = combined_info.entities.lazy_transform_mut_no_change(entity)
-            {
-                let start_rotation = some_or_return!(self.origin_rotation(combined_info));
-
-                lazy.target().rotation = start_rotation;
-            }
-        };
-
-        f(info.hand_left);
-        f(info.hand_right);
-
-        if let Some(mut lazy) = combined_info.entities.lazy_transform_mut_no_change(info.hand_left)
-        {
-            lazy.target().position.y = 0.0;
-        }
-    }
-
-    fn clear_attack_state(&mut self, combined_info: CombinedInfo, successful: bool)
-    {
-        self.attack_state = AttackState::None;
-
-        if !successful && self.holding.is_some()
-        {
-            self.update_hands_rotation(combined_info);
-        }
-    }
-
     fn aim_start(&mut self, combined_info: CombinedInfo)
     {
-        if !self.can_ranged() || self.attack_cooldown > 0.0
+        if !self.can_ranged()
+        {
+            return;
+        }
+
+        if self.attack_cooldown > 0.0
         {
             self.start_buffered(BufferedAction::Aim);
 
@@ -1765,15 +1947,7 @@ impl Character
 
         self.stop_buffered(BufferedAction::Aim);
 
-        let hand_left = some_or_return!(self.info.as_ref()).hand_left;
-
-        let entities = combined_info.entities;
-
-        some_or_return!(entities.lazy_transform_mut_no_change(hand_left)).rotation = fast_lazy_rotation();
-
-        self.forward_point(combined_info);
-
-        self.attack_state = AttackState::Aim;
+        self.set_stance(combined_info.entities, AttackStance::Forward);
     }
 
     fn start_buffered(&mut self, action: BufferedAction)
@@ -1812,146 +1986,84 @@ impl Character
 
         self.stop_buffered(BufferedAction::Poke);
 
-        let hand_left = some_or_return!(self.info.as_ref()).hand_left;
-
-        let entities = combined_info.entities;
-
-        some_or_return!(entities.lazy_transform_mut_no_change(hand_left)).rotation = fast_lazy_rotation();
-
-        self.forward_point(combined_info);
-
-        self.attack_state = AttackState::Poke;
+        self.set_stance(combined_info.entities, AttackStance::Forward);
     }
 
-    fn poke_attack(&mut self, combined_info: CombinedInfo) -> bool
+    fn poke_attack(&mut self, combined_info: CombinedInfo)
     {
         self.stop_buffered(BufferedAction::Poke);
 
         if !self.can_poke()
         {
-            return false;
+            return;
         }
 
-        if self.attack_state != AttackState::Poke
+        if self.stance != AttackStance::Forward
         {
-            return false;
+            return;
         }
 
         if !self.can_attack(combined_info)
         {
-            return false;
+            return;
         }
 
-        let item = some_or_false!(self.held_item(combined_info.entities));
+        let item = some_or_return!(self.held_item(combined_info.entities));
 
-        self.attack_cooldown = self.attack_cooldown.max(some_or_false!(self.held_attack_cooldown(combined_info.entities)));
+        self.attack_cooldown = self.attack_cooldown.max(some_or_return!(self.held_attack_cooldown(combined_info.entities)));
 
         self.consume_attack_oxygen(combined_info);
 
         self.poke_projectile(combined_info, item);
 
-        let info = some_or_false!(self.info.as_ref());
-
-        let entities = &combined_info.entities;
-
-        let is_player = entities.player_exists(info.this);
-
-        let mut lazy = some_or_false!(entities.lazy_transform_mut_no_change(info.hand_left));
-
-        let lifetime = self.attack_cooldown.min(0.5);
-        let extend_time = lifetime * 0.2;
-
-        lazy.rotation = Rotation::EaseOut(
-            EaseOutRotation{
-                decay: 16.0,
-                speed_significant: 10.0,
-                momentum: 0.5
-            }.into()
-        );
-
-        let target = lazy.target();
-
-        let item_position = self.held_position(combined_info.characters_info, target.scale);
-        let held_position = Vector3::new(item_position.x, target.position.y, 0.0);
-
-        target.position.x = item_position.x + POKE_DISTANCE * ENTITY_SCALE;
-
-        let end = extend_time + extend_time;
-
-        let this_entity = info.this;
-        let current_holding = self.holding;
-
-        entities.add_watcher(info.hand_left, Watcher{
-            kind: WatcherType::Lifetime(end.into()),
-            action: Box::new(move |entities, entity|
-            {
-                let character = some_or_return!(entities.character(this_entity));
-                if character.holding() != current_holding
-                {
-                    return;
-                }
-
-                if let Some(mut lazy) = entities.lazy_transform_mut(entity)
-                {
-                    lazy.rotation = default_lazy_rotation(is_player);
-                }
-
-                if let Some(mut target) = entities.target(entity)
-                {
-                    target.position = held_position;
-                }
-            }),
-            ..Default::default()
-        });
-
-        true
+        self.set_animation(combined_info, CharacterAnimation::Poke);
     }
 
     fn ranged_attack(
         &mut self,
         combined_info: CombinedInfo,
         target: Vector3<f32>
-    ) -> bool
+    )
     {
         self.stop_buffered(BufferedAction::Aim);
 
-        if self.attack_state != AttackState::Aim
-        {
-            return false;
-        }
-
         if !self.can_ranged()
         {
-            return false;
+            return;
+        }
+
+        if self.stance != AttackStance::Forward
+        {
+            return;
         }
 
         if self.attack_cooldown > 0.0
         {
-            return false;
+            return;
         }
 
-        let item = some_or_false!(self.held_item(combined_info.entities));
+        let item = some_or_return!(self.held_item(combined_info.entities));
 
         let items_info = combined_info.items_info;
 
         let item_info = items_info.get(item.id);
 
-        let this_entity = some_or_false!(self.info.as_ref()).this;
+        let this_entity = some_or_return!(self.info.as_ref()).this;
 
         if item_info.ammo.is_some()
         {
-            let held = some_or_false!(self.holding);
+            let held = some_or_return!(self.holding);
 
-            let mut inventory = some_or_false!(combined_info.entities.inventory_mut(this_entity));
-            let mut item = some_or_false!(inventory.get_mut(items_info, held));
+            let mut inventory = some_or_return!(combined_info.entities.inventory_mut(this_entity));
+            let mut item = some_or_return!(inventory.get_mut(items_info, held));
 
             if item.ammo.pop().is_none()
             {
-                return false;
+                return;
             }
         }
 
-        let ranged = some_or_false!(&item_info.ranged);
+        let ranged = some_or_return!(&item_info.ranged);
 
         {
             let info = some_or_unexpected_return!(self.info.as_mut());
@@ -1972,7 +2084,7 @@ impl Character
         let holding = some_or_unexpected_return!(info.holding.as_ref());
         let holding_entity = holding.entity;
 
-        let holding_transform = some_or_false!(combined_info.entities.transform(holding_entity));
+        let holding_transform = some_or_return!(combined_info.entities.transform(holding_entity));
 
         let trail_start = {
             let x_offset = ranged.exit_offset() / ENTITY_PIXEL_SCALE as f32 * ENTITY_SCALE;
@@ -2068,8 +2180,6 @@ impl Character
         });
 
         combined_info.entities.add_watcher(muzzleflash_entity, Watcher::simple_disappearing(0.1));
-
-        true
     }
 
     fn target_mass(&self, combined_info: CombinedInfo) -> f32
@@ -2323,7 +2433,7 @@ impl Character
         });
     }
 
-    fn pickup_item(&self, combined_info: CombinedInfo, item_entity: Entity)
+    fn pickup_item(&mut self, combined_info: CombinedInfo, item_entity: Entity)
     {
         let info = some_or_return!(self.info.as_ref());
 
@@ -2339,38 +2449,6 @@ impl Character
 
         lazy.scaling = Scaling::EaseIn(EaseInInfo::new(0.015));
 
-        if let Some(mut hand_right_transform) = entities.transform_mut(info.hand_right)
-        {
-            if let Some(item_transform) = entities.transform(item_entity)
-            {
-                if let Some(mut hand_right_lazy) = entities.lazy_transform_mut(info.hand_right)
-                {
-                    let hand_right = info.hand_right;
-
-                    let item_direction = (item_transform.position - hand_right_transform.position).normalize();
-
-                    hand_right_lazy.connection = Connection::EaseOut{
-                        decay: 6.0,
-                        limit: None
-                    };
-
-                    hand_right_transform.position += item_direction * (ENTITY_SCALE * 0.5);
-
-                    entities.add_watcher(hand_right, Watcher{
-                        kind: WatcherType::Lifetime(0.5.into()),
-                        action: Box::new(move |entities, entity|
-                        {
-                            if let Some(mut lazy) = entities.lazy_transform_mut(entity)
-                            {
-                                lazy.connection = default_connection();
-                            }
-                        }),
-                        ..Default::default()
-                    });
-                }
-            }
-        }
-
         let transform = some_or_unexpected_return!(entities.transform(info.this));
 
         lazy.target_local.position = transform.position;
@@ -2384,6 +2462,8 @@ impl Character
             }),
             ..Default::default()
         });
+
+        self.set_animation(combined_info, CharacterAnimation::Pickup(item_entity));
     }
 
     fn handle_actions(&mut self, combined_info: CombinedInfo)
@@ -2395,21 +2475,6 @@ impl Character
 
         mem::take(&mut self.actions).into_iter().for_each(|action|
         {
-            macro_rules! with_clear
-            {
-                ($state:expr) =>
-                {
-                    {
-                        let state = $state;
-
-                        if self.attack_cooldown <= 0.0
-                        {
-                            self.clear_attack_state(combined_info, state);
-                        }
-                    }
-                }
-            }
-
             match action
             {
                 CharacterAction::PickupItem{item} => self.pickup_item(combined_info, item),
@@ -2421,12 +2486,13 @@ impl Character
                     }
                 },
                 CharacterAction::Throw{state: false, ..} => self.throw_start(combined_info),
-                CharacterAction::Throw{state: true, target} => with_clear!(self.throw_held(combined_info, target)),
+                CharacterAction::Throw{state: true, target} => self.throw_held(combined_info, target),
                 CharacterAction::Poke{state: false} => self.poke_attack_start(combined_info),
-                CharacterAction::Poke{state: true} => with_clear!(self.poke_attack(combined_info)),
+                CharacterAction::Poke{state: true} => self.poke_attack(combined_info),
                 CharacterAction::Ranged{state: false, ..} => self.aim_start(combined_info),
-                CharacterAction::Ranged{state: true, target} => with_clear!(self.ranged_attack(combined_info, target)),
-                CharacterAction::Bash => self.bash_attack(combined_info, true)
+                CharacterAction::Ranged{state: true, target} => self.ranged_attack(combined_info, target),
+                CharacterAction::Bash{state: false} => self.bash_attack_start(combined_info),
+                CharacterAction::Bash{state: true} => self.bash_attack(combined_info, true)
             }
         });
     }
@@ -2584,7 +2650,7 @@ impl Character
                 match action
                 {
                     BufferedAction::Poke => { self.poke_attack_start(combined_info); },
-                    BufferedAction::Bash => self.bash_attack(combined_info, false),
+                    BufferedAction::Bash => { self.bash_attack(combined_info, false); },
                     BufferedAction::Aim => self.aim_start(combined_info),
                     BufferedAction::Throw => self.throw_start(combined_info)
                 }

@@ -47,6 +47,11 @@
         "on_destroy": "(standard-drops '(rock))"
     },
     {
+        "name": "iron-ore",
+        "health": 0.3,
+        "on_destroy": "(and-always (standard-drops '(metal_shard)) 'rock)"
+    },
+    {
         "name": "glass",
         "connecting": "Edge",
         "health": 0.004,

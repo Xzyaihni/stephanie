@@ -15,7 +15,7 @@ pub enum EquipSlot
     Head
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ClothingInfoRaw
 {

@@ -41,8 +41,8 @@ use super::{
 };
 
 
-#[derive(Debug)]
-struct Indexer
+#[derive(Debug, Clone, Copy)]
+pub struct Indexer
 {
     pub size: Pos3<usize>,
     pub player_position: Pos3<f32>
@@ -331,6 +331,11 @@ impl ClientOvermap
             chunk_ordering,
             indexer
         }
+    }
+
+    pub fn indexer(&self) -> Indexer
+    {
+        self.indexer
     }
 
     pub fn exists_missing(&self) -> (u32, u32)

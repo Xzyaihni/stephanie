@@ -48,6 +48,7 @@ use crate::{
         render_info::*,
         lazy_transform::*,
         particle_creator::*,
+        SpatialGrid,
         Sprite,
         ClientLoot,
         MessagePasser,
@@ -149,6 +150,7 @@ pub struct ClientEntitiesContainer
     pub camera_entity: Entity,
     pub player_entity: Entity,
     pub follow_target: Rc<RefCell<Entity>>,
+    space: Option<SpatialGrid>,
     visible_renders: Vec<Vec<Entity>>,
     above_world_renders: Vec<Entity>,
     occluders: Vec<Entity>,
@@ -177,6 +179,7 @@ impl ClientEntitiesContainer
             camera_entity,
             player_entity,
             follow_target: Rc::new(RefCell::new(player_entity)),
+            space: None,
             visible_renders: Vec::new(),
             above_world_renders: Vec::new(),
             occluders: Vec::new(),
@@ -233,21 +236,34 @@ impl ClientEntitiesContainer
             player_system::update(&mut self.entities, dt)
         };
 
-        let space = crate::frame_time_this!{
+        crate::frame_time_this!{
             [update, update_pre] -> spatial_grid_build,
-            world.build_spatial(&self.entities, self.follow_target())
+            {
+                let follow_target = self.follow_target();
+                let indexer = world.overmap().indexer();
+
+                if let Some(space) = self.space.as_mut()
+                {
+                    space.rebuild_spatial(&self.entities, indexer, follow_target);
+                } else
+                {
+                    self.space = Some(SpatialGrid::new(&self.entities, indexer, follow_target));
+                }
+            }
         };
+
+        let space = self.space.as_ref().unwrap();
 
         crate::frame_time_this!{
             [update, update_pre] -> sleeping_update,
-            collider_system::update_sleeping(&self.entities, &space)
+            collider_system::update_sleeping(&self.entities, space)
         };
 
         if DebugConfig::is_disabled(DebugTool::DisableEnemySystem)
         {
             crate::frame_time_this!{
                 [update, update_pre] -> enemy_system_update,
-                enemy_system::update(&mut self.entities, world, &space, dt)
+                enemy_system::update(&mut self.entities, world, space, dt)
             };
         }
 
@@ -263,7 +279,7 @@ impl ClientEntitiesContainer
 
         let contacts = crate::frame_time_this!{
             [update, update_pre] -> collider_system_update,
-            collider_system::update(&mut self.entities, world, &space, common_textures, loot)
+            collider_system::update(&mut self.entities, world, space, common_textures, loot)
         };
 
         crate::frame_time_this!{
@@ -288,7 +304,7 @@ impl ClientEntitiesContainer
 
         crate::frame_time_this!{
             [update, update_pre] -> damaging_system_update,
-            damaging_system::update(&mut self.entities, &space, world, loot, passer, common_textures)
+            damaging_system::update(&mut self.entities, space, world, loot, passer, common_textures)
         };
 
         crate::frame_time_this!{

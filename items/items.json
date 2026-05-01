@@ -298,6 +298,15 @@
         "mass": 0.5
     },
     {
+        "name": "sebastian's glock",
+        "inherit": "glock",
+        "ammo": {
+            "items": ["bullet"],
+            "max": 37
+        },
+        "texture": "glock"
+    },
+    {
         "name": "bullet",
         "rarity_rolls": false,
         "comfort": 0.5,

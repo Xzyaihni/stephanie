@@ -1,7 +1,7 @@
 use std::{
     cmp::Ordering,
     ops::ControlFlow,
-    cell::RefCell
+    cell::{RefCell, Ref}
 };
 
 use nalgebra::{Vector2, Vector3};
@@ -12,11 +12,6 @@ use crate::{
         some_or_value,
         some_or_return,
         unique_pairs_no_self,
-        render_info::*,
-        watcher::*,
-        Transform,
-        EntityInfo,
-        AnyEntities,
         Entity,
         Collider,
         OverrideTransform,
@@ -33,7 +28,16 @@ use crate::{
 };
 
 #[allow(unused_imports)]
-use crate::common::{ENTITY_SCALE, with_z, line_info};
+use crate::common::{
+    render_info::*,
+    watcher::*,
+    ENTITY_SCALE,
+    with_z,
+    line_info,
+    Transform,
+    EntityInfo,
+    AnyEntities
+};
 
 
 pub const NODES_Z: usize = CHUNK_SIZE * CLIENT_OVERMAP_SIZE_Z;
@@ -151,8 +155,10 @@ impl KNode
             }
         };
 
-        let mut left_infos = Vec::new();
-        let mut right_infos = Vec::new();
+        let half_len = infos.len() / 2;
+
+        let mut left_infos = Vec::with_capacity(half_len);
+        let mut right_infos = Vec::with_capacity(half_len);
 
         infos.into_iter().for_each(|info|
         {
@@ -478,6 +484,72 @@ impl ZMapper
     }
 }
 
+fn player_z(entities: &ClientEntities, mapper: &impl OvermapIndexing) -> Option<usize>
+{
+    iterate_components_with!(entities, player, find_map, |entity, _|
+    {
+        entities.transform(entity).and_then(|x|
+        {
+            let pos = TilePos::from(x.position);
+            let player_chunk = mapper.to_local_z(mapper.player_position().0.z)?;
+
+            Some(player_chunk * CHUNK_SIZE + pos.local.pos().z)
+        })
+    })
+}
+
+fn info_of(
+    entities: &ClientEntities,
+    entity: Entity,
+    collider: Ref<Collider>,
+    z_mapper: &ZMapper
+) -> Option<(SpatialInfo, usize)>
+{
+    let (half_scale, position) = {
+        let transform = entities.transform(entity)?;
+
+        let (transform, position) = if let Some(OverrideTransform{
+            transform: override_transform,
+            override_position
+        }) = collider.override_transform.as_ref()
+        {
+            let position = if *override_position
+            {
+                override_transform.position
+            } else
+            {
+                override_transform.position + transform.position
+            };
+
+            (override_transform, position)
+        } else
+        {
+            (&*transform, transform.position)
+        };
+
+        (collider.half_bounds(transform), position)
+    };
+
+    let z = {
+        if let Some(x) = node_z_value(&z_mapper, position.z)
+        {
+            x
+        } else
+        {
+            eprintln!("position {position} is out of range");
+            return None;
+        }
+    };
+
+    let info = SpatialInfo{
+        entity,
+        half_scale: half_scale.xy(),
+        position: position.xy()
+    };
+
+    Some((info, z))
+}
+
 #[derive(Debug)]
 pub struct SpatialGrid
 {
@@ -490,24 +562,10 @@ impl SpatialGrid
 {
     pub fn new(
         entities: &ClientEntities,
-        mapper: &impl OvermapIndexing,
+        mapper: impl OvermapIndexing,
         follow_target: Entity
     ) -> Self
     {
-        fn player_z(entities: &ClientEntities, mapper: &impl OvermapIndexing) -> Option<usize>
-        {
-            iterate_components_with!(entities, player, find_map, |entity, _|
-            {
-                entities.transform(entity).and_then(|x|
-                {
-                    let pos = TilePos::from(x.position);
-                    let player_chunk = mapper.to_local(mapper.player_position())?.pos.z;
-
-                    Some(player_chunk * CHUNK_SIZE + pos.local.pos().z)
-                })
-            })
-        }
-
         let z_mapper = ZMapper{position: mapper.player_position().0.z, size: mapper.size().z};
 
         let mut queued = [const { Vec::new() }; NODES_Z];
@@ -520,92 +578,69 @@ impl SpatialGrid
                 return;
             }
 
-            let (half_scale, position) = {
-                let transform = some_or_return!(entities.transform(entity));
-
-                let (transform, position) = if let Some(OverrideTransform{
-                    transform: override_transform,
-                    override_position
-                }) = collider.override_transform.as_ref()
-                {
-                    let position = if *override_position
-                    {
-                        override_transform.position
-                    } else
-                    {
-                        override_transform.position + transform.position
-                    };
-
-                    (override_transform, position)
-                } else
-                {
-                    (&*transform, transform.position)
-                };
-
-                (collider.half_bounds(transform), position)
-            };
-
-            let z = {
-                if let Some(x) = node_z_value(&z_mapper, position.z)
-                {
-                    x
-                } else
-                {
-                    return eprintln!("position {position} is out of range");
-                }
-            };
-
-            let info = SpatialInfo{
-                entity,
-                half_scale: half_scale.xy(),
-                position: position.xy()
-            };
+            let (info, z) = some_or_return!(info_of(entities, entity, collider, &z_mapper));
 
             queued[z].push(info);
-
-            if DebugConfig::is_enabled(DebugTool::DisplaySpatial)
-            {
-                if let Some(player_z) = player_z(entities, mapper)
-                {
-                    if player_z == z
-                    {
-                        let entity = entities.push(true, EntityInfo{
-                            transform: Some(Transform{
-                                position,
-                                scale: half_scale * 2.0,
-                                ..Default::default()
-                            }),
-                            render: Some(RenderInfo{
-                                object: Some(RenderObjectKind::Texture{
-                                    name: "solid.png".into()
-                                }.into()),
-                                mix: Some(MixColor::color([1.0, 1.0, 0.0, 0.3])),
-                                above_world: true,
-                                z_level: ZLevel::BelowFeet,
-                                ..Default::default()
-                            }),
-                            ..Default::default()
-                        });
-
-                        entities.add_watcher(entity, Watcher::simple_one_frame());
-                    }
-                }
-            }
         });
 
-        let z_nodes = queued.map(|queued| KNode::new(queued, 0));
+        let this = Self{
+            z_mapper,
+            follow_position: entities.transform(follow_target).map(|x| x.position).unwrap_or_else(Vector3::zeros),
+            z_nodes: queued.map(|queued| KNode::new(queued, 0))
+        };
 
-        z_nodes.iter().enumerate().for_each(|(z, node)|
+        this.debug_z_nodes(entities, &mapper);
+
+        this
+    }
+
+    pub fn rebuild_spatial(
+        &mut self,
+        entities: &ClientEntities,
+        mapper: impl OvermapIndexing,
+        follow_target: Entity
+    )
+    {
+        self.z_mapper.position = mapper.player_position().0.z;
+        self.follow_position = entities.transform(follow_target).map(|x| x.position).unwrap_or_else(Vector3::zeros);
+
+        let mut queued = [const { Vec::new() }; NODES_Z];
+        for_each_component!(entities, collider, |entity, collider: &RefCell<Collider>|
         {
+            let collider = collider.borrow();
+
+            if collider.sleeping
+            {
+                return;
+            }
+
+            let (info, z) = some_or_return!(info_of(entities, entity, collider, &self.z_mapper));
+
+            queued[z].push(info);
+        });
+
+        self.z_nodes = queued.map(|queued| KNode::new(queued, 0));
+
+        self.debug_z_nodes(entities, &mapper);
+    }
+
+    fn debug_z_nodes(&self, entities: &ClientEntities, mapper: &impl OvermapIndexing)
+    {
+        if DebugConfig::is_disabled(DebugTool::DisplaySpatial) && DebugConfig::is_disabled(DebugTool::Spatial)
+        {
+            return;
+        }
+
+        self.z_nodes.iter().enumerate().for_each(|(z, node)|
+        {
+            if player_z(entities, mapper) != Some(z)
+            {
+                return;
+            }
+
             if DebugConfig::is_enabled(DebugTool::DisplaySpatial)
             {
-                if let Some(player_z) = player_z(entities, mapper)
-                {
-                    if player_z == z
-                    {
-                        node.debug_display(entities, vec![]);
-                    }
-                }
+                node.debug_display(entities, vec![]);
             }
 
             if DebugConfig::is_enabled(DebugTool::Spatial)
@@ -619,14 +654,6 @@ impl SpatialGrid
                 }
             }
         });
-
-        let follow_position = entities.transform(follow_target).map(|x| x.position).unwrap_or_else(Vector3::zeros);
-
-        Self{
-            z_mapper,
-            follow_position,
-            z_nodes
-        }
     }
 
     pub fn z_of(&self, value: f32) -> Option<usize>

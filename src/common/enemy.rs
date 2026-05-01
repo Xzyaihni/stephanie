@@ -283,7 +283,9 @@ fn follow_path(
                 let mut character = some_or_return!(entities.character_mut_no_change(entity));
 
                 character.look_at(entities, entity, Vector3::from(tile_pos.center_position()).xy());
-                character.push_action(CharacterAction::Bash);
+
+                let make_this_charged = ();
+                character.push_action(CharacterAction::Bash{state: true});
             }
         }
     }
@@ -542,7 +544,8 @@ impl Enemy
 
                                 if character.bash_reachable(&transform, &other_transform.scale, &target)
                                 {
-                                    character.push_action(CharacterAction::Bash);
+                                    let make_this_charged = ();
+                                    character.push_action(CharacterAction::Bash{state: true});
                                 }
                             }
 

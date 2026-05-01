@@ -162,7 +162,7 @@ impl Game
         with_game_state(&self.game_state, |game_state| f(PlayerContainer::new(&mut info, game_state)))
     }
 
-    pub fn on_player_connected(&mut self)
+    pub fn on_player_connected(&mut self, screen_size: [f32; 2])
     {
         let info0 = self.info.clone();
         with_game_state(&self.game_state, move |game_state|
@@ -194,7 +194,7 @@ impl Game
 
         self.player_container(|mut x|
         {
-            x.on_player_connected()
+            x.on_player_connected(screen_size)
         })
     }
 
@@ -214,7 +214,7 @@ impl Game
 
         let keep_running = self.player_container(|mut x|
         {
-            x.this_update(dt)
+            x.this_update(info.partial.size, dt)
         });
 
         if !keep_running
@@ -1108,6 +1108,7 @@ struct PlayerInfo
     previous_oxygen: Option<f32>,
     previous_cooldown: (f32, f32),
     mouse_highlighted: Option<Entity>,
+    queued_action: bool,
     interacted: bool
 }
 
@@ -1127,6 +1128,7 @@ impl PlayerInfo
             previous_oxygen: None,
             previous_cooldown: (0.0, 0.0),
             mouse_highlighted: None,
+            queued_action: false,
             interacted: false
         }
     }
@@ -1150,7 +1152,7 @@ impl<'a> PlayerContainer<'a>
         self.game_state.entities.player_exists()
     }
 
-    pub fn on_player_connected(&mut self)
+    pub fn on_player_connected(&mut self, screen_size: [f32; 2])
     {
         let is_dead = self.game_state.entities().anatomy(self.info.entity).map(|x| x.is_dead()).unwrap_or(false);
         if is_dead
@@ -1158,7 +1160,7 @@ impl<'a> PlayerContainer<'a>
             self.game_state.ui.borrow_mut().player_dead();
         }
 
-        self.camera_sync_instant();
+        self.camera_sync_instant(screen_size);
     }
 
     pub fn camera_sync(&mut self)
@@ -1175,16 +1177,16 @@ impl<'a> PlayerContainer<'a>
         }
     }
 
-    pub fn camera_sync_instant(&mut self)
+    pub fn camera_sync_instant(&mut self, screen_size: [f32; 2])
     {
-        if !self.update_camera_follow() { return; }
+        if !self.update_camera_follow(screen_size) { return; }
 
         self.game_state.entities().end_sync_full(self.info.camera);
 
         self.camera_sync();
     }
 
-    fn update_camera_follow(&self) -> bool
+    fn update_camera_follow(&self, screen_size: [f32; 2]) -> bool
     {
         let mouse_position = with_z(self.game_state.world_mouse_position(), 0.0);
 
@@ -1203,7 +1205,8 @@ impl<'a> PlayerContainer<'a>
         let player = entities.player(self.info.entity);
         let screenshake = player.as_ref().map(|x| &x.screenshake);
 
-        let camera_zoom = self.game_state.camera_scale() / DEFAULT_ZOOM;
+        let screen_ratio = screen_size[0].max(screen_size[1]) / 1920.0;
+        let camera_zoom = self.game_state.camera_scale() / DEFAULT_ZOOM / screen_ratio;
 
         let shake_strength = screenshake.map(|screenshake| screenshake.effective_shake()).unwrap_or(0.0) * camera_zoom;
 
@@ -1250,6 +1253,54 @@ impl<'a> PlayerContainer<'a>
             x.floating()
         }).unwrap_or(false);
 
+        if state.is_up()
+        {
+            match control
+            {
+                Control::MainAction =>
+                {
+                    if self.info.queued_action
+                    {
+                        self.info.queued_action = false;
+
+                        self.character_action(CharacterAction::Bash{state: true});
+                    }
+                },
+                Control::Poke =>
+                {
+                    if self.info.queued_action
+                    {
+                        self.info.queued_action = false;
+
+                        self.character_action(CharacterAction::Poke{state: true});
+                    }
+                },
+                Control::Shoot =>
+                {
+                    if self.info.queued_action
+                    {
+                        self.info.queued_action = false;
+
+                        let target = some_or_return!(self.ranged_target());
+
+                        self.character_action(CharacterAction::Ranged{state: true, target});
+                    }
+                },
+                Control::Throw =>
+                {
+                    if self.info.queued_action
+                    {
+                        self.info.queued_action = false;
+
+                        let target = some_or_return!(self.ranged_target());
+
+                        self.character_action(CharacterAction::Throw{state: true, target});
+                    }
+                },
+                _ => ()
+            }
+        }
+
         match control
         {
             Control::Crawl if !is_floating =>
@@ -1259,40 +1310,6 @@ impl<'a> PlayerContainer<'a>
                 {
                     anatomy.set_crawling(state.to_bool());
                 }
-            },
-            Control::Poke =>
-            {
-                if is_animating
-                {
-                    return;
-                }
-
-                self.character_action(CharacterAction::Poke{state: !state.to_bool()});
-            },
-            Control::Shoot =>
-            {
-                if is_animating
-                {
-                    return;
-                }
-
-                let mut target = some_or_return!(self.mouse_position());
-                target.z = some_or_return!(self.player_position()).z;
-
-                self.character_action(CharacterAction::Ranged{state: !state.to_bool(), target});
-            },
-            Control::Throw =>
-            {
-                if is_animating
-                {
-                    return;
-                }
-
-                let mouse_transform = self.game_state.entities()
-                    .transform(self.info.mouse_entity)
-                    .unwrap();
-
-                self.character_action(CharacterAction::Throw{state: !state.to_bool(), target: mouse_transform.position});
             },
             Control::Interact =>
             {
@@ -1363,7 +1380,38 @@ impl<'a> PlayerContainer<'a>
                     return;
                 }
 
-                self.character_action(CharacterAction::Bash);
+                self.stance_action(AttackStance::Side, |state| CharacterAction::Bash{state});
+            },
+            Control::Poke =>
+            {
+                if is_animating
+                {
+                    return;
+                }
+
+                self.stance_action(AttackStance::Forward, |state| CharacterAction::Poke{state});
+            },
+            Control::Shoot =>
+            {
+                if is_animating
+                {
+                    return;
+                }
+
+                let target = some_or_return!(self.ranged_target());
+
+                self.stance_action(AttackStance::Forward, |state| CharacterAction::Ranged{state, target});
+            },
+            Control::Throw =>
+            {
+                if is_animating
+                {
+                    return;
+                }
+
+                let target = some_or_return!(self.ranged_target());
+
+                self.stance_action(AttackStance::Forward, |state| CharacterAction::Throw{state, target});
             },
             Control::Reload =>
             {
@@ -1387,6 +1435,28 @@ impl<'a> PlayerContainer<'a>
         if let Some(mut character) = self.game_state.entities().character_mut(self.info.entity)
         {
             character.push_action(action);
+        }
+    }
+
+    fn stance_action(&mut self, stance: AttackStance, action: impl Fn(bool) -> CharacterAction)
+    {
+        let mut character = some_or_return!(self.game_state.entities().character_mut(self.info.entity));
+
+        if character.stance() == stance
+        {
+            drop(character);
+
+            self.character_action(action(false));
+            self.character_action(action(true));
+        } else
+        {
+            character.set_stance(self.game_state.entities(), stance);
+
+            drop(character);
+
+            self.info.queued_action = true;
+
+            self.character_action(action(false));
         }
     }
 
@@ -1689,7 +1759,7 @@ impl<'a> PlayerContainer<'a>
         self.game_state.entities.set_follow_target(entity);
     }
 
-    pub fn this_update(&mut self, dt: f32) -> bool
+    pub fn this_update(&mut self, screen_size: [f32; 2], dt: f32) -> bool
     {
         if !self.exists() || self.game_state.is_paused()
         {
@@ -1733,7 +1803,7 @@ impl<'a> PlayerContainer<'a>
             self.info.mouse_highlighted = new_mouse_highlighted;
         }
 
-        self.update_camera_follow();
+        self.update_camera_follow(screen_size);
 
         {
             let falloff_speed = 4.0;
@@ -2202,5 +2272,13 @@ impl<'a> PlayerContainer<'a>
         self.game_state.entities()
             .transform(self.info.mouse_entity)
             .map(|x| x.position)
+    }
+
+    fn ranged_target(&self) -> Option<Vector3<f32>>
+    {
+        let mut target = self.mouse_position()?;
+        target.z = self.player_position()?.z;
+
+        Some(target)
     }
 }

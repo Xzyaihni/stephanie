@@ -3,7 +3,7 @@ use std::{
     cmp::Ordering
 };
 
-use nalgebra::{Unit, Vector3, VectorView3, Rotation3};
+use nalgebra::{Unit, Vector3, ArrayStorage, Rotation3};
 
 use serde::{Serialize, Deserialize};
 
@@ -344,7 +344,7 @@ fn ray_slab_interval(
     plane_distance: f32
 ) -> Range<f32>
 {
-    let half_distance = plane_distance / 2.0;
+    let half_distance = plane_distance * 0.5;
 
     let a = ray_plane_distance(point, direction, normal, -half_distance);
     let b = ray_plane_distance(point, direction, normal, half_distance);
@@ -355,34 +355,59 @@ fn ray_slab_interval(
 fn line_rectangle_intersections(
     start: Vector3<f32>,
     direction: Unit<Vector3<f32>>,
-    transform: &Transform
+    position: Vector3<f32>,
+    scale: Vector3<f32>,
+    rotation: f32
 ) -> Vector3<Range<f32>>
 {
-    let point = start - transform.position;
-
-    let check_axis = |axis: VectorView3<f32>, d: f32|
-    {
-        let axis: Vector3<f32> = axis.into();
-        let axis = Unit::new_unchecked(axis);
-
-        ray_slab_interval(point, direction, &axis, d)
-    };
+    let point = start - position;
 
     let rotation_matrix = Rotation3::from_axis_angle(
         &Vector3::z_axis(),
-        transform.rotation
+        rotation
     );
 
     let rotation_matrix = rotation_matrix.matrix();
 
-    let mut axes = (0..3).map(|i| check_axis(rotation_matrix.column(i), transform.scale[i]));
-
-    let mut n = ||
+    let at_axis = |i: usize|
     {
-        axes.next().unwrap_or_else(|| unreachable!())
+        let axis: Vector3<f32> = rotation_matrix.column(i).into();
+        let axis = Unit::new_unchecked(axis);
+
+        ray_slab_interval(point, direction, &axis, scale[i])
     };
 
-    Vector3::new(n(), n(), n())
+    Vector3::new(at_axis(0), at_axis(1), at_axis(2))
+}
+
+fn line_rectangle_intersections_aabb(
+    start: Vector3<f32>,
+    direction: Unit<Vector3<f32>>,
+    position: Vector3<f32>,
+    scale: Vector3<f32>
+) -> Vector3<Range<f32>>
+{
+    let point = start - position;
+
+    scale.zip_zip_map(&point, &direction, |scale, point, direction|
+    {
+        let half_distance = scale * 0.5;
+
+        let a = (-half_distance - point) / direction;
+        let b = (half_distance - point) / direction;
+
+        Range{start: a.min(b), end: a.max(b)}
+    })
+}
+
+pub fn raycast_rectangle_aabb(
+    start: Vector3<f32>,
+    direction: Unit<Vector3<f32>>,
+    position: Vector3<f32>,
+    scale: Vector3<f32>
+) -> Option<RaycastResult>
+{
+    raycast_rectangle_intersections(line_rectangle_intersections_aabb(start, direction, position, scale))
 }
 
 pub fn raycast_rectangle(
@@ -391,9 +416,11 @@ pub fn raycast_rectangle(
     transform: &Transform
 ) -> Option<RaycastResult>
 {
-    let intersections = line_rectangle_intersections(start, direction, transform);
-    let [x, y, z] = intersections.as_ref();
+    raycast_rectangle_intersections(line_rectangle_intersections(start, direction, transform.position, transform.scale, transform.rotation))
+}
 
+fn raycast_rectangle_intersections(Vector3{data: ArrayStorage([[x, y, z]]), ..}: Vector3<Range<f32>>) -> Option<RaycastResult>
+{
     let furthest_start = x.start.max(y.start).max(z.start);
     let earliest_end = x.end.min(y.end).min(z.end);
 

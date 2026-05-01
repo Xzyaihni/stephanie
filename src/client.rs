@@ -292,7 +292,7 @@ impl Client
                 {
                     if game_state.borrow_mut().player_connected()
                     {
-                        self.game.as_mut().unwrap().on_player_connected();
+                        self.game.as_mut().unwrap().on_player_connected(info.partial.size);
 
                         game_state.borrow_mut().on_player_connected();
                     }

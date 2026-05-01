@@ -95,13 +95,7 @@ impl VisibilityChecker
 
         let direction = Unit::new_unchecked(diff / magnitude);
 
-        let rectangle = Transform{
-            position: self.position,
-            scale: self.size,
-            ..Default::default()
-        };
-
-        if let Some(result) = raycast_rectangle(start, direction, &rectangle)
+        if let Some(result) = raycast_rectangle_aabb(start, direction, self.position, self.size)
         {
             result.within_limits(magnitude)
         } else

@@ -32,7 +32,6 @@ use crate::{
         TileInfo,
         Entity,
         OccludingCaster,
-        SpatialGrid,
         EntityPasser,
         entity::ClientEntities,
         message::Message
@@ -215,11 +214,6 @@ impl World
     pub fn inbounds(&self, pos: GlobalPos) -> bool
     {
         self.overmap.to_local(pos).is_some()
-    }
-
-    pub fn build_spatial(&self, entities: &ClientEntities, follow_target: Entity) -> SpatialGrid
-    {
-        SpatialGrid::new(entities, &self.overmap, follow_target)
     }
 
     pub fn exists_missing(&self) -> (u32, u32)
