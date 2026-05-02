@@ -75,6 +75,7 @@ use crate::{
 
 
 const HAND_LEFT_Y: f32 = -0.3;
+const HELDLIKE_ORIGIN_ROTATION: f32 = -f32::consts::FRAC_PI_2;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum EquipState
@@ -200,7 +201,7 @@ fn heldlike_item_entity(
                     strength: 0.5
                 }
             ),
-            origin_rotation: -f32::consts::FRAC_PI_2,
+            origin_rotation: HELDLIKE_ORIGIN_ROTATION,
             transform: Transform{
                 rotation: f32::consts::FRAC_PI_2,
                 scale,
@@ -430,6 +431,7 @@ impl<T> CharacterEquips<T>
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CharacterAnimation
 {
+    BashCharge,
     Bash,
     Poke,
     Throw,
@@ -454,6 +456,7 @@ pub struct Character
     held_update: bool,
     clothing_update: bool,
     attack_cooldown: f32,
+    attack_charging: f32,
     knockback_recovery: f32,
     bash_side: Side1d,
     #[serde(skip, default)]
@@ -481,6 +484,7 @@ impl Character
             held_update: true,
             clothing_update: false,
             attack_cooldown: 0.0,
+            attack_charging: 0.0,
             knockback_recovery: 1.0,
             bash_side: Side1d::Left,
             actions: Vec::new(),
@@ -692,21 +696,18 @@ impl Character
 
     pub fn set_animation(
         &mut self,
-        combined_info: CombinedInfo,
+        entities: &ClientEntities,
         animation: CharacterAnimation
     )
     {
-        let entities = combined_info.entities;
-
         if self.info.is_none()
         {
             return;
         }
 
-        let remove_start_comments = ();
         match animation
         {
-            /*CharacterAnimation::BashStart =>
+            CharacterAnimation::BashCharge =>
             {
                 let info = self.info.as_ref().unwrap();
 
@@ -737,16 +738,54 @@ impl Character
                 );
 
                 lazy.target().rotation = f32::consts::FRAC_PI_2 + offset;
-            },*/
+            },
             CharacterAnimation::Bash =>
             {
                 let info = self.info.as_mut().unwrap();
 
                 let this_entity = info.this;
-                self.update_hands_rotation(combined_info.entities);
+                let holding_entity = info.holding;
+
+                let (holding, holding_is_left) = if self.holding.is_some()
+                {
+                    (info.hand_left, true)
+                } else
+                {
+                    match self.bash_side
+                    {
+                        Side1d::Left => (info.hand_right, false),
+                        Side1d::Right => (info.hand_left, true)
+                    }
+                };
+
+                let start_rotation_holding = self.default_held_rotation(holding_is_left);
+
+                let mut lazy = some_or_unexpected_return!(entities.lazy_transform_mut_no_change(holding));
+                let swing_time = some_or_unexpected_return!(self.bash_attack_cooldown(entities));
+
+                let new_rotation = self.current_hand_rotation();
+
+                lazy.rotation = Rotation::EaseOut(EaseOutRotation{
+                    decay: 120.0,
+                    speed_significant: 10.0,
+                    momentum: 0.5
+                }.into());
+
+                lazy.target().rotation = start_rotation_holding - new_rotation;
+
+                if self.holding.is_some()
+                {
+                    let holding_entity = some_or_unexpected_return!(holding_entity);
+                    let mut target = some_or_unexpected_return!(entities.target(holding_entity.entity));
+                    target.scale.x = match self.bash_side
+                    {
+                        Side1d::Left => target.scale.x.abs(),
+                        Side1d::Right => -target.scale.x.abs()
+                    };
+                }
 
                 entities.add_watcher(this_entity, Watcher{
-                    kind: WatcherType::Lifetime(0.5.into()),
+                    kind: WatcherType::Lifetime((swing_time.min(1.0) * 0.8).into()),
                     action: Box::new(move |entities, entity|
                     {
                         some_or_return!(entities.character(entity)).reset_stance(entities);
@@ -758,7 +797,7 @@ impl Character
             {
                 let info = self.info.as_ref().unwrap();
 
-                let mut lazy = some_or_return!(entities.lazy_transform_mut_no_change(info.hand_left));
+                let mut lazy = some_or_unexpected_return!(entities.lazy_transform_mut_no_change(info.hand_left));
 
                 let lifetime = self.attack_cooldown.min(0.5);
                 let extend_time = lifetime * 0.2;
@@ -773,7 +812,7 @@ impl Character
 
                 let target = lazy.target();
 
-                let item_position = self.held_position(combined_info.characters_info, target.scale);
+                let item_position = self.held_position(&entities.infos().characters_info, target.scale);
 
                 target.position.x = item_position.x + POKE_DISTANCE * ENTITY_SCALE;
 
@@ -792,7 +831,7 @@ impl Character
             {
                 let info = self.info.as_mut().unwrap();
 
-                let mut hand_right_lazy = some_or_return!(entities.lazy_transform_mut(info.hand_right));
+                let mut hand_right_lazy = some_or_unexpected_return!(entities.lazy_transform_mut(info.hand_right));
 
                 hand_right_lazy.connection = Connection::EaseOut{
                     decay: 6.0,
@@ -856,6 +895,21 @@ impl Character
 
     pub fn set_stance(&mut self, entities: &ClientEntities, stance: AttackStance)
     {
+        let stance = match stance
+        {
+            AttackStance::Side => AttackStance::Side,
+            AttackStance::Forward =>
+            {
+                if self.holding.is_none()
+                {
+                    AttackStance::Side
+                } else
+                {
+                    AttackStance::Forward
+                }
+            }
+        };
+
         if self.stance != stance
         {
             self.stance = stance;
@@ -871,6 +925,27 @@ impl Character
             AttackStance::Forward => self.forward_stance(entities),
             AttackStance::Side => self.side_stance(entities)
         }
+    }
+
+    pub fn charged_attack_bash(&mut self, entities: &ClientEntities)
+    {
+        if self.attack_charging > 0.0
+        {
+            return;
+        }
+
+        if !self.can_attack(entities)
+        {
+            return;
+        }
+
+        self.reset_stance(entities);
+
+        self.push_action(CharacterAction::Bash{state: false});
+
+        self.set_animation(entities, CharacterAnimation::BashCharge);
+
+        self.attack_charging = 0.5;
     }
 
     fn hair_select<'a, T>(&self, base: &'a BaseHair<T>) -> &'a T
@@ -1060,7 +1135,7 @@ impl Character
             }
         });
 
-        self.set_animation(combined_info, CharacterAnimation::Reload);
+        self.set_animation(entities, CharacterAnimation::Reload);
     }
 
     pub fn on_removed_item(&mut self, item: InventoryItem)
@@ -1153,9 +1228,9 @@ impl Character
         distance <= bash_distance
     }
 
-    fn bash_distance(&self, combined_info: CombinedInfo) -> f32
+    fn bash_distance(&self, entities: &ClientEntities) -> f32
     {
-        let item_info = self.held_info(combined_info);
+        let item_info = self.held_info(entities);
 
         let item_scale = item_info.scale3().y;
         self.held_distance() + item_scale
@@ -1177,7 +1252,7 @@ impl Character
 
     fn update_cached(&mut self, combined_info: CombinedInfo)
     {
-        self.cached.bash_distance = self.bash_distance(combined_info);
+        self.cached.bash_distance = self.bash_distance(combined_info.entities);
     }
 
     pub fn reset_held_lighting(&self, entities: &ClientEntities)
@@ -1516,14 +1591,14 @@ impl Character
         self.clothing_update = false;
     }
 
-    fn can_throw(&self, combined_info: CombinedInfo) -> bool
+    fn can_throw(&self, entities: &ClientEntities) -> bool
     {
-        self.holding.is_some() && self.can_attack(combined_info)
+        self.holding.is_some() && self.can_attack(entities)
     }
 
     fn throw_start(&mut self, combined_info: CombinedInfo)
     {
-        if !self.can_throw(combined_info)
+        if !self.can_throw(combined_info.entities)
         {
             self.start_buffered(BufferedAction::Throw);
 
@@ -1548,7 +1623,7 @@ impl Character
             return;
         }
 
-        if !self.can_throw(combined_info)
+        if !self.can_throw(combined_info.entities)
         {
             return;
         }
@@ -1652,9 +1727,9 @@ impl Character
             self.on_removed_item(held);
         });
 
-        self.consume_attack_oxygen(combined_info);
+        self.consume_attack_oxygen(combined_info.entities);
 
-        self.set_animation(combined_info, CharacterAnimation::Throw);
+        self.set_animation(entities, CharacterAnimation::Throw);
 
         self.held_update = true;
     }
@@ -1667,17 +1742,17 @@ impl Character
         }).unwrap_or(true)
     }
 
-    fn attack_oxygen_cost(&self, combined_info: CombinedInfo) -> Option<f32>
+    fn attack_oxygen_cost(&self, entities: &ClientEntities) -> Option<f32>
     {
-        Some(self.held_info(combined_info).oxygen_cost(self.newtons(combined_info.entities)?))
+        Some(self.held_info(entities).oxygen_cost(self.newtons(entities)?))
     }
 
-    fn consume_attack_oxygen(&mut self, combined_info: CombinedInfo)
+    fn consume_attack_oxygen(&mut self, entities: &ClientEntities)
     {
         let info = some_or_return!(self.info.as_ref());
-        let cost = some_or_return!(self.attack_oxygen_cost(combined_info));
+        let cost = some_or_return!(self.attack_oxygen_cost(entities));
 
-        let mut anatomy = some_or_return!(combined_info.entities.anatomy_mut_no_change(info.this));
+        let mut anatomy = some_or_return!(entities.anatomy_mut_no_change(info.this));
 
         anatomy.oxygen_mut().change(-cost);
     }
@@ -1694,10 +1769,10 @@ impl Character
         self.attackable_state()
     }
 
-    pub fn can_attack(&self, combined_info: CombinedInfo) -> bool
+    pub fn can_attack(&self, entities: &ClientEntities) -> bool
     {
-        let cost = some_or_value!(self.attack_oxygen_cost(combined_info), false);
-        let current = some_or_value!(self.anatomy(combined_info.entities), false).oxygen().current;
+        let cost = some_or_value!(self.attack_oxygen_cost(entities), false);
+        let current = some_or_value!(self.anatomy(entities), false).oxygen().current;
 
         let attackable_item = cost <= current;
 
@@ -1734,75 +1809,6 @@ impl Character
         self.hand_rotation_with(self.bash_side)
     }
 
-    fn update_hands_rotation(&self, entities: &ClientEntities)
-    {
-        let info = some_or_return!(self.info.as_ref());
-
-        let is_player = entities.player_exists(info.this);
-
-        let (holding, holding_is_left) = if self.holding.is_some()
-        {
-            (info.hand_left, true)
-        } else
-        {
-            match self.bash_side
-            {
-                Side1d::Left => (info.hand_right, false),
-                Side1d::Right => (info.hand_left, true)
-            }
-        };
-
-        let start_rotation_holding = some_or_return!(self.default_held_rotation(entities, holding_is_left));
-
-        let mut lazy = some_or_return!(entities.lazy_transform_mut_no_change(holding));
-        let swing_time = some_or_return!(self.bash_attack_cooldown(entities));
-
-        let new_rotation = self.current_hand_rotation();
-
-        if let Rotation::EaseOut(x) = &mut lazy.rotation
-        {
-            x.set_decay(120.0);
-        }
-
-        lazy.target().rotation = start_rotation_holding - new_rotation;
-
-        entities.add_watcher(holding, Watcher{
-            kind: WatcherType::Lifetime(0.2.into()),
-            action: Box::new(move |entities, entity|
-            {
-                if let Some(mut lazy) = entities.lazy_transform_mut(entity)
-                {
-                    lazy.rotation = default_lazy_rotation(is_player);
-                }
-            }),
-            ..Default::default()
-        });
-
-        if self.holding.is_some()
-        {
-            let holding_entity = some_or_unexpected_return!(info.holding);
-            let mut target = some_or_return!(entities.target(holding_entity.entity));
-            target.scale.x = match self.bash_side
-            {
-                Side1d::Left => target.scale.x.abs(),
-                Side1d::Right => -target.scale.x.abs()
-            };
-        } else
-        {
-            entities.add_watcher(holding, Watcher{
-                kind: WatcherType::Lifetime((swing_time.min(1.0) * 0.8).into()),
-                action: Box::new(move |entities, entity|
-                {
-                    if let Some(mut target) = entities.target(entity)
-                    {
-                        target.rotation = start_rotation_holding;
-                    }
-                }),
-                ..Default::default()
-            });
-        }
-    }
-
     fn bash_attack_start(&mut self, combined_info: CombinedInfo)
     {
         self.set_stance(combined_info.entities, AttackStance::Side);
@@ -1810,7 +1816,7 @@ impl Character
 
     fn bash_attack(&mut self, combined_info: CombinedInfo, buffer: bool)
     {
-        if !self.can_attack(combined_info)
+        if !self.can_attack(combined_info.entities)
         {
             if buffer
             {
@@ -1831,27 +1837,18 @@ impl Character
 
         self.bash_side = self.bash_side.opposite();
 
-        self.consume_attack_oxygen(combined_info);
+        self.consume_attack_oxygen(combined_info.entities);
 
         self.bash_projectile(combined_info);
 
-        self.set_animation(combined_info, CharacterAnimation::Bash);
+        self.set_animation(combined_info.entities, CharacterAnimation::Bash);
     }
 
-    fn origin_rotation(&self, entities: &ClientEntities) -> Option<f32>
+    fn default_held_rotation(&self, is_left: bool) -> f32
     {
-        Some(-entities
-            .lazy_transform(self.info.as_ref()?.holding?.entity)?
-            .origin_rotation())
-    }
-
-    fn default_held_rotation(&self, entities: &ClientEntities, is_left: bool) -> Option<f32>
-    {
-        let origin_rotation = self.origin_rotation(entities)?;
-
         let hand_offset = if is_left { 0.1 } else { -0.1 };
 
-        Some(origin_rotation + hand_offset)
+        -HELDLIKE_ORIGIN_ROTATION + hand_offset
     }
 
     fn forward_stance(&self, entities: &ClientEntities)
@@ -1862,11 +1859,9 @@ impl Character
 
         let f = |entity|
         {
-            let mut lazy = some_or_return!(entities.lazy_transform_mut_no_change(entity));
+            let mut lazy = some_or_unexpected_return!(entities.lazy_transform_mut_no_change(entity));
 
-            let start_rotation = some_or_return!(self.origin_rotation(entities));
-
-            lazy.target().rotation = start_rotation;
+            lazy.target().rotation = -HELDLIKE_ORIGIN_ROTATION;
         };
 
         f(info.hand_left);
@@ -1879,27 +1874,36 @@ impl Character
     {
         let info = some_or_return!(self.info.as_ref());
 
+        let is_holding = self.holding.is_some();
         let is_player = entities.player_exists(info.this);
 
         let f = |entity, is_left|
         {
-            let mut lazy = some_or_return!(entities.lazy_transform_mut_no_change(entity));
+            let mut lazy = some_or_unexpected_return!(entities.lazy_transform_mut_no_change(entity));
 
             lazy.rotation = default_lazy_rotation(is_player);
 
-            let start_rotation = some_or_return!(self.default_held_rotation(entities, is_left));
+            let start_rotation = self.default_held_rotation(is_left);
 
             let target = lazy.target();
 
-            target.rotation = start_rotation;
+            if is_holding
+            {
+                target.rotation = start_rotation - self.current_hand_rotation();
+            } else
+            {
+                target.rotation = start_rotation;
+            }
         };
 
         f(info.hand_left, true);
-        f(info.hand_right, false);
+
+        if !is_holding
+        {
+            f(info.hand_right, false);
+        }
 
         self.reset_hands_position(entities);
-
-        self.update_hands_rotation(entities);
     }
 
     fn reset_hands_position(&self, entities: &ClientEntities)
@@ -1977,7 +1981,7 @@ impl Character
             return;
         }
 
-        if !self.can_attack(combined_info)
+        if !self.can_attack(combined_info.entities)
         {
             self.start_buffered(BufferedAction::Poke);
 
@@ -2003,7 +2007,7 @@ impl Character
             return;
         }
 
-        if !self.can_attack(combined_info)
+        if !self.can_attack(combined_info.entities)
         {
             return;
         }
@@ -2012,11 +2016,11 @@ impl Character
 
         self.attack_cooldown = self.attack_cooldown.max(some_or_return!(self.held_attack_cooldown(combined_info.entities)));
 
-        self.consume_attack_oxygen(combined_info);
+        self.consume_attack_oxygen(combined_info.entities);
 
         self.poke_projectile(combined_info, item);
 
-        self.set_animation(combined_info, CharacterAnimation::Poke);
+        self.set_animation(combined_info.entities, CharacterAnimation::Poke);
     }
 
     fn ranged_attack(
@@ -2249,8 +2253,8 @@ impl Character
     {
         let info = some_or_return!(self.info.as_ref());
 
-        let hand_mass = self.hand_item_info(combined_info).mass;
-        let item_info = self.held_info(combined_info);
+        let hand_mass = self.hand_item_info(combined_info.entities).mass;
+        let item_info = self.held_info(combined_info.entities);
 
         let damage_buff = self.held_item(combined_info.entities)
             .and_then(|x| x.damage_scale())
@@ -2352,7 +2356,7 @@ impl Character
 
         let holding_entity = some_or_unexpected_return!(info.holding);
 
-        let hand_mass = self.hand_item_info(combined_info).mass;
+        let hand_mass = self.hand_item_info(combined_info.entities).mass;
         let item_info = combined_info.items_info.get(item.id);
         let mut scale = Vector3::repeat(1.0);
 
@@ -2463,7 +2467,7 @@ impl Character
             ..Default::default()
         });
 
-        self.set_animation(combined_info, CharacterAnimation::Pickup(item_entity));
+        self.set_animation(entities, CharacterAnimation::Pickup(item_entity));
     }
 
     fn handle_actions(&mut self, combined_info: CombinedInfo)
@@ -2510,18 +2514,18 @@ impl Character
         self.held_item_id(entities).map(|x| entities.infos().items_info.get(x))
     }
 
-    fn hand_item_info<'a>(&self, combined_info: CombinedInfo<'a>) -> &'a ItemInfo
+    fn hand_item_info<'a>(&self, entities: &'a ClientEntities) -> &'a ItemInfo
     {
-        let info = combined_info.characters_info.get(self.id);
+        let info = entities.infos().characters_info.get(self.id);
 
-        combined_info.items_info.get(info.hand)
+        entities.infos().items_info.get(info.hand)
     }
 
-    fn held_info<'a>(&self, combined_info: CombinedInfo<'a>) -> &'a ItemInfo
+    fn held_info<'a>(&self, entities: &'a ClientEntities) -> &'a ItemInfo
     {
-        self.held_item_info(combined_info.entities).unwrap_or_else(move ||
+        self.held_item_info(entities).unwrap_or_else(move ||
         {
-            self.hand_item_info(combined_info)
+            self.hand_item_info(entities)
         })
     }
 
@@ -2624,6 +2628,11 @@ impl Character
     )
     {
         Self::decrease_timer(&mut self.attack_cooldown, dt);
+
+        if Self::decrease_timer(&mut self.attack_charging, dt)
+        {
+            self.push_action(CharacterAction::Bash{state: true});
+        }
     }
 
     fn update_buffered(&mut self, combined_info: CombinedInfo, dt: f32)

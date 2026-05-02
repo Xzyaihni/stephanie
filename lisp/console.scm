@@ -1,6 +1,8 @@
 (define (entity? x)
     (eq? (car x) 'entity))
 
+(define (local? x) (car (cdr x)))
+
 (define (entity->position x)
     (if (entity? x)
         (position-entity x)

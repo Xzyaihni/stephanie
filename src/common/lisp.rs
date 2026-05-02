@@ -218,7 +218,7 @@ impl Debug for LispValue
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
     {
         let mut visited = Vec::new();
-        let s = self.maybe_to_string(&mut visited, None, None);
+        let s = self.maybe_to_string(&mut visited, false, None, None);
 
         write!(f, "{s}")
     }
@@ -397,6 +397,7 @@ impl LispValue
         let mut visited = Vec::new();
         self.maybe_to_string(
             &mut visited,
+            false,
             Some(memory),
             Some(&memory.memory)
         )
@@ -408,12 +409,13 @@ impl LispValue
     fn to_string_block(&self, memory: &MemoryBlock) -> String
     {
         let mut visited = Vec::new();
-        self.maybe_to_string(&mut visited, None, Some(memory))
+        self.maybe_to_string(&mut visited, false, None, Some(memory))
     }
 
     fn maybe_to_string(
         &self,
         visited_boxed: &mut Vec<LispValue>,
+        is_cons_list: bool,
         memory: Option<&LispMemory>,
         block: Option<&MemoryBlock>
     ) -> String
@@ -476,12 +478,39 @@ impl LispValue
 
                 block.map(|block|
                 {
+                    fn all_cons_list(block: &MemoryBlock, value: LispValue) -> bool
+                    {
+                        if value.is_null()
+                        {
+                            return true;
+                        }
+
+                        value.as_list_id().map(|lst|
+                        {
+                            all_cons_list(block, block.get_list(lst).cdr)
+                        }).unwrap_or(false)
+                    }
+
+                    let is_next_cons_list = is_cons_list || all_cons_list(block, *self);
+
                     let list = block.get_list(unsafe{ self.value.list });
 
-                    let car = list.car.maybe_to_string(visited_boxed, memory, Some(block));
-                    let cdr = list.cdr.maybe_to_string(visited_boxed, memory, Some(block));
+                    let car = list.car.maybe_to_string(visited_boxed, false, memory, Some(block));
+                    let cdr = list.cdr.maybe_to_string(visited_boxed, is_next_cons_list, memory, Some(block));
 
-                    format!("({car} {cdr})")
+                    if is_cons_list
+                    {
+                        if list.cdr.is_null()
+                        {
+                            car
+                        } else
+                        {
+                            format!("{car} {cdr}")
+                        }
+                    } else
+                    {
+                        format!("({car} {cdr})")
+                    }
                 }).unwrap_or_else(||
                 {
                     format!("<list {}>", unsafe{ self.value.list })
@@ -492,7 +521,7 @@ impl LispValue
                 let vec = block.get_vector_ref(unsafe{ self.value.vector });
 
                 let s = vec.iter()
-                    .map(|x| x.maybe_to_string(visited_boxed, memory, Some(block)))
+                    .map(|x| x.maybe_to_string(visited_boxed, false, memory, Some(block)))
                     .reduce(|acc, value|
                     {
                         acc + " " + &value
@@ -621,7 +650,7 @@ impl<'a> Debug for MemoryBlockWith<'a>
         let pv = |v: &LispValue|
         {
             let mut visited = Vec::new();
-            v.maybe_to_string(&mut visited, self.memory, Some(self.block))
+            v.maybe_to_string(&mut visited, false, self.memory, Some(self.block))
         };
 
         let general = self.block.general.iter().map(pv).collect::<Vec<_>>();

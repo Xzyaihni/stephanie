@@ -1109,6 +1109,7 @@ struct PlayerInfo
     previous_cooldown: (f32, f32),
     mouse_highlighted: Option<Entity>,
     queued_action: bool,
+    crawling: bool,
     interacted: bool
 }
 
@@ -1129,6 +1130,7 @@ impl PlayerInfo
             previous_cooldown: (0.0, 0.0),
             mouse_highlighted: None,
             queued_action: false,
+            crawling: false,
             interacted: false
         }
     }
@@ -1305,11 +1307,7 @@ impl<'a> PlayerContainer<'a>
         {
             Control::Crawl if !is_floating =>
             {
-                let entities = self.game_state.entities();
-                if let Some(mut anatomy) = entities.anatomy_mut(self.info.entity)
-                {
-                    anatomy.set_crawling(state.to_bool());
-                }
+                self.info.crawling = state.to_bool();
             },
             Control::Interact =>
             {
@@ -1877,10 +1875,30 @@ impl<'a> PlayerContainer<'a>
             }
         }
 
-        let able_to_move = self.game_state.entities()
-            .anatomy(self.info.entity)
-            .map(|anatomy| anatomy.speed() != 0.0)
-            .unwrap_or(false) && self.info.animation.is_none();
+
+        let able_to_move;
+
+        {
+            let entities = self.game_state.entities();
+
+            let this_entity = self.info.entity;
+            let anatomy = entities.anatomy(this_entity);
+
+            able_to_move = anatomy.as_ref().map(|anatomy| anatomy.speed() != 0.0).unwrap_or(false) && self.info.animation.is_none();
+
+            if let Some(anatomy) = anatomy
+            {
+                let crawl_state = anatomy.speeds().legs <= 0.0 || self.info.crawling;
+
+                let changed = anatomy.is_crawling() != crawl_state;
+                if changed
+                {
+                    drop(anatomy);
+
+                    entities.anatomy_mut(this_entity).unwrap().set_crawling(crawl_state);
+                }
+            }
+        };
 
         if able_to_move
         {
