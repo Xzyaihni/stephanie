@@ -77,6 +77,8 @@ use crate::{
 const HAND_LEFT_Y: f32 = -0.3;
 const HELDLIKE_ORIGIN_ROTATION: f32 = -f32::consts::FRAC_PI_2;
 
+const BASH_CHARGE_DURATION: f32 = 0.5;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum EquipState
 {
@@ -457,6 +459,7 @@ pub struct Character
     clothing_update: bool,
     attack_cooldown: f32,
     attack_charging: f32,
+    animation_duration: f32,
     knockback_recovery: f32,
     bash_side: Side1d,
     #[serde(skip, default)]
@@ -485,6 +488,7 @@ impl Character
             clothing_update: false,
             attack_cooldown: 0.0,
             attack_charging: 0.0,
+            animation_duration: 0.0,
             knockback_recovery: 1.0,
             bash_side: Side1d::Left,
             actions: Vec::new(),
@@ -705,6 +709,16 @@ impl Character
             return;
         }
 
+        self.animation_duration = match &animation
+        {
+            CharacterAnimation::BashCharge => 0.0,
+            CharacterAnimation::Poke => 0.4,
+            CharacterAnimation::Bash
+            | CharacterAnimation::Throw
+            | CharacterAnimation::Reload
+            | CharacterAnimation::Pickup(_) => 0.5
+        };
+
         match animation
         {
             CharacterAnimation::BashCharge =>
@@ -743,7 +757,6 @@ impl Character
             {
                 let info = self.info.as_mut().unwrap();
 
-                let this_entity = info.this;
                 let holding_entity = info.holding;
 
                 let (holding, holding_is_left) = if self.holding.is_some()
@@ -761,7 +774,6 @@ impl Character
                 let start_rotation_holding = self.default_held_rotation(holding_is_left);
 
                 let mut lazy = some_or_unexpected_return!(entities.lazy_transform_mut_no_change(holding));
-                let swing_time = some_or_unexpected_return!(self.bash_attack_cooldown(entities));
 
                 let new_rotation = self.current_hand_rotation();
 
@@ -783,24 +795,12 @@ impl Character
                         Side1d::Right => -target.scale.x.abs()
                     };
                 }
-
-                entities.add_watcher(this_entity, Watcher{
-                    kind: WatcherType::Lifetime((swing_time.min(1.0) * 0.8).into()),
-                    action: Box::new(move |entities, entity|
-                    {
-                        some_or_return!(entities.character(entity)).reset_stance(entities);
-                    }),
-                    ..Default::default()
-                });
             },
             CharacterAnimation::Poke =>
             {
                 let info = self.info.as_ref().unwrap();
 
                 let mut lazy = some_or_unexpected_return!(entities.lazy_transform_mut_no_change(info.hand_left));
-
-                let lifetime = self.attack_cooldown.min(0.5);
-                let extend_time = lifetime * 0.2;
 
                 lazy.rotation = Rotation::EaseOut(
                     EaseOutRotation{
@@ -815,17 +815,6 @@ impl Character
                 let item_position = self.held_position(&entities.infos().characters_info, target.scale);
 
                 target.position.x = item_position.x + POKE_DISTANCE * ENTITY_SCALE;
-
-                let end = extend_time + extend_time;
-
-                entities.add_watcher(info.this, Watcher{
-                    kind: WatcherType::Lifetime(end.into()),
-                    action: Box::new(move |entities, entity|
-                    {
-                        some_or_return!(entities.character(entity)).reset_stance(entities);
-                    }),
-                    ..Default::default()
-                });
             },
             CharacterAnimation::Throw =>
             {
@@ -840,15 +829,6 @@ impl Character
 
                 let mut hand_right_transform = some_or_unexpected_return!(entities.transform_mut(info.hand_right));
                 hand_right_transform.position += *angle_to_direction_3d(info.rotation) * (ENTITY_SCALE * 0.5);
-
-                entities.add_watcher(info.this, Watcher{
-                    kind: WatcherType::Lifetime(0.5.into()),
-                    action: Box::new(move |entities, entity|
-                    {
-                        some_or_return!(entities.character(entity)).reset_stance(entities);
-                    }),
-                    ..Default::default()
-                });
             },
             CharacterAnimation::Reload =>
             {
@@ -872,15 +852,6 @@ impl Character
                             };
 
                             hand_right_transform.position += item_direction * (ENTITY_SCALE * 0.5);
-
-                            entities.add_watcher(info.this, Watcher{
-                                kind: WatcherType::Lifetime(0.5.into()),
-                                action: Box::new(move |entities, entity|
-                                {
-                                    some_or_return!(entities.character(entity)).reset_stance(entities);
-                                }),
-                                ..Default::default()
-                            });
                         }
                     }
                 }
@@ -939,13 +910,11 @@ impl Character
             return;
         }
 
-        self.reset_stance(entities);
+        self.attack_charging = BASH_CHARGE_DURATION;
 
         self.push_action(CharacterAction::Bash{state: false});
 
         self.set_animation(entities, CharacterAnimation::BashCharge);
-
-        self.attack_charging = 0.5;
     }
 
     fn hair_select<'a, T>(&self, base: &'a BaseHair<T>) -> &'a T
@@ -1464,7 +1433,10 @@ impl Character
             self.set_stance(entities, AttackStance::Side);
         }
 
-        self.reset_stance(entities);
+        if self.animation_duration <= 0.0
+        {
+            self.reset_stance(entities);
+        }
 
         self.held_update = false;
     }
@@ -2624,10 +2596,16 @@ impl Character
 
     fn update_attacks(
         &mut self,
+        entities: &ClientEntities,
         dt: f32
     )
     {
         Self::decrease_timer(&mut self.attack_cooldown, dt);
+
+        if Self::decrease_timer(&mut self.animation_duration, dt)
+        {
+            self.reset_stance(entities);
+        }
 
         if Self::decrease_timer(&mut self.attack_charging, dt)
         {
@@ -2749,7 +2727,7 @@ impl Character
         let knockback_drain = self.update_knockback(dt);
 
         self.update_sprint(combined_info);
-        self.update_attacks(dt);
+        self.update_attacks(entities, dt);
 
         self.update_buffered(combined_info, dt);
 
