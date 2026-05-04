@@ -1495,8 +1495,6 @@ impl Character
             }
         }
 
-        self.attack_cooldown = self.attack_cooldown.max(0.5);
-
         let info = some_or_unexpected_return!(self.info.as_ref());
 
         let entities = &combined_info.entities;
