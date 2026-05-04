@@ -122,6 +122,14 @@ pub struct TimedConnection
     start: Option<Vector3<f32>>
 }
 
+impl From<f32> for TimedConnection
+{
+    fn from(lifetime: f32) -> Self
+    {
+        Self::from(Lifetime::from(lifetime))
+    }
+}
+
 impl From<Lifetime> for TimedConnection
 {
     fn from(lifetime: Lifetime) -> Self
@@ -143,7 +151,7 @@ pub enum Connection
     Ignore,
     Rigid,
     Limit{mode: LimitMode},
-    Timed(TimedConnection),
+    Timed{lifetime: TimedConnection, animation: ValueAnimation},
     Constant{speed: f32},
     EaseOut{decay: f32, limit: Option<LimitMode>},
     EaseIn(EaseInInfo),
@@ -180,7 +188,7 @@ impl Connection
             {
                 *current = target;
             },
-            Connection::Timed(TimedConnection{lifetime, ref mut start}) =>
+            Connection::Timed{lifetime: TimedConnection{lifetime, ref mut start}, animation} =>
             {
                 if start.is_none()
                 {
@@ -191,7 +199,7 @@ impl Connection
 
                 *current = start.unwrap().zip_map(&target, |a, b|
                 {
-                    lerp(a, b, remaining)
+                    lerp(a, b, animation.apply(remaining))
                 });
 
                 lifetime.current -= dt;

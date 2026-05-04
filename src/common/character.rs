@@ -32,6 +32,7 @@ use crate::{
         angle_between,
         opposite_angle,
         short_rotation,
+        rotate_point,
         rotate_point_z_3d,
         angle_to_direction_3d,
         ease_out,
@@ -698,6 +699,28 @@ impl Character
         }
     }
 
+    fn with_animation_step(
+        &self,
+        entities: &ClientEntities,
+        after: f32,
+        f: impl FnOnce(&ClientEntities) + 'static
+    )
+    {
+        let info = some_or_return!(self.info.as_ref());
+
+        entities.add_watcher(info.this, Watcher{
+            kind: WatcherType::Lifetime(after.into()),
+            action: Box::new(|entities, entity|
+            {
+                if some_or_return!(entities.character(entity)).animation_duration > 0.0
+                {
+                    f(entities);
+                }
+            }),
+            ..Default::default()
+        })
+    }
+
     pub fn set_animation(
         &mut self,
         entities: &ClientEntities,
@@ -713,9 +736,9 @@ impl Character
         {
             CharacterAnimation::BashCharge => 0.0,
             CharacterAnimation::Poke => 0.4,
+            CharacterAnimation::Throw => 0.8,
+            CharacterAnimation::Reload => some_or_unexpected_return!(self.reload_cooldown(entities)),
             CharacterAnimation::Bash
-            | CharacterAnimation::Throw
-            | CharacterAnimation::Reload
             | CharacterAnimation::Pickup(_) => 0.5
         };
 
@@ -818,43 +841,191 @@ impl Character
             },
             CharacterAnimation::Throw =>
             {
-                let info = self.info.as_mut().unwrap();
+                let character_info = entities.infos().characters_info.get(self.id);
+                let character_scale_max = character_info.normal.scale.max();
 
-                let mut hand_right_lazy = some_or_unexpected_return!(entities.lazy_transform_mut(info.hand_right));
+                let f = |entity, is_left|
+                {
+                    let mut lazy = some_or_unexpected_return!(entities.lazy_transform_mut(entity));
 
-                hand_right_lazy.connection = Connection::EaseOut{
-                    decay: 6.0,
-                    limit: None
+                    let start_position = lazy.target_ref().position;
+
+                    lazy.connection = Connection::EaseOut{
+                        decay: 20.0,
+                        limit: None
+                    };
+
+                    let close_y = -0.15;
+
+                    lazy.target().position.y = (if is_left { close_y } else { -close_y }) * character_scale_max;
+
+                    lazy.target().position.x += ENTITY_SCALE * 0.5;
+
+                    self.with_animation_step(entities, 0.3, move |entities|
+                    {
+                        let mut lazy = some_or_return!(entities.lazy_transform_mut(entity));
+
+                        lazy.connection = Connection::EaseOut{
+                            decay: 4.0,
+                            limit: None
+                        };
+
+                        lazy.target().position = start_position;
+                    });
                 };
 
-                let mut hand_right_transform = some_or_unexpected_return!(entities.transform_mut(info.hand_right));
-                hand_right_transform.position += *angle_to_direction_3d(info.rotation) * (ENTITY_SCALE * 0.5);
+                let hand_right;
+                let hand_left;
+
+                {
+                    let info = self.info.as_ref().unwrap();
+
+                    hand_right = info.hand_right;
+                    hand_left = info.hand_left;
+
+                }
+
+                f(hand_left, true);
+                f(hand_right, false);
             },
             CharacterAnimation::Reload =>
             {
-                let add_this = ();
+                let info = self.info.as_ref().unwrap();
+
+                let character_info = entities.infos().characters_info.get(self.id);
+                let character_scale = character_info.normal.scale;
+
+                let hand_scale = entities.infos().items_info.get(character_info.hand).scale3().xy();
+
+                let hand_right_entity = info.hand_right;
+                let holding_entity = some_or_unexpected_return!(info.holding).entity;
+                let holding_info = some_or_unexpected_return!(self.held_item_info(entities));
+
+                let total_duration = self.animation_duration;
+
+                let ratios = {
+                    let ratios = [0.8, 1.0, 0.4, 0.9, 0.7, 2.0, 0.5];
+
+                    let total = ratios.into_iter().sum::<f32>();
+
+                    ratios.map(|x| x / total)
+                };
+
+                let mut durations = ratios.into_iter().map(|x| total_duration * x);
+
+                let mut start_time = 0.0;
+
+                entities.set_follow_position(hand_right_entity, None);
+
+                let to_relative = {
+                    let this_transform = some_or_return!(entities.transform(info.this));
+
+                    move |position: Vector2<f32>|
+                    {
+                        rotate_point(position - this_transform.position.xy(), -this_transform.rotation)
+                    }
+                };
+
+                let start_position = to_relative(some_or_return!(entities.transform(hand_right_entity)).position.xy());
+
+                let mut hand_right_lazy = some_or_return!(entities.lazy_transform_mut(hand_right_entity));
+
+                let mut move_to = |new_position, animation, extra_action: Box<dyn for<'a> FnOnce(&'a ClientEntities)>|
+                {
+                    let new_position = with_z(new_position, 0.0);
+
+                    let this_duration = durations.next().unwrap();
+
+                    let connection = Connection::Timed{lifetime: this_duration.into(), animation};
+
+                    if start_time == 0.0
+                    {
+                        hand_right_lazy.connection = connection;
+
+                        hand_right_lazy.target().position = new_position;
+
+                        extra_action(entities);
+                    } else
+                    {
+                        self.with_animation_step(entities, start_time, move |entities|
+                        {
+                            let mut lazy = some_or_return!(entities.lazy_transform_mut(hand_right_entity));
+
+                            lazy.connection = connection;
+
+                            lazy.target().position = new_position;
+
+                            extra_action(entities);
+                        });
+                    }
+
+                    start_time += this_duration;
+                };
+
+                macro_rules! identity
+                {
+                    () => { Box::new(|_entities| {}) }
+                }
+
+                {
+                    let direction = vector![0.2, 1.1].normalize();
+
+                    let position = direction.component_mul(&character_scale) * 0.5 + direction.component_mul(&hand_scale) * 0.9;
+
+                    move_to(position, ValueAnimation::EaseOut(2.0), identity!());
+                }
+
+                move_to(start_position, ValueAnimation::EaseOut(1.1), identity!());
+                move_to(start_position + vector![hand_scale.x * 0.5, 0.0], ValueAnimation::EaseOut(2.0), identity!());
+                move_to(start_position - vector![hand_scale.x * 0.5, 0.0], ValueAnimation::EaseOut(1.1), identity!());
+
+                {
+                    let holding_position = to_relative(some_or_return!(entities.transform(holding_entity)).position.xy());
+
+                    move_to(holding_position + vector![holding_info.scale3().x, 0.0], ValueAnimation::EaseOut(1.1), Box::new(move |entities|
+                    {
+                        entities.set_z_level(hand_right_entity, ZLevel::HandHigh);
+                    }));
+
+                    move_to(holding_position - vector![holding_info.scale3().x, 0.0], ValueAnimation::EaseOut(2.0), identity!());
+                }
+
+                move_to(start_position, ValueAnimation::EaseOut(1.1), identity!());
             },
             CharacterAnimation::Pickup(item_entity) =>
             {
                 let info = self.info.as_ref().unwrap();
 
-                if let Some(mut hand_right_transform) = entities.transform_mut(info.hand_right)
+                let hand_right_entity = info.hand_right;
+
+                let this_transform = some_or_return!(entities.transform(info.this));
+                let item_transform = some_or_return!(entities.transform(item_entity));
+
+                let hand_right_transform = some_or_return!(entities.transform(hand_right_entity));
+                let mut hand_right_lazy = some_or_return!(entities.lazy_transform_mut(hand_right_entity));
+
+                let item_angle = angle_between(hand_right_transform.position, item_transform.position) + this_transform.rotation;
+
+                let start_position = hand_right_lazy.target_ref().position;
+
+                hand_right_lazy.connection = Connection::EaseOut{
+                    decay: 40.0,
+                    limit: None
+                };
+
+                hand_right_lazy.target().position += *angle_to_direction_3d(item_angle) * (ENTITY_SCALE * 0.5);
+
+                self.with_animation_step(entities, 0.15, move |entities|
                 {
-                    if let Some(item_transform) = entities.transform(item_entity)
-                    {
-                        if let Some(mut hand_right_lazy) = entities.lazy_transform_mut(info.hand_right)
-                        {
-                            let item_direction = (item_transform.position - hand_right_transform.position).normalize();
+                    let mut lazy = some_or_return!(entities.lazy_transform_mut(hand_right_entity));
 
-                            hand_right_lazy.connection = Connection::EaseOut{
-                                decay: 6.0,
-                                limit: None
-                            };
+                    lazy.connection = Connection::EaseOut{
+                        decay: 6.0,
+                        limit: None
+                    };
 
-                            hand_right_transform.position += item_direction * (ENTITY_SCALE * 0.5);
-                        }
-                    }
-                }
+                    lazy.target().position = start_position;
+                });
             }
         }
     }
@@ -885,7 +1056,10 @@ impl Character
         {
             self.stance = stance;
 
-            self.reset_stance(entities);
+            if self.animation_duration <= 0.0
+            {
+                self.reset_stance(entities);
+            }
         }
     }
 
@@ -1068,6 +1242,7 @@ impl Character
             ammo
         };
 
+        let mut reloaded_amount = 0;
         ammo.items.iter().for_each(|search_ammo|
         {
             let find_ammo = || -> Option<(InventoryItem, ItemId)>
@@ -1095,7 +1270,7 @@ impl Character
 
                 item.ammo.push(found_ammo);
 
-                self.attack_cooldown = self.attack_cooldown.max(reload_cooldown);
+                reloaded_amount += 1;
 
                 if item.ammo.len() >= ammo.max as usize
                 {
@@ -1104,7 +1279,36 @@ impl Character
             }
         });
 
-        self.set_animation(entities, CharacterAnimation::Reload);
+        if reloaded_amount > 0
+        {
+            let stance_cooldown = 0.6;
+            let cooldown = if self.stance == AttackStance::Forward
+            {
+                reload_cooldown
+            } else
+            {
+                reload_cooldown + stance_cooldown
+            };
+
+            self.attack_cooldown = self.attack_cooldown.max(cooldown);
+
+            if self.stance == AttackStance::Forward
+            {
+                self.set_animation(entities, CharacterAnimation::Reload);
+            } else
+            {
+                self.set_stance(entities, AttackStance::Forward);
+
+                entities.add_watcher(this_entity, Watcher{
+                    kind: WatcherType::Lifetime(stance_cooldown.into()),
+                    action: Box::new(move |entities, entity|
+                    {
+                        some_or_return!(entities.character_mut(entity)).set_animation(entities, CharacterAnimation::Reload);
+                    }),
+                    ..Default::default()
+                });
+            }
+        }
     }
 
     pub fn on_removed_item(&mut self, item: InventoryItem)
@@ -1299,7 +1503,6 @@ impl Character
 
         let holding_entity = info.holding;
         let hand_left = info.hand_left;
-        let hand_right = info.hand_right;
 
         self.update_cached(combined_info);
 
@@ -1309,7 +1512,6 @@ impl Character
         };
 
         let holding_item = self.held_item_info(combined_info.entities);
-        let holding_state = holding_item.is_some();
 
         if let Some(holding_entity) = holding_entity
         {
@@ -1327,15 +1529,6 @@ impl Character
                 set_visible(special.entity, visible && holding_item.map(|item| item.special_part.is_some()).unwrap_or(false));
             }
         }
-
-        entities.lazy_setter.borrow_mut().set_follow_position_no_change(hand_right, holding_item.map(|_|
-        {
-            FollowPosition{
-                parent: hand_left,
-                connection: Connection::Rigid,
-                offset: Vector3::new(ENTITY_SCALE * 0.1, 0.0, 0.0)
-            }
-        }));
 
         if let Some(item) = holding_item
         {
@@ -1395,14 +1588,6 @@ impl Character
         }
 
         self.reset_held_lighting(entities);
-
-        some_or_return!(entities.lazy_transform_mut_no_change(hand_right)).connection = if holding_state
-        {
-            Connection::Ignore
-        } else
-        {
-            default_connection()
-        };
 
         let lazy_for = |entity|
         {
@@ -1831,7 +2016,7 @@ impl Character
 
         let f = |entity|
         {
-            let mut lazy = some_or_unexpected_return!(entities.lazy_transform_mut_no_change(entity));
+            let mut lazy = some_or_return!(entities.lazy_transform_mut_no_change(entity));
 
             lazy.target().rotation = -HELDLIKE_ORIGIN_ROTATION;
         };
@@ -1851,7 +2036,7 @@ impl Character
 
         let f = |entity, is_left|
         {
-            let mut lazy = some_or_unexpected_return!(entities.lazy_transform_mut_no_change(entity));
+            let mut lazy = some_or_return!(entities.lazy_transform_mut_no_change(entity));
 
             lazy.rotation = default_lazy_rotation(is_player);
 
@@ -1882,6 +2067,8 @@ impl Character
     {
         let info = some_or_return!(self.info.as_ref());
 
+        let is_holding = self.holding.is_some();
+
         let characters_info = &entities.infos().characters_info;
 
         let item_position = {
@@ -1890,9 +2077,12 @@ impl Character
             self.held_position(characters_info, scale)
         };
 
-        let f = |entity, is_left|
+        let f = |entity, is_left: bool|
         {
             let mut lazy = some_or_return!(entities.lazy_transform_mut_no_change(entity));
+
+            lazy.connection = if is_holding && !is_left { Connection::Ignore } else { default_connection() };
+
             let target = lazy.target();
 
             let character_info = characters_info.get(self.id);
@@ -1901,10 +2091,26 @@ impl Character
             let held_position = Vector3::new(item_position.x, y * character_info.normal.scale.max(), 0.0);
 
             target.position = held_position;
+
+            let wants_z = if is_left { ZLevel::HandHigh } else { ZLevel::HandLow };
+
+            if entities.z_level(entity) != Some(wants_z)
+            {
+                entities.set_z_level(entity, wants_z);
+            }
         };
 
         f(info.hand_left, true);
         f(info.hand_right, false);
+
+        entities.lazy_setter.borrow_mut().set_follow_position_no_change(info.hand_right, self.holding.is_some().then(||
+        {
+            FollowPosition{
+                parent: info.hand_left,
+                connection: Connection::Rigid,
+                offset: Vector3::new(ENTITY_SCALE * 0.1, 0.0, 0.0)
+            }
+        }));
     }
 
     fn aim_start(&mut self, combined_info: CombinedInfo)
