@@ -3315,7 +3315,29 @@ impl Character
 
                 lazy.target_local.position.y = animation.apply(*offset) * max_offset;
 
-                *offset = (*offset + dt * *speed).clamp(0.0, 1.0);
+                *offset = *offset + dt * *speed;
+
+                let reset_info = |special: &mut OffsetInfo|
+                {
+                    let held = some_or_unexpected_return!(self.holding);
+
+                    let inventory = some_or_unexpected_return!(combined_info.entities.inventory(info.this));
+                    let item = some_or_unexpected_return!(inventory.get(held));
+
+                    *special = OffsetInfo::new(special_info, !item.ammo.is_empty());
+                };
+
+                if *offset < 0.0
+                {
+                    *offset = 0.0;
+
+                    reset_info(&mut special.info);
+                } else if *offset > 1.0
+                {
+                    *offset = 1.0;
+
+                    reset_info(&mut special.info);
+                }
             }
         }
     }
