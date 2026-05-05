@@ -362,9 +362,34 @@ struct HairInfo
 }
 
 #[derive(Debug, Clone, Copy)]
-struct SpecialPartInfo
+struct OffsetInfo
 {
     offset: f32,
+    speed: f32,
+    animation: ValueAnimation
+}
+
+impl OffsetInfo
+{
+    fn new<T>(special_info: &SpecialPart<T>) -> Self
+    {
+        let speed = match special_info
+        {
+            SpecialPart::GunTop{speed, ..} => *speed
+        };
+
+        OffsetInfo{
+            offset: 0.0,
+            speed: -speed,
+            animation: ValueAnimation::EaseOut(2.0)
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct SpecialPartInfo
+{
+    info: OffsetInfo,
     entity: Entity
 }
 
@@ -892,6 +917,8 @@ impl Character
             {
                 let info = self.info.as_ref().unwrap();
 
+                let this_entity = info.this;
+
                 let character_info = entities.infos().characters_info.get(self.id);
                 let character_scale = character_info.normal.scale;
 
@@ -930,7 +957,7 @@ impl Character
 
                 let mut hand_right_lazy = some_or_return!(entities.lazy_transform_mut(hand_right_entity));
 
-                let mut move_to = |new_position, animation, extra_action: Box<dyn for<'a> FnOnce(&'a ClientEntities)>|
+                let mut move_to = |new_position, animation, extra_action: Box<dyn for<'a> FnOnce(&'a ClientEntities, f32)>|
                 {
                     let new_position = with_z(new_position, 0.0);
 
@@ -944,7 +971,7 @@ impl Character
 
                         hand_right_lazy.target().position = new_position;
 
-                        extra_action(entities);
+                        extra_action(entities, this_duration);
                     } else
                     {
                         self.with_animation_step(entities, start_time, move |entities|
@@ -955,7 +982,7 @@ impl Character
 
                             lazy.target().position = new_position;
 
-                            extra_action(entities);
+                            extra_action(entities, this_duration);
                         });
                     }
 
@@ -964,7 +991,7 @@ impl Character
 
                 macro_rules! identity
                 {
-                    () => { Box::new(|_entities| {}) }
+                    () => { Box::new(|_entities, _duration| {}) }
                 }
 
                 {
@@ -982,15 +1009,33 @@ impl Character
                 {
                     let holding_position = to_relative(some_or_return!(entities.transform(holding_entity)).position.xy());
 
-                    move_to(holding_position + vector![holding_info.scale3().x, 0.0], ValueAnimation::EaseOut(1.1), Box::new(move |entities|
+                    move_to(holding_position + vector![holding_info.scale3().x, 0.0], ValueAnimation::EaseOut(1.1), Box::new(move |entities, _duration|
                     {
                         entities.set_z_level(hand_right_entity, ZLevel::HandHigh);
                     }));
 
-                    move_to(holding_position - vector![holding_info.scale3().x, 0.0], ValueAnimation::EaseOut(2.0), identity!());
+                    move_to(holding_position - vector![holding_info.scale3().x, 0.0], ValueAnimation::EaseOut(2.0), Box::new(move |entities, duration|
+                    {
+                        let mut character = some_or_return!(entities.character_mut_no_change(this_entity));
+                        let info = some_or_return!(character.info.as_mut());
+
+                        let holding = some_or_return!(info.holding.as_mut());
+                        let special = some_or_return!(holding.special.as_mut());
+
+                        special.info = OffsetInfo{offset: 0.0, speed: duration.recip(), animation: ValueAnimation::EaseOut(2.0)};
+                    }));
                 }
 
-                move_to(start_position, ValueAnimation::EaseOut(1.1), identity!());
+                move_to(start_position, ValueAnimation::EaseOut(1.1), Box::new(move |entities, _duration|
+                {
+                    let mut character = some_or_return!(entities.character_mut_no_change(this_entity));
+                    let info = some_or_return!(character.info.as_mut());
+
+                    let holding = some_or_return!(info.holding.as_mut());
+                    let special = some_or_return!(holding.special.as_mut());
+
+                    special.info = OffsetInfo{offset: 1.0, speed: -25.0, animation: ValueAnimation::EaseOut(1.5)};
+                }));
             },
             CharacterAnimation::Pickup(item_entity) =>
             {
@@ -1063,13 +1108,15 @@ impl Character
         }
     }
 
-    fn reset_stance(&self, entities: &ClientEntities)
+    fn reset_stance(&mut self, entities: &ClientEntities)
     {
         match self.stance
         {
             AttackStance::Forward => self.forward_stance(entities),
             AttackStance::Side => self.side_stance(entities)
         }
+
+        self.reset_animation(entities);
     }
 
     pub fn charged_attack_bash(&mut self, entities: &ClientEntities)
@@ -1281,7 +1328,7 @@ impl Character
 
         if reloaded_amount > 0
         {
-            let stance_cooldown = 0.6;
+            let stance_cooldown = 0.3;
             let cooldown = if self.stance == AttackStance::Forward
             {
                 reload_cooldown
@@ -1472,7 +1519,7 @@ impl Character
                 info.holding = Some(holding_info);
             }
 
-            if held_item_id.map(|held_id| combined_info.items_info.get(held_id).special_part.is_some()).unwrap_or(false)
+            if let Some(special_part) = held_item_id.and_then(|held_id| combined_info.items_info.get(held_id).special_part.as_ref())
             {
                 if let Some(holding) = info.holding.as_mut()
                 {
@@ -1485,7 +1532,7 @@ impl Character
                         };
 
                         let holding_info = SpecialPartInfo{
-                            offset: 0.0,
+                            info: OffsetInfo::new(special_part),
                             entity: combined_info.entities.push(true, special_entity)
                         };
 
@@ -2021,8 +2068,6 @@ impl Character
 
         f(info.hand_left);
         f(info.hand_right);
-
-        self.reset_hands_position(entities);
     }
 
     fn side_stance(&self, entities: &ClientEntities)
@@ -2057,11 +2102,9 @@ impl Character
         {
             f(info.hand_right, false);
         }
-
-        self.reset_hands_position(entities);
     }
 
-    fn reset_hands_position(&self, entities: &ClientEntities)
+    fn reset_animation(&mut self, entities: &ClientEntities)
     {
         let info = some_or_return!(self.info.as_ref());
 
@@ -2109,6 +2152,28 @@ impl Character
                 offset: Vector3::new(ENTITY_SCALE * 0.1, 0.0, 0.0)
             }
         }));
+
+        let held_item_id = self.held_item_id(entities);
+        let info = some_or_return!(self.info.as_mut());
+
+        if let Some(holding) = info.holding.as_mut()
+        {
+            if let Some(special) = holding.special.as_mut()
+            {
+                let OffsetInfo{speed: offset_speed, ..} = &special.info;
+
+                if *offset_speed > 0.0
+                {
+                    let held_item_id = some_or_unexpected_return!(held_item_id);
+
+                    let held_item_info = entities.infos().items_info.get(held_item_id);
+
+                    let special_info = some_or_unexpected_return!(held_item_info.special_part.as_ref());
+
+                    special.info = OffsetInfo::new(special_info);
+                }
+            }
+        }
     }
 
     fn aim_start(&mut self, combined_info: CombinedInfo)
@@ -2252,7 +2317,7 @@ impl Character
             {
                 if let Some(special) = holding.special.as_mut()
                 {
-                    special.offset = 1.0;
+                    special.info.offset = 1.0;
                 }
             }
         }
@@ -3205,13 +3270,15 @@ impl Character
 
         match special_info
         {
-            SpecialPart::GunTop{speed, amount, ..} =>
+            SpecialPart::GunTop{amount, ..} =>
             {
                 let max_offset = *amount / ENTITY_PIXEL_SCALE as f32;
 
-                lazy.target_local.position.y = ValueAnimation::EaseOut(2.0).apply(special.offset) * max_offset;
+                let OffsetInfo{offset, speed, animation} = &mut special.info;
 
-                special.offset = (special.offset - dt * *speed).max(0.0);
+                lazy.target_local.position.y = animation.apply(*offset) * max_offset;
+
+                *offset = (*offset + dt * *speed).clamp(0.0, 1.0);
             }
         }
     }
