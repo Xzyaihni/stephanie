@@ -371,7 +371,7 @@ struct OffsetInfo
 
 impl OffsetInfo
 {
-    fn new<T>(special_info: &SpecialPart<T>) -> Self
+    fn new<T>(special_info: &SpecialPart<T>, has_ammo: bool) -> Self
     {
         let speed = match special_info
         {
@@ -379,8 +379,8 @@ impl OffsetInfo
         };
 
         OffsetInfo{
-            offset: 0.0,
-            speed: -speed,
+            offset: if has_ammo { 0.0 } else { 1.0 },
+            speed: if has_ammo { -speed } else { 0.0 },
             animation: ValueAnimation::EaseOut(2.0)
         }
     }
@@ -463,7 +463,7 @@ pub enum CharacterAnimation
     Bash,
     Poke,
     Throw,
-    Reload,
+    Reload(bool),
     Pickup(Entity)
 }
 
@@ -762,7 +762,7 @@ impl Character
             CharacterAnimation::BashCharge => 0.0,
             CharacterAnimation::Poke => 0.4,
             CharacterAnimation::Throw => 0.8,
-            CharacterAnimation::Reload => some_or_unexpected_return!(self.reload_cooldown(entities)),
+            CharacterAnimation::Reload(_) => some_or_unexpected_return!(self.reload_cooldown(entities)),
             CharacterAnimation::Bash
             | CharacterAnimation::Pickup(_) => 0.5
         };
@@ -913,7 +913,7 @@ impl Character
                 f(hand_left, true);
                 f(hand_right, false);
             },
-            CharacterAnimation::Reload =>
+            CharacterAnimation::Reload(has_ammo) =>
             {
                 let info = self.info.as_ref().unwrap();
 
@@ -930,12 +930,20 @@ impl Character
 
                 let total_duration = self.animation_duration;
 
-                let ratios = {
-                    let ratios = [0.8, 1.0, 0.4, 0.9, 0.7, 2.0, 0.5];
+                let ratios: Vec<_> = {
+                    let mut ratios = vec![0.8, 1.0, 0.4, 0.9];
 
-                    let total = ratios.into_iter().sum::<f32>();
+                    if has_ammo
+                    {
+                        ratios.push(0.7);
+                    }
 
-                    ratios.map(|x| x / total)
+                    ratios.push(2.0);
+                    ratios.push(0.5);
+
+                    let total = ratios.iter().copied().sum::<f32>();
+
+                    ratios.into_iter().map(|x| x / total).collect()
                 };
 
                 let mut durations = ratios.into_iter().map(|x| total_duration * x);
@@ -1009,20 +1017,29 @@ impl Character
                 {
                     let holding_position = to_relative(some_or_return!(entities.transform(holding_entity)).position.xy());
 
-                    move_to(holding_position + vector![holding_info.scale3().x, 0.0], ValueAnimation::EaseOut(1.1), Box::new(move |entities, _duration|
+                    if has_ammo
                     {
-                        entities.set_z_level(hand_right_entity, ZLevel::HandHigh);
-                    }));
+                        move_to(
+                            holding_position + vector![holding_info.scale3().x, 0.0],
+                            ValueAnimation::EaseOut(1.1),
+                            Box::new(move |entities, _duration|
+                            {
+                                entities.set_z_level(hand_right_entity, ZLevel::HandHigh);
+                            }));
+                    }
 
                     move_to(holding_position - vector![holding_info.scale3().x, 0.0], ValueAnimation::EaseOut(2.0), Box::new(move |entities, duration|
                     {
-                        let mut character = some_or_return!(entities.character_mut_no_change(this_entity));
-                        let info = some_or_return!(character.info.as_mut());
+                        if has_ammo
+                        {
+                            let mut character = some_or_return!(entities.character_mut_no_change(this_entity));
+                            let info = some_or_return!(character.info.as_mut());
 
-                        let holding = some_or_return!(info.holding.as_mut());
-                        let special = some_or_return!(holding.special.as_mut());
+                            let holding = some_or_return!(info.holding.as_mut());
+                            let special = some_or_return!(holding.special.as_mut());
 
-                        special.info = OffsetInfo{offset: 0.0, speed: duration.recip(), animation: ValueAnimation::EaseOut(2.0)};
+                            special.info = OffsetInfo{offset: 0.0, speed: duration.recip(), animation: ValueAnimation::EaseOut(2.0)};
+                        }
                     }));
                 }
 
@@ -1273,7 +1290,7 @@ impl Character
 
         let items_info = combined_info.items_info;
 
-        let ammo = {
+        let (has_ammo, ammo) = {
             let inventory = some_or_return!(entities.inventory(info.this));
 
             let item = some_or_return!(inventory.get(item));
@@ -1286,7 +1303,7 @@ impl Character
                 return;
             }
 
-            ammo
+            (!item.ammo.is_empty(), ammo)
         };
 
         let mut reloaded_amount = 0;
@@ -1341,7 +1358,7 @@ impl Character
 
             if self.stance == AttackStance::Forward
             {
-                self.set_animation(entities, CharacterAnimation::Reload);
+                self.set_animation(entities, CharacterAnimation::Reload(has_ammo));
             } else
             {
                 self.set_stance(entities, AttackStance::Forward);
@@ -1350,7 +1367,7 @@ impl Character
                     kind: WatcherType::Lifetime(stance_cooldown.into()),
                     action: Box::new(move |entities, entity|
                     {
-                        some_or_return!(entities.character_mut(entity)).set_animation(entities, CharacterAnimation::Reload);
+                        some_or_return!(entities.character_mut(entity)).set_animation(entities, CharacterAnimation::Reload(has_ammo));
                     }),
                     ..Default::default()
                 });
@@ -1531,8 +1548,13 @@ impl Character
                             ..Default::default()
                         };
 
+                        let held = some_or_unexpected_return!(self.holding);
+
+                        let inventory = some_or_unexpected_return!(combined_info.entities.inventory(info.this));
+                        let item = some_or_unexpected_return!(inventory.get(held));
+
                         let holding_info = SpecialPartInfo{
-                            info: OffsetInfo::new(special_part),
+                            info: OffsetInfo::new(special_part, !item.ammo.is_empty()),
                             entity: combined_info.entities.push(true, special_entity)
                         };
 
@@ -2170,7 +2192,12 @@ impl Character
 
                     let special_info = some_or_unexpected_return!(held_item_info.special_part.as_ref());
 
-                    special.info = OffsetInfo::new(special_info);
+                    let held = some_or_unexpected_return!(self.holding);
+
+                    let inventory = some_or_unexpected_return!(entities.inventory(info.this));
+                    let item = some_or_unexpected_return!(inventory.get(held));
+
+                    special.info = OffsetInfo::new(special_info, !item.ammo.is_empty());
                 }
             }
         }
@@ -2295,7 +2322,7 @@ impl Character
 
         let this_entity = some_or_return!(self.info.as_ref()).this;
 
-        if item_info.ammo.is_some()
+        let no_ammo = if item_info.ammo.is_some()
         {
             let held = some_or_return!(self.holding);
 
@@ -2306,7 +2333,12 @@ impl Character
             {
                 return;
             }
-        }
+
+            item.ammo.is_empty()
+        } else
+        {
+            false
+        };
 
         let ranged = some_or_return!(&item_info.ranged);
 
@@ -2318,6 +2350,11 @@ impl Character
                 if let Some(special) = holding.special.as_mut()
                 {
                     special.info.offset = 1.0;
+
+                    if no_ammo
+                    {
+                        special.info.speed = 0.0;
+                    }
                 }
             }
         }
