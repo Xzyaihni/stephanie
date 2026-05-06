@@ -2081,15 +2081,9 @@ impl Character
 
         let info = some_or_return!(self.info.as_ref());
 
-        let f = |entity|
-        {
-            let mut lazy = some_or_return!(entities.lazy_transform_mut_no_change(entity));
+        let mut lazy = some_or_return!(entities.lazy_transform_mut_no_change(info.hand_left));
 
-            lazy.target().rotation = -HELDLIKE_ORIGIN_ROTATION;
-        };
-
-        f(info.hand_left);
-        f(info.hand_right);
+        lazy.target().rotation = -HELDLIKE_ORIGIN_ROTATION;
     }
 
     fn side_stance(&self, entities: &ClientEntities)
@@ -2150,7 +2144,14 @@ impl Character
 
             let character_info = characters_info.get(self.id);
 
-            let y = if is_left { HAND_LEFT_Y } else { -HAND_LEFT_Y };
+            let y = if self.stance == AttackStance::Forward
+            {
+                0.0
+            } else
+            {
+                if is_left { HAND_LEFT_Y } else { -HAND_LEFT_Y }
+            };
+
             let held_position = Vector3::new(item_position.x, y * character_info.normal.scale.max(), 0.0);
 
             target.position = held_position;

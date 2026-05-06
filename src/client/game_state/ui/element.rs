@@ -708,8 +708,9 @@ impl MixDecay
 #[derive(Debug, Clone, PartialEq)]
 pub struct MixAnimation
 {
-    pub decay: MixDecay,
+    pub start_decay: MixDecay,
     pub start_mix: Option<Lcha>,
+    pub close_decay: MixDecay,
     pub close_mix: Option<Lcha>
 }
 
@@ -718,8 +719,9 @@ impl Default for MixAnimation
     fn default() -> Self
     {
         Self{
-            decay: MixDecay::all(10.0),
+            start_decay: MixDecay::all(10.0),
             start_mix: None,
+            close_decay: MixDecay::all(10.0),
             close_mix: None
         }
     }
@@ -788,7 +790,7 @@ impl Animation
                 ..Default::default()
             }),
             mix: Some(MixAnimation{
-                decay: MixDecay::all(10.0),
+                start_decay: MixDecay::all(10.0),
                 ..Default::default()
             }),
             ..Default::default()

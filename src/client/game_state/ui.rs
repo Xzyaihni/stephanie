@@ -1792,7 +1792,7 @@ impl WindowKind
                         height: twice_size,
                         animation: Animation{
                             mix: Some(MixAnimation{
-                                decay: MixDecay{l: 50.0, c: 50.0, ..MixDecay::all(20.0)},
+                                start_decay: MixDecay{l: 50.0, c: 50.0, ..MixDecay::all(20.0)},
                                 ..Default::default()
                             }),
                             ..Default::default()
@@ -1987,8 +1987,9 @@ impl Window
         }).unwrap_or_default();
 
         let mix_animation = MixAnimation{
-            decay: MixDecay::all(60.0),
+            start_decay: MixDecay::all(80.0),
             start_mix: Some(Lcha{a: 0.0, ..BACKGROUND_COLOR}),
+            close_decay: MixDecay::all(60.0),
             close_mix: Some(Lcha{a: 0.0, ..BACKGROUND_COLOR}),
             ..Default::default()
         };
@@ -2595,7 +2596,7 @@ impl Ui
                 height: 1.0.into(),
                 animation: Animation{
                     mix: Some(MixAnimation{
-                        decay: MixDecay::all(15.0),
+                        close_decay: MixDecay::all(15.0),
                         close_mix: Some(Lcha{a: 0.0, ..BACKGROUND_COLOR}),
                         ..Default::default()
                     }),
@@ -2745,7 +2746,8 @@ impl Ui
                     mix: Some(MixAnimation{
                         start_mix: Some(Lcha{a: 0.0, ..BLACK_COLOR}),
                         close_mix: Some(Lcha{a: 0.0, ..BLACK_COLOR}),
-                        decay: MixDecay::all(20.0),
+                        start_decay: MixDecay::all(40.0),
+                        close_decay: MixDecay::all(20.0),
                         ..Default::default()
                     }),
                     ..Default::default()
@@ -2792,17 +2794,22 @@ impl Ui
                 BLUE_COLOR
             };
 
+            let animation = Animation{
+                mix: Some(MixAnimation{
+                    start_decay: MixDecay::all(30.0),
+                    start_mix: Some(Lcha{a: 0.0, ..BLACK_COLOR}),
+                    close_decay: MixDecay::all(50.0),
+                    close_mix: Some(Lcha{a: 0.0, ..BLACK_COLOR}),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            };
+
             inner.update(UiId::Oxygen(OxygenPartId::BarPanel), UiElement{
                 texture: UiTexture::Custom("ui/oxygen_bar_panel.png".into()),
                 mix: Some(MixColorLch{only_alpha: true, ..MixColorLch::color(Lcha{a: 1.0, ..BLACK_COLOR})}),
-                animation: Animation{
-                    mix: Some(MixAnimation{
-                        close_mix: Some(Lcha{a: 0.0, ..BLACK_COLOR}),
-                        ..Default::default()
-                    }),
-                    ..Default::default()
-                },
                 position: UiPosition::Inherit,
+                animation: animation.clone(),
                 ..UiElement::fit_content()
             });
 
@@ -2815,14 +2822,8 @@ impl Ui
                     horizontal: true
                 }),
                 mix: Some(MixColorLch{only_alpha: true, ..MixColorLch::color(Lcha{a: 1.0, ..BLACK_COLOR})}),
-                animation: Animation{
-                    mix: Some(MixAnimation{
-                        close_mix: Some(Lcha{a: 0.0, ..BLACK_COLOR}),
-                        ..Default::default()
-                    }),
-                    ..Default::default()
-                },
                 position: UiPosition::Inherit,
+                animation,
                 ..UiElement::fit_content()
             });
 
@@ -2833,7 +2834,7 @@ impl Ui
         {
             let animation = Animation{
                 mix: Some(MixAnimation{
-                    decay: MixDecay::all(10.0),
+                    start_decay: MixDecay::all(10.0),
                     start_mix: Some(Lcha{a: 0.0, ..BACKGROUND_COLOR}),
                     ..Default::default()
                 }),
@@ -2926,7 +2927,7 @@ impl Ui
                     height: size,
                     animation: Animation{
                         mix: Some(MixAnimation{
-                            decay: MixDecay{l: 50.0, c: 50.0, ..MixDecay::all(20.0)},
+                            start_decay: MixDecay{l: 50.0, c: 50.0, ..MixDecay::all(20.0)},
                             ..Default::default()
                         }),
                         ..Default::default()
@@ -3145,7 +3146,7 @@ impl Ui
                     position: UiPosition::Offset(body_id.clone(), Vector2::zeros()),
                     animation: Animation{
                         mix: Some(MixAnimation{
-                            decay: MixDecay{l: lightness_decay, c: lightness_decay, ..MixDecay::all(20.0)},
+                            start_decay: MixDecay{l: lightness_decay, c: lightness_decay, ..MixDecay::all(20.0)},
                             ..Default::default()
                         }),
                         ..Default::default()
@@ -3339,8 +3340,9 @@ impl Ui
                 position: UiPosition::Inherit,
                 animation: Animation{
                     mix: Some(MixAnimation{
-                        decay: MixDecay::all(40.0),
+                        start_decay: MixDecay::all(20.0),
                         start_mix: Some(Lcha{a: 0.0, ..BLACK_COLOR}),
+                        close_decay: MixDecay::all(40.0),
                         close_mix: Some(Lcha{a: 0.0, ..BLACK_COLOR}),
                         ..Default::default()
                     }),

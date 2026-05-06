@@ -503,6 +503,7 @@ impl UiElementCached
         element: &UiElement<Id>,
         target_mix: Option<MixColorLch>,
         alpha_inherit: f32,
+        is_closing: bool,
         dt: f32
     )
     {
@@ -527,7 +528,10 @@ impl UiElementCached
                     ($($field:ident),+) =>
                     {
                         Lcha{
-                            $($field: mix.color.$field.ease_out(target.color.$field, animation.decay.$field, dt),)+
+                            $($field: {
+                                let decay = if is_closing { &animation.close_decay } else { &animation.start_decay };
+                                mix.color.$field.ease_out(target.color.$field, decay.$field, dt)
+                            },)+
                         }
                     }
                 }
@@ -598,7 +602,7 @@ impl UiElementCached
             self.position = target_position;
         }
 
-        self.update_mix(old_element, old_element.mix, parent_fraction.alpha, dt);
+        self.update_mix(old_element, old_element.mix, parent_fraction.alpha, false, dt);
 
         {
             let this_alpha = if old_element.animation.mix.as_ref().map(|x| x.start_mix.is_some()).unwrap_or(false)
@@ -719,7 +723,7 @@ impl UiElementCached
             element.mix
         };
 
-        self.update_mix(element, target_mix, parent_fraction.alpha, dt);
+        self.update_mix(element, target_mix, parent_fraction.alpha, true, dt);
 
         {
             let this_alpha = if element.animation.mix.as_ref().map(|x| x.close_mix.is_some()).unwrap_or(false)
@@ -1723,15 +1727,11 @@ impl<Id: Idable> Controller<Id>
 
                 if element.closing
                 {
+                    element.close_soon = true;
+
                     if let Some(parent) = parent
                     {
-                        if !parent.closing
-                        {
-                            element.close_soon = true;
-                        }
-                    } else
-                    {
-                        element.close_soon = true;
+                        parent.close_soon = false;
                     }
                 }
             });
@@ -1741,30 +1741,34 @@ impl<Id: Idable> Controller<Id>
             let mut shared = self.shared.borrow_mut();
             let shared: &mut SharedInfo<Id> = &mut shared;
 
-            let screen_size = shared.screen_size;
+            let mut closer = {
+                let screen_size = shared.screen_size;
 
-            let mut closer = |parent_id: Option<&Id>, id: &Id|
-            {
-                if shared.elements[id].closing
+                let elements = &mut shared.elements;
+
+                move |parent_id: Option<&Id>, id: &Id|
                 {
-                    let parent_fraction = parent_id.map(|parent_id|
+                    if elements[id].closing
                     {
-                        shared.elements[parent_id].cached.fractions.clone()
-                    }).unwrap_or_default();
+                        let parent_fraction = parent_id.map(|parent_id|
+                        {
+                            elements[parent_id].cached.fractions.clone()
+                        }).unwrap_or_default();
 
-                    let element = shared.elements.get_mut(id).expect("id must be existing");
+                        let element = elements.get_mut(id).expect("id must be existing");
 
-                    element.cached.update_closing(
-                        &parent_fraction,
-                        &element.deferred,
-                        &mut element.element,
-                        element.close_soon,
-                        screen_size,
-                        dt
-                    )
-                } else
-                {
-                    true
+                        element.cached.update_closing(
+                            &parent_fraction,
+                            &element.deferred,
+                            &mut element.element,
+                            element.close_soon,
+                            screen_size,
+                            dt
+                        )
+                    } else
+                    {
+                        true
+                    }
                 }
             };
 
