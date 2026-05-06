@@ -964,6 +964,7 @@ impl Character
                 let start_position = to_relative(some_or_return!(entities.transform(hand_right_entity)).position.xy());
 
                 let mut hand_right_lazy = some_or_return!(entities.lazy_transform_mut(hand_right_entity));
+                hand_right_lazy.target().rotation = -HELDLIKE_ORIGIN_ROTATION;
 
                 let mut move_to = |new_position, animation, extra_action: Box<dyn for<'a> FnOnce(&'a ClientEntities, f32)>|
                 {
@@ -1017,10 +1018,12 @@ impl Character
                 {
                     let holding_position = to_relative(some_or_return!(entities.transform(holding_entity)).position.xy());
 
+                    let width = holding_info.scale3().y * 0.5;
+
                     if has_ammo
                     {
                         move_to(
-                            holding_position + vector![holding_info.scale3().x, 0.0],
+                            holding_position + vector![width, 0.0],
                             ValueAnimation::EaseOut(1.1),
                             Box::new(move |entities, _duration|
                             {
@@ -1028,7 +1031,7 @@ impl Character
                             }));
                     }
 
-                    move_to(holding_position - vector![holding_info.scale3().x, 0.0], ValueAnimation::EaseOut(2.0), Box::new(move |entities, duration|
+                    move_to(holding_position - vector![width, 0.0], ValueAnimation::EaseOut(2.0), Box::new(move |entities, duration|
                     {
                         if has_ammo
                         {
@@ -2144,6 +2147,11 @@ impl Character
             lazy.connection = if is_holding && !is_left { Connection::Ignore } else { default_connection() };
 
             let target = lazy.target();
+
+            if !is_left
+            {
+                target.rotation = self.default_held_rotation(is_left);
+            }
 
             let character_info = characters_info.get(self.id);
 
