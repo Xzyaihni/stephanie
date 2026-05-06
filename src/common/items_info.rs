@@ -14,6 +14,7 @@ use crate::common::{
     with_error,
     some_or_value,
     with_z,
+    ENTITY_PIXEL_SCALE,
     ENTITY_SCALE,
     generic_info::*,
     clothing::*,
@@ -58,10 +59,12 @@ impl Ranged
 {
     pub fn exit_offset(&self) -> f32
     {
-        match self
+        let offset = match self
         {
             Self::Gun{exit_offset, ..} => *exit_offset
-        }
+        };
+
+        offset / ENTITY_PIXEL_SCALE as f32
     }
 
     pub fn piercing(&self) -> bool

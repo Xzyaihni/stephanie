@@ -2134,6 +2134,9 @@ impl Character
             self.held_position(characters_info, scale)
         };
 
+        let hand_left_entity = info.hand_left;
+        let hand_right_entity = info.hand_right;
+
         let f = |entity, is_left: bool|
         {
             let mut lazy = some_or_return!(entities.lazy_transform_mut_no_change(entity));
@@ -2146,7 +2149,14 @@ impl Character
 
             let y = if self.stance == AttackStance::Forward
             {
-                0.0
+                let item_info = some_or_unexpected_return!(self.held_item_info(entities));
+                if let Some(ranged) = item_info.ranged.as_ref()
+                {
+                    -ranged.exit_offset()
+                } else
+                {
+                    0.0
+                }
             } else
             {
                 if is_left { HAND_LEFT_Y } else { -HAND_LEFT_Y }
@@ -2164,8 +2174,8 @@ impl Character
             }
         };
 
-        f(info.hand_left, true);
-        f(info.hand_right, false);
+        f(hand_left_entity, true);
+        f(hand_right_entity, false);
 
         entities.lazy_setter.borrow_mut().set_follow_position_no_change(info.hand_right, self.holding.is_some().then(||
         {
@@ -2370,7 +2380,7 @@ impl Character
         let holding_transform = some_or_return!(combined_info.entities.transform(holding_entity));
 
         let trail_start = {
-            let x_offset = ranged.exit_offset() / ENTITY_PIXEL_SCALE as f32 * ENTITY_SCALE;
+            let x_offset = ranged.exit_offset() * ENTITY_SCALE;
             let start_offset = vector![x_offset * holding_transform.scale.x.signum(), holding_transform.scale.y * -0.5];
             holding_transform.position + rotate_point_z_3d(with_z(start_offset, 0.0), holding_transform.rotation)
         };
