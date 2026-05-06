@@ -53,14 +53,12 @@ impl Default for PhysicalProperties
 {
     fn default() -> Self
     {
-        let add_friction_lter = ();
-        let also_remove_damping_alot = ();
         Self{
             inverse_mass: 1.0,
             restitution: 0.3,
-            damping: 0.003,
-            angular_damping: 0.005,
-            friction: 0.1,
+            damping: 0.99,
+            angular_damping: 0.99,
+            friction: 2.0,
             floating: false,
             fixed: PhysicalFixed::default(),
             target_non_lazy: false,
@@ -78,6 +76,8 @@ pub struct Physical
     pub fixed: PhysicalFixed,
     pub target_non_lazy: bool,
     pub move_z: bool,
+    pub next_position: Vector3<f32>,
+    pub grounded: bool,
     floating: bool,
     angular_damping: f32,
     torque: f32,
@@ -87,8 +87,7 @@ pub struct Physical
     force: Vector3<f32>,
     velocity: Vector3<f32>,
     acceleration: Vector3<f32>,
-    last_acceleration: Vector3<f32>,
-    next_position: Vector3<f32>
+    last_acceleration: Vector3<f32>
 }
 
 impl From<PhysicalProperties> for Physical
@@ -100,6 +99,7 @@ impl From<PhysicalProperties> for Physical
             friction: props.friction,
             restitution: props.restitution,
             floating: props.floating,
+            grounded: false,
             fixed: props.fixed,
             target_non_lazy: props.target_non_lazy,
             move_z: props.move_z,
@@ -162,6 +162,33 @@ impl Physical
 
         self.velocity += self.last_acceleration * dt;
 
+        if !self.floating && self.grounded
+        {
+            let velocity_2d_magnitude = self.velocity.xy().magnitude();
+
+            if velocity_2d_magnitude > 0.0001
+            {
+                let velocity_direction = self.velocity.xy() / velocity_2d_magnitude;
+
+                let mut change_amount = self.friction * dt;
+                let change_magnitude = change_amount.abs();
+
+                if change_magnitude > velocity_2d_magnitude
+                {
+                    change_amount *= velocity_2d_magnitude / change_magnitude;
+                }
+
+                let change = velocity_direction * change_amount;
+
+                self.velocity.x -= change.x;
+                self.velocity.y -= change.y;
+            } else
+            {
+                self.velocity.x = 0.0;
+                self.velocity.y = 0.0;
+            }
+        }
+
         {
             let damping = self.damping.powf(dt);
 
@@ -182,15 +209,23 @@ impl Physical
             let angular_acceleration = self.angular_acceleration + self.torque * inverse_inertia;
 
             self.angular_velocity += angular_acceleration * dt;
+
+            if !self.floating && self.grounded
+            {
+                let mut change = (self.friction / transform.scale.xy().max()) * dt;
+
+                if change.abs() > self.angular_velocity
+                {
+                    change *= self.angular_velocity / change.abs();
+                }
+
+                self.angular_velocity -= change;
+            }
+
             self.angular_velocity *= self.angular_damping.powf(dt);
 
             self.torque = 0.0;
         }
-    }
-
-    pub fn next_position_mut(&mut self) -> &mut Vector3<f32>
-    {
-        &mut self.next_position
     }
 
     pub fn floating(&self) -> bool

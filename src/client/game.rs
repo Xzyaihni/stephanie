@@ -1884,7 +1884,9 @@ impl<'a> PlayerContainer<'a>
             let this_entity = self.info.entity;
             let anatomy = entities.anatomy(this_entity);
 
-            able_to_move = anatomy.as_ref().map(|anatomy| anatomy.speed() != 0.0).unwrap_or(false) && self.info.animation.is_none();
+            able_to_move = anatomy.as_ref().map(|anatomy| anatomy.speed() != 0.0).unwrap_or(false)
+                && self.info.animation.is_none()
+                && entities.physical(this_entity).as_ref().map(|physical| physical.grounded).unwrap_or(false);
 
             if let Some(anatomy) = anatomy
             {

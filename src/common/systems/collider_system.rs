@@ -184,10 +184,13 @@ pub fn update(
                     crate::frame_time_this!{
                         [update, update_pre, collider_system_update, world] -> z_time,
                         {
-                            let next_position = physical.next_position_mut();
-                            if this.collide_with_world_z(world, *next_position) && !this.collider.ghost
+                            let collided_with_world_z = this.collide_with_world_z(world, physical.next_position);
+
+                            physical.grounded = collided_with_world_z;
+
+                            if collided_with_world_z && !this.collider.ghost
                             {
-                                next_position.z = this.transform.position.z;
+                                physical.next_position.z = this.transform.position.z;
 
                                 if let Some(mut transform) = entities.transform_mut(entity)
                                 {

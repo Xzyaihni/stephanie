@@ -274,7 +274,7 @@ fn follow_path(
 
                     if let Some(mut physical) = entities.physical_mut(entity)
                     {
-                        *physical.next_position_mut() = new_position;
+                        physical.next_position = new_position;
                     }
                 }
             },
