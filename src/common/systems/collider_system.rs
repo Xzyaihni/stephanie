@@ -186,7 +186,7 @@ pub fn update(
                         {
                             let collided_with_world_z = this.collide_with_world_z(world, physical.next_position);
 
-                            physical.grounded = collided_with_world_z;
+                            physical.set_grounded(collided_with_world_z);
 
                             if collided_with_world_z && !this.collider.ghost
                             {

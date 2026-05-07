@@ -35,6 +35,14 @@ impl Default for PhysicalFixed
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum GroundedState
+{
+    Air,
+    WasGrounded,
+    Grounded
+}
+
 #[derive(Clone)]
 pub struct PhysicalProperties
 {
@@ -77,8 +85,8 @@ pub struct Physical
     pub target_non_lazy: bool,
     pub move_z: bool,
     pub next_position: Vector3<f32>,
-    pub grounded: bool,
     floating: bool,
+    grounded: GroundedState,
     angular_damping: f32,
     torque: f32,
     angular_velocity: f32,
@@ -99,7 +107,7 @@ impl From<PhysicalProperties> for Physical
             friction: props.friction,
             restitution: props.restitution,
             floating: props.floating,
-            grounded: false,
+            grounded: GroundedState::Air,
             fixed: props.fixed,
             target_non_lazy: props.target_non_lazy,
             move_z: props.move_z,
@@ -162,7 +170,7 @@ impl Physical
 
         self.velocity += self.last_acceleration * dt;
 
-        if !self.floating && self.grounded
+        if !self.floating && self.is_grounded()
         {
             let velocity_2d_magnitude = self.velocity.xy().magnitude();
 
@@ -210,7 +218,7 @@ impl Physical
 
             self.angular_velocity += angular_acceleration * dt;
 
-            if !self.floating && self.grounded
+            if !self.floating && self.is_grounded()
             {
                 let mut change = (self.friction / transform.scale.xy().max()) * dt;
 
@@ -241,6 +249,27 @@ impl Physical
         {
             self.acceleration = Vector3::zeros();
         }
+    }
+
+    pub fn set_grounded(&mut self, state: bool)
+    {
+        if state
+        {
+            self.grounded = GroundedState::Grounded;
+        } else
+        {
+            self.grounded = match self.grounded
+            {
+                GroundedState::Air
+                | GroundedState::WasGrounded => GroundedState::Air,
+                GroundedState::Grounded => GroundedState::WasGrounded
+            };
+        }
+    }
+
+    pub fn is_grounded(&self) -> bool
+    {
+        self.grounded != GroundedState::Air
     }
 
     pub fn last_acceleration(&self) -> &Vector3<f32>

@@ -1865,7 +1865,11 @@ impl<'a> PlayerContainer<'a>
             self.game_state.ui.borrow_mut().set_blood(blood);
         }
 
-        if self.info.animation.is_none()
+        let is_grounded = self.game_state.entities().physical(self.info.entity).as_ref()
+            .map(|physical| physical.is_grounded())
+            .unwrap_or(false);
+
+        if self.info.animation.is_none() && is_grounded
         {
             let movement_direction = self.movement_direction();
 
@@ -1885,8 +1889,7 @@ impl<'a> PlayerContainer<'a>
             let anatomy = entities.anatomy(this_entity);
 
             able_to_move = anatomy.as_ref().map(|anatomy| anatomy.speed() != 0.0).unwrap_or(false)
-                && self.info.animation.is_none()
-                && entities.physical(this_entity).as_ref().map(|physical| physical.grounded).unwrap_or(false);
+                && self.info.animation.is_none();
 
             if let Some(anatomy) = anatomy
             {
