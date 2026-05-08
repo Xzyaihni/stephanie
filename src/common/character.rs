@@ -332,7 +332,8 @@ enum BufferedAction
     Bash,
     Poke,
     Aim,
-    Throw
+    Throw,
+    Reload
 }
 
 // a spontaneous blink has about a 100ms down time and 250ms up time
@@ -1305,8 +1306,20 @@ impl Character
         Some(3.0 / (1.0 + entities.player(info.this).map(|x| x.get_stat(StatId::Ranged).level() as f32 * 0.08).unwrap_or(0.0)))
     }
 
-    fn reload_item(&mut self, combined_info: CombinedInfo, item: InventoryItem)
+    fn reload_item(&mut self, combined_info: CombinedInfo, item: InventoryItem, buffer: bool)
     {
+        if !self.can_attack(combined_info.entities)
+        {
+            if buffer
+            {
+                self.start_buffered(BufferedAction::Reload);
+            }
+
+            return;
+        }
+
+        self.stop_buffered(BufferedAction::Reload);
+
         let info = some_or_return!(self.info.as_ref());
         let this_entity = info.this;
 
@@ -2805,9 +2818,10 @@ impl Character
                 CharacterAction::PickupItem{item} => self.pickup_item(combined_info, item),
                 CharacterAction::Reload{item} =>
                 {
+                    let specific_item = item.is_some();
                     if let Some(item) = item.or(self.holding)
                     {
-                        self.reload_item(combined_info, item)
+                        self.reload_item(combined_info, item, !specific_item)
                     }
                 },
                 CharacterAction::Throw{state: false, ..} => self.throw_start(combined_info),
@@ -2999,7 +3013,8 @@ impl Character
                     {
                         let target = (actions(self).target)(combined_info.entities);
                         self.throw_held(combined_info, target, false)
-                    }
+                    },
+                    BufferedAction::Reload => self.reload_item(combined_info, some_or_return!(self.holding), false)
                 }
             }
         }
