@@ -2,6 +2,7 @@ use std::{
     f32,
     mem,
     iter,
+    fmt::{self, Debug},
     cell::Ref,
     sync::Arc,
     ops::Index
@@ -310,11 +311,25 @@ pub struct CharacterSyncInfo
     pub rotation: f32
 }
 
+#[derive(Clone)]
+pub struct BufferedActions
+{
+    pub target: Arc<dyn Fn(&ClientEntities) -> Vector3<f32> + Send + Sync>
+}
+
+impl Debug for BufferedActions
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
+    {
+        write!(f, "BufferedActions")
+    }
+}
+
 #[repr(usize)]
 #[derive(Debug, Clone, Copy, EnumIter, EnumCount)]
 enum BufferedAction
 {
-    Bash = 0,
+    Bash,
     Poke,
     Aim,
     Throw
@@ -414,6 +429,7 @@ struct AfterInfo
     sprint_await: bool,
     blinking: BlinkingInfo,
     last_held_item: Option<Option<ItemId>>,
+    buffered_actions: Option<BufferedActions>,
     buffered: [f32; BufferedAction::COUNT]
 }
 
@@ -689,6 +705,7 @@ impl Character
         };
 
         let hand_left = inserter(held_item(true));
+
         let info = AfterInfo{
             this: entity,
             hand_left,
@@ -705,6 +722,7 @@ impl Character
                 value: 0.0
             },
             last_held_item: None,
+            buffered_actions: None,
             buffered: [0.0; BufferedAction::COUNT]
         };
 
@@ -722,6 +740,11 @@ impl Character
         {
             self.update_anatomy_dependent(entities, &anatomy);
         }
+    }
+
+    pub fn initialized_buffered(&mut self, buffered_actions: BufferedActions)
+    {
+        self.info.as_mut().expect("must be called after normal init").buffered_actions = Some(buffered_actions);
     }
 
     fn with_animation_step(
@@ -1827,12 +1850,8 @@ impl Character
     {
         if !self.can_throw(combined_info.entities)
         {
-            self.start_buffered(BufferedAction::Throw);
-
             return;
         }
-
-        self.stop_buffered(BufferedAction::Throw);
 
         self.set_stance(combined_info.entities, AttackStance::Forward);
     }
@@ -1840,11 +1859,10 @@ impl Character
     fn throw_held(
         &mut self,
         combined_info: CombinedInfo,
-        target: Vector3<f32>
+        target: Vector3<f32>,
+        buffer: bool
     )
     {
-        self.stop_buffered(BufferedAction::Throw);
-
         if self.stance != AttackStance::Forward
         {
             return;
@@ -1852,6 +1870,11 @@ impl Character
 
         if !self.can_throw(combined_info.entities)
         {
+            if buffer
+            {
+                self.start_buffered(BufferedAction::Throw);
+            }
+
             return;
         }
 
@@ -1863,6 +1886,8 @@ impl Character
 
         let item_info = combined_info.items_info.get(item.id);
         let damage_scale = item.damage_scale().unwrap_or(1.0);
+
+        self.stop_buffered(BufferedAction::Throw);
 
         let info = some_or_return!(self.info.as_ref());
 
@@ -2231,12 +2256,8 @@ impl Character
 
         if self.attack_cooldown > 0.0
         {
-            self.start_buffered(BufferedAction::Aim);
-
             return;
         }
-
-        self.stop_buffered(BufferedAction::Aim);
 
         self.set_stance(combined_info.entities, AttackStance::Forward);
     }
@@ -2249,11 +2270,7 @@ impl Character
 
     fn stop_buffered(&mut self, action: BufferedAction)
     {
-        let info = some_or_return!(self.info.as_mut());
-        if info.buffered[action as usize] > 0.0
-        {
-            info.buffered[action as usize] = 0.0;
-        }
+        some_or_return!(self.info.as_mut()).buffered[action as usize] = 0.0;
     }
 
     fn can_poke(&self) -> bool
@@ -2270,20 +2287,14 @@ impl Character
 
         if !self.can_attack(combined_info.entities)
         {
-            self.start_buffered(BufferedAction::Poke);
-
             return;
         }
-
-        self.stop_buffered(BufferedAction::Poke);
 
         self.set_stance(combined_info.entities, AttackStance::Forward);
     }
 
-    fn poke_attack(&mut self, combined_info: CombinedInfo)
+    fn poke_attack(&mut self, combined_info: CombinedInfo, buffer: bool)
     {
-        self.stop_buffered(BufferedAction::Poke);
-
         if !self.can_poke()
         {
             return;
@@ -2296,10 +2307,17 @@ impl Character
 
         if !self.can_attack(combined_info.entities)
         {
+            if buffer
+            {
+                self.start_buffered(BufferedAction::Poke);
+            }
+
             return;
         }
 
         let item = some_or_return!(self.held_item(combined_info.entities));
+
+        self.stop_buffered(BufferedAction::Poke);
 
         self.attack_cooldown = self.attack_cooldown.max(some_or_return!(self.held_attack_cooldown(combined_info.entities)));
 
@@ -2313,11 +2331,10 @@ impl Character
     fn ranged_attack(
         &mut self,
         combined_info: CombinedInfo,
-        target: Vector3<f32>
+        target: Vector3<f32>,
+        buffer: bool
     )
     {
-        self.stop_buffered(BufferedAction::Aim);
-
         if !self.can_ranged()
         {
             return;
@@ -2330,10 +2347,17 @@ impl Character
 
         if self.attack_cooldown > 0.0
         {
+            if buffer
+            {
+                self.start_buffered(BufferedAction::Aim);
+            }
+
             return;
         }
 
         let item = some_or_return!(self.held_item(combined_info.entities));
+
+        self.stop_buffered(BufferedAction::Aim);
 
         let items_info = combined_info.items_info;
 
@@ -2787,11 +2811,11 @@ impl Character
                     }
                 },
                 CharacterAction::Throw{state: false, ..} => self.throw_start(combined_info),
-                CharacterAction::Throw{state: true, target} => self.throw_held(combined_info, target),
+                CharacterAction::Throw{state: true, target} => self.throw_held(combined_info, target, true),
                 CharacterAction::Poke{state: false} => self.poke_attack_start(combined_info),
-                CharacterAction::Poke{state: true} => self.poke_attack(combined_info),
+                CharacterAction::Poke{state: true} => self.poke_attack(combined_info, true),
                 CharacterAction::Ranged{state: false, ..} => self.aim_start(combined_info),
-                CharacterAction::Ranged{state: true, target} => self.ranged_attack(combined_info, target),
+                CharacterAction::Ranged{state: true, target} => self.ranged_attack(combined_info, target, true),
                 CharacterAction::Bash{state: false} => self.bash_attack_start(combined_info),
                 CharacterAction::Bash{state: true} => self.bash_attack(combined_info, true)
             }
@@ -2940,7 +2964,7 @@ impl Character
 
     fn update_buffered(&mut self, combined_info: CombinedInfo, dt: f32)
     {
-        if self.info.is_none()
+        if some_or_return!(self.info.as_ref()).buffered_actions.is_none()
         {
             return;
         }
@@ -2948,23 +2972,34 @@ impl Character
         for action in BufferedAction::iter()
         {
             let is_buffered = {
-                let buffered = &mut self.info.as_mut()
-                    .expect("info must not disappear after creation")
-                    .buffered[action as usize];
+                let time = &mut self.info.as_mut().unwrap().buffered[action as usize];
 
-                *buffered = (*buffered - dt).max(0.0);
+                *time = (*time - dt).max(0.0);
 
-                *buffered > 0.0
+                *time > 0.0
             };
 
             if is_buffered
             {
+                fn actions(this: &Character) -> &BufferedActions
+                {
+                    this.info.as_ref().unwrap().buffered_actions.as_ref().expect("must be initialized for buffer")
+                }
+
                 match action
                 {
-                    BufferedAction::Poke => { self.poke_attack_start(combined_info); },
-                    BufferedAction::Bash => { self.bash_attack(combined_info, false); },
-                    BufferedAction::Aim => self.aim_start(combined_info),
-                    BufferedAction::Throw => self.throw_start(combined_info)
+                    BufferedAction::Poke => self.poke_attack(combined_info, false),
+                    BufferedAction::Bash => self.bash_attack(combined_info, false),
+                    BufferedAction::Aim =>
+                    {
+                        let target = (actions(self).target)(combined_info.entities);
+                        self.ranged_attack(combined_info, target, false)
+                    },
+                    BufferedAction::Throw =>
+                    {
+                        let target = (actions(self).target)(combined_info.entities);
+                        self.throw_held(combined_info, target, false)
+                    }
                 }
             }
         }

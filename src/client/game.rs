@@ -1,6 +1,7 @@
 use std::{
     fs,
     f32,
+    sync::Arc,
     ops::ControlFlow,
     rc::{Rc, Weak},
     cell::{RefMut, RefCell}
@@ -1156,6 +1157,19 @@ impl<'a> PlayerContainer<'a>
 
     pub fn on_player_connected(&mut self, screen_size: [f32; 2])
     {
+        if let Some(mut character) = self.game_state.entities().character_mut(self.info.entity)
+        {
+            character.initialized_buffered(BufferedActions{
+                target: {
+                    let f = self.ranged_target_function();
+                    Arc::new(move |entities| f(entities).unwrap_or_else(|| { eprintln!("couldnt get buffered target"); Vector3::zeros() }))
+                }
+            });
+        } else
+        {
+            eprintln!("player has no character, huh??");
+        }
+
         let is_dead = self.game_state.entities().anatomy(self.info.entity).map(|x| x.is_dead()).unwrap_or(false);
         if is_dead
         {
@@ -2283,25 +2297,22 @@ impl<'a> PlayerContainer<'a>
             .unwrap_or(true)
     }
 
-    fn player_position(&self) -> Option<Vector3<f32>>
+    fn ranged_target_function(&self) -> impl Fn(&ClientEntities) -> Option<Vector3<f32>>
     {
-        self.game_state.entities()
-            .transform(self.info.entity)
-            .map(|x| x.position)
-    }
+        let mouse_entity = self.info.mouse_entity;
+        let player_entity = self.info.entity;
 
-    fn mouse_position(&self) -> Option<Vector3<f32>>
-    {
-        self.game_state.entities()
-            .transform(self.info.mouse_entity)
-            .map(|x| x.position)
+        move |entities|
+        {
+            let mut target = entities.transform(mouse_entity)?.position;
+            target.z = entities.transform(player_entity)?.position.z;
+
+            Some(target)
+        }
     }
 
     fn ranged_target(&self) -> Option<Vector3<f32>>
     {
-        let mut target = self.mouse_position()?;
-        target.z = self.player_position()?.z;
-
-        Some(target)
+        (self.ranged_target_function())(self.game_state.entities())
     }
 }
