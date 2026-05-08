@@ -256,6 +256,7 @@ impl Door
             kind: ColliderType::Rectangle,
             layer: if self.is_closed() { ColliderLayer::Door } else { ColliderLayer::Damageable },
             override_transform,
+            blocks_vision: true,
             ..Default::default()
         }
     }

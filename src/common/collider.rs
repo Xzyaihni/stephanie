@@ -280,6 +280,7 @@ pub struct ColliderInfo
     pub layer: ColliderLayer,
     pub ghost: bool,
     pub sleeping: bool,
+    pub blocks_vision: bool,
     pub override_transform: Option<OverrideTransform>
 }
 
@@ -292,6 +293,7 @@ impl Default for ColliderInfo
             layer: ColliderLayer::Normal,
             ghost: false,
             sleeping: false,
+            blocks_vision: false,
             override_transform: None
         }
     }
@@ -304,6 +306,7 @@ pub struct Collider
     pub layer: ColliderLayer,
     pub ghost: bool,
     pub sleeping: bool,
+    pub blocks_vision: bool,
     pub override_transform: Option<OverrideTransform>,
     #[serde(skip, default)]
     collided_z: Option<TilePosHeight>,
@@ -322,6 +325,7 @@ impl From<ColliderInfo> for Collider
             layer: info.layer,
             ghost: info.ghost,
             sleeping: info.sleeping,
+            blocks_vision: info.blocks_vision,
             override_transform: info.override_transform,
             collided_z: None,
             collided: Vec::new(),

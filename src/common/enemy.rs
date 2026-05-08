@@ -144,7 +144,9 @@ pub fn sees(
                         false
                     };
 
-                    let blocked = !is_target && !is_friendly;
+                    let blocks_vision = entities.collider(hit_entity).map(|collider| collider.blocks_vision).unwrap_or(true);
+
+                    let blocked = !is_target && !is_friendly && blocks_vision;
 
                     blocked && after_raycast_default(entity, hit)
                 }),

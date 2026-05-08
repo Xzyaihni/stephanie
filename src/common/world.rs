@@ -326,7 +326,8 @@ impl World
                 layer: ColliderLayer::World,
                 ghost: false,
                 override_transform: None,
-                sleeping: false
+                sleeping: false,
+                blocks_vision: true
             }.into();
 
             let info = CollidingInfoRef{

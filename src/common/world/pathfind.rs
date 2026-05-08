@@ -455,6 +455,7 @@ impl Pathfinder<'_>
             layer,
             ghost: true,
             sleeping: false,
+            blocks_vision: true,
             override_transform: None
         }.into();
 
