@@ -633,22 +633,22 @@ impl UiInventory
 
             if !state.is_empty()
             {
-                let (index, x) = items[i - 1];
-
-                let equip = character.and_then(|x|
-                {
-                    x.get_equip_state(index)
-                });
+                let last_item = items[i - 1].1;
 
                 let items = mem::take(&mut state);
 
-                let item = info.items_info.get(x.id);
+                let equip = character.and_then(|character|
+                {
+                    items.iter().find_map(|item| character.get_equip_state(*item))
+                });
+
+                let item = info.items_info.get(last_item.id);
 
                 inventory_items.push(UiInventoryItem{
                     items,
                     name: item.name.clone(),
-                    durability_fraction: *x.durability / item.durability,
-                    rarity: x.rarity,
+                    durability_fraction: *last_item.durability / item.durability,
+                    rarity: last_item.rarity,
                     equip,
                     texture: item.item_texture.unwrap_or(item.texture)
                 });
