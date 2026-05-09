@@ -25,6 +25,7 @@ use crate::{
         ui_common::WHITE_COLOR
     },
     common::{
+        lerp,
         with_z,
         some_or_unexpected_return,
         some_or_return,
@@ -1982,6 +1983,17 @@ impl Character
                 if let Some(mut render) = entities.render_mut_no_change(entity)
                 {
                     render.set_z_level(ZLevel::BelowFeet);
+                }
+
+                if let Some(mut physical) = entities.physical_mut_no_change(entity)
+                {
+                    let velocity = *physical.velocity();
+
+                    physical.set_velocity_raw(velocity * 0.1);
+
+                    let angular = velocity.magnitude() * lerp(15.0, 30.0, fastrand::f32()) * (if fastrand::bool() { 1.0 } else { -1.0 });
+
+                    physical.add_angular_velocity_raw(angular);
                 }
             }),
             ..Default::default()

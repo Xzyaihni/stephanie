@@ -534,7 +534,7 @@ impl Contact
         }
 
         let desired_change = self.calculate_desired_change(entities, &velocity, dt);
-        debug_assert!(!desired_change.is_nan());
+        debug_assert!(!desired_change.is_nan(), "{self:#?} {velocity:?} {dt}");
 
         Some(AnalyzedContact{
             to_world,
