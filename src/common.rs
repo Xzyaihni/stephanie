@@ -122,6 +122,8 @@ pub use door::Door;
 pub use joint::Joint;
 pub use light::{Light, ClientLight};
 
+pub use health::Health;
+
 pub use systems::*;
 
 pub mod utility;
@@ -158,6 +160,7 @@ pub mod item;
 pub mod items_info;
 pub mod crafting;
 pub mod clothing;
+pub mod health;
 
 pub mod inventory;
 

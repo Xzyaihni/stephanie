@@ -44,6 +44,7 @@ use crate::{
         AnyEntities,
         Entity,
         World,
+        Health,
         spatial::SpatialInfo,
         player::{WEAK_SCREENSHAKE, MEDIUM_SCREENSHAKE, MEDIUM_KICK, StatId},
         enemy_creator::ENEMY_MASS,
@@ -66,9 +67,37 @@ fn damage_common_health(
 {
     if let Some(mut health) = entities.health_mut(entity)
     {
-        *health -= damage;
+        let is_killed = {
+            let is_killed = |health: &mut f32|
+            {
+                *health -= damage;
 
-        if *health <= 0.0
+                *health <= 0.0
+            };
+
+            match *health
+            {
+                Health::Normal(ref mut x) => is_killed(x),
+                Health::InheritSibling =>
+                {
+                    let try_is_killed = || -> Option<bool>
+                    {
+                        let sibling = entities.sibling_first(entity)?;
+                        match *entities.health_mut(sibling)?
+                        {
+                            Health::Normal(ref mut x) => Some(is_killed(x)),
+                            Health::InheritSibling => None
+                        }
+                    };
+
+                    try_is_killed().unwrap_or(true)
+                }
+            }
+        };
+
+        drop(health);
+
+        if is_killed
         {
             let screenshake_factor = entities.furniture(entity).map(|id|
             {
@@ -228,16 +257,6 @@ pub fn damager<'a, 'b, 'c>(
             DamagingKind::Entity(entity, faction, knockback_factor) =>
             {
                 let has_anatomy = entities.anatomy_exists(entity);
-
-                if let Some(parent_sibling) = entities.sibling_first(entity)
-                {
-                    let result = DamagingResult{
-                        kind: DamagingKind::Entity(parent_sibling, faction, knockback_factor),
-                        ..result.clone()
-                    };
-
-                    damager(world, space, entities, loot, passer, textures)(result);
-                }
 
                 if !has_anatomy
                     && !entities.health_exists(entity)
@@ -828,9 +847,20 @@ fn spawn_items<'a>(
 
 fn destroy_entity(entities: &ClientEntities, textures: &CommonTextures, loot: &ClientLoot, entity: Entity)
 {
-    entities.remove_deferred(entity);
-
     let transform = some_or_return!(entities.transform(entity));
+
+    let entity = entities.health(entity).and_then(|health|
+    {
+        if let Health::InheritSibling = *health
+        {
+            entities.sibling_first(entity)
+        } else
+        {
+            None
+        }
+    }).unwrap_or(entity);
+
+    entities.remove_deferred(entity);
 
     if let Some(inventory) = entities.inventory(entity)
     {
@@ -903,7 +933,7 @@ fn destroy_tile_dependent(
     {
         let other_collider = some_or_return!(entities.collider(entity));
 
-        let is_door = matches!(other_collider.layer, ColliderLayer::Door);
+        let is_door = matches!(other_collider.layer, ColliderLayer::DoorTrigger);
 
         if !is_door
         {

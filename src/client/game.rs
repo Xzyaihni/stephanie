@@ -61,6 +61,8 @@ use super::game_state::{
 };
 
 
+const FORCE_CRAWL_SPEED: f32 = 0.01;
+
 enum ConsoleOutput
 {
     Quiet,
@@ -1907,7 +1909,7 @@ impl<'a> PlayerContainer<'a>
 
             if let Some(anatomy) = anatomy
             {
-                let crawl_state = anatomy.speeds().legs <= 0.0 || self.info.crawling;
+                let crawl_state = anatomy.speeds().legs <= FORCE_CRAWL_SPEED || self.info.crawling;
 
                 let changed = anatomy.is_crawling() != crawl_state;
                 if changed

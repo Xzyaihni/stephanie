@@ -21,6 +21,7 @@ use crate::common::{
     AnyEntities,
     Entity,
     Parent,
+    Health,
     world::{TILE_SIZE, TileRotation},
     entity::ClientEntities
 };
@@ -155,7 +156,7 @@ pub fn create(
             ..Default::default()
         }),
         inventory,
-        health: Some(info.health),
+        health: Some(Health::Normal(info.health)),
         furniture: Some(id),
         saveable: Some(()),
         ..Default::default()

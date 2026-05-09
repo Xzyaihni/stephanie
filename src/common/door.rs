@@ -22,6 +22,7 @@ use crate::common::{
     Occluder,
     EntityInfo,
     AnyEntities,
+    Health,
     entity::ClientEntities,
     world::{TILE_SIZE, TileRotation}
 };
@@ -247,10 +248,16 @@ impl Door
 
     pub fn door_collider(&self) -> ColliderInfo
     {
-        let override_transform = Some(OverrideTransform{
-            transform: self.door_transform(),
-            override_position: true
-        });
+        let override_transform = if self.is_closed()
+        {
+            Some(OverrideTransform{
+                transform: self.door_transform(),
+                override_position: true
+            })
+        } else
+        {
+            None
+        };
 
         ColliderInfo{
             kind: ColliderType::Rectangle,
@@ -317,6 +324,7 @@ impl Door
                     ..Default::default()
                 }.into()),
                 occluder: door.door_occluder(),
+                health: Some(Health::InheritSibling),
                 ..Default::default()
             });
 

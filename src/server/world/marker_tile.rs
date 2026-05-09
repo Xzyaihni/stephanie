@@ -20,6 +20,7 @@ use crate::{
         ServerLoot,
         EntityInfo,
         Light,
+        Health,
         lisp::{self, *},
         world::{
             TILE_SIZE,
@@ -151,12 +152,12 @@ impl MarkerTile
                     }),
                     collider: Some(ColliderInfo{
                         kind: ColliderType::Aabb,
-                        layer: ColliderLayer::Door,
+                        layer: ColliderLayer::DoorTrigger,
                         ghost: true,
                         ..Default::default()
                     }.into()),
                     door: Some(door),
-                    health: Some(width as f32 * material.health()),
+                    health: Some(Health::Normal(width as f32 * material.health())),
                     saveable: Some(()),
                     ..Default::default()
                 })

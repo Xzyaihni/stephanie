@@ -28,6 +28,7 @@ use crate::common::{
     OnConnectInfo,
     FurnitureId,
     Item,
+    Health,
     entity::{EntityRemoveMany, EntityRemove},
     world::{Pos3, TilePos, Tile, Chunk, GlobalPos}
 };
@@ -58,7 +59,7 @@ pub enum Message
     SetSibling{entity: Entity, component: Option<Box<Entity>>},
     SetFurniture{entity: Entity, component: Option<Box<FurnitureId>>},
     SetItem{entity: Entity, component: Option<Box<Item>>},
-    SetHealth{entity: Entity, component: Option<Box<f32>>},
+    SetHealth{entity: Entity, component: Option<Box<Health>>},
     SetTransform{entity: Entity, component: Option<Box<Transform>>},
     SetLazyTransform{entity: Entity, component: Option<Box<LazyTransform>>},
     SetLazyMix{entity: Entity, component: Option<Box<LazyMix>>},
