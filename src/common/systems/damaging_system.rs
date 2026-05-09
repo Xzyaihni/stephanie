@@ -914,7 +914,7 @@ fn destroy_tile_dependent(
 
     let transform = Transform{
         position: tile_pos.entity_position(),
-        scale: Vector3::repeat(TILE_SIZE * 0.95),
+        scale: Vector3::repeat(TILE_SIZE * 0.99),
         ..Default::default()
     };
 
@@ -933,7 +933,7 @@ fn destroy_tile_dependent(
     {
         let other_collider = some_or_return!(entities.collider(entity));
 
-        let is_door = matches!(other_collider.layer, ColliderLayer::DoorTrigger);
+        let is_door = matches!(other_collider.layer, ColliderLayer::Door);
 
         if !is_door
         {
