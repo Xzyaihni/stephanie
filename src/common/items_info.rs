@@ -138,6 +138,7 @@ pub struct ItemInfoRaw
     mass: Option<f32>,
     durability: Option<f32>,
     lighting: Option<f32>,
+    held_offset: Option<f32>,
     tags: Option<Vec<String>>,
     texture: Option<String>
 }
@@ -166,6 +167,7 @@ impl ItemInfoRaw
             mass,
             durability,
             lighting,
+            held_offset,
             tags,
             texture
         );
@@ -200,6 +202,7 @@ pub struct ItemInfo
     pub mass: f32,
     pub durability: f32,
     pub lighting: Light,
+    pub held_offset: f32,
     pub tags: Vec<ItemTag>,
     pub item_texture: Option<Sprite>,
     pub texture: Sprite
@@ -335,6 +338,7 @@ impl ItemInfo
             mass: raw.mass.unwrap_or(1.0),
             durability: raw.durability.unwrap_or(1.0) * DEFAULT_ITEM_DURABILITY,
             lighting: raw.lighting.map(|strength| Light{strength, ..Default::default()}).unwrap_or_default(),
+            held_offset: raw.held_offset.unwrap_or(0.0) / ENTITY_PIXEL_SCALE as f32 * ENTITY_SCALE,
             tags: raw.tags.map(|x| x.into_iter().map(|x| tags.insert(x)).collect()).unwrap_or_default(),
             item_texture,
             texture

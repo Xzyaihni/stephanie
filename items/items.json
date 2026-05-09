@@ -46,6 +46,7 @@
         "side_sharpness": 0.05,
         "mass": 0.4,
         "durability": 1.1,
+        "held_offset": 5.0,
         "tags": ["sticklike"]
     },
     {
@@ -295,7 +296,8 @@
             "max": 5
         },
         "comfort": 0.7,
-        "mass": 0.5
+        "mass": 0.5,
+        "held_offset": 3.0
     },
     {
         "name": "sebastian's glock",

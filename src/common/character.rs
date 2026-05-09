@@ -1654,7 +1654,7 @@ impl Character
             entities.lazy_setter.borrow_mut().set_follow_position_no_change(holding_entity.entity, Some(FollowPosition{
                 parent: hand_left,
                 connection: Connection::Rigid,
-                offset: Vector3::new(0.0, -height / 2.0, 0.0)
+                offset: Vector3::new(item.held_offset, -height / 2.0, 0.0)
             }));
 
             let mut render = some_or_unexpected_return!(entities.render_mut(holding_entity.entity));
@@ -2196,9 +2196,10 @@ impl Character
             let y = if self.stance == AttackStance::Forward
             {
                 let item_info = some_or_unexpected_return!(self.held_item_info(entities));
+
                 if let Some(ranged) = item_info.ranged.as_ref()
                 {
-                    -ranged.exit_offset()
+                    -ranged.exit_offset() - item_info.held_offset / ENTITY_SCALE
                 } else
                 {
                     0.0
