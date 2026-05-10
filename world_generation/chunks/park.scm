@@ -46,7 +46,7 @@
                             (if (= bench-side side-right) (combine-markers
                                 this-chunk
                                 (make-point 1 3)
-                                (list 'furniture 'bench side-left)))))
+                                (list 'furniture 'bench side-left '(-0.5 0.0 0.0))))))
 
                     (if isnt-right-park
                         (begin
@@ -54,7 +54,7 @@
                             (if (= bench-side side-left) (combine-markers
                                 this-chunk
                                 (make-point (- size-x 2) 3)
-                                (list 'furniture 'bench side-right)))))
+                                (list 'furniture 'bench side-right '(-0.5 0.0 0.0))))))
 
                     (if (isnt-park (position-at-side (position-at-side position side-up) side-left))
                         (put-tile this-chunk (make-point 0 0) wall-tile))

@@ -73,7 +73,6 @@ use stephanie::{
         with_error,
         some_or_return,
         some_or_unexpected_return,
-        ENTITY_SCALE,
         render_info::*,
         lisp::*,
         Pos3,
