@@ -228,6 +228,13 @@
         "tags": ["sticklike"]
     },
     {
+        "name": "fire sticks",
+        "comfort": 1.0,
+        "mass": 0.4,
+        "durability": 0.3,
+        "tags": ["fiery"]
+    },
+    {
         "name": "sharp stick",
         "comfort": 1.5,
         "sharpness": 0.2,

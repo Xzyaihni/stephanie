@@ -72,6 +72,13 @@
         ]
     },
     {
+        "produces": ["fire sticks"],
+        "requires": [
+            {"item": {"Item": "short stick"}},
+            {"item": {"Item": "short stick"}}
+        ]
+    },
+    {
         "produces": ["sharp stick"],
         "requires": [
             {"item": {"WithTag": "slicey"}, "consume": false},
