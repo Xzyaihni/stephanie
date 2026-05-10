@@ -234,6 +234,7 @@
                 (if (= (cdr skip-tracker) 0)
                     (begin (set-cdr! skip-tracker 1) #f)
                     #t))
+            (define (reset-skip-one) (set-cdr! skip-tracker 0))
             (define counter (cons 'counter 0))
             (define (is-nth n)
                 (set-cdr! counter (+ 1 (cdr counter)))
@@ -249,6 +250,7 @@
                 wall-areas
                 (list
                     (lambda (inside-index outer-side current-area)
+                        (if (= inside-index 0) (reset-skip-one))
                         (if (and (> (- (area-area current-area) inside-index) 2) (if (= outer-side side-left) (> inside-index 0) #t))
                             (let
                                 (
@@ -259,9 +261,9 @@
                                                 (list
                                                     'furniture
                                                     'bed
-                                                    (side-combine outer-side side-left)))
+                                                    (side-combine outer-side side-right)))
                                             #t)))
-                                (if (or (= outer-side side-left) (= outer-side side-down))
+                                (if (or (= outer-side side-right) (= outer-side side-up))
                                     (if (skip-one)
                                         (put-it)
                                         #f)
@@ -360,6 +362,7 @@
                 (if (= (cdr skip-tracker) 0)
                     (begin (set-cdr! skip-tracker 1) #f)
                     #t))
+            (define (reset-skip-one) (set-cdr! skip-tracker 0))
             ;(mark-room-areas wall-areas '() (tile 'grassie))
             (if (not (null? middle-area))
                 (generate-room-with-furniture
@@ -396,6 +399,7 @@
                                 #t)
                             #f))
                     (lambda (inside-index outer-side current-area)
+                        (if (= inside-index 0) (reset-skip-one))
                         (let
                             (
                                 (put-it
