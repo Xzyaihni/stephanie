@@ -35,6 +35,9 @@ use crate::common::{
     }
 };
 
+#[allow(unused_imports)]
+use super::world_generator::WorldChunkTag;
+
 
 #[derive(Debug, Clone)]
 struct Indexer
@@ -267,6 +270,34 @@ impl<S: SaveLoad<WorldChunksBlock>> ServerOvermap<S>
             world_plane: &mut self.world_plane.borrow_mut(),
             indexer: self.indexer.clone()
         })
+    }
+
+    #[cfg(debug_assertions)]
+    pub fn get_debug(&self, pos: GlobalPos) -> (&'static str, Option<Vec<(String, Vec<WorldChunkTag>)>>)
+    {
+        let (extra, blocks) = if let Some(local_pos) = self.to_local(pos)
+        {
+            ("existing", self.world_chunks.borrow()[local_pos].clone())
+        } else
+        {
+            ("loaded", self.world_generator.borrow_mut().get_debug(pos))
+        };
+
+        let world_generator = self.world_generator.borrow();
+        let rules = world_generator.rules();
+
+        let blocks = blocks.map(|blocks|
+        {
+            blocks.iter().map(|world_chunk|
+            {
+                let id = world_chunk.id();
+                let full_name = format!("{}{}", rules.rotation(id).to_arrow_str(), rules.name(id));
+
+                (full_name, world_chunk.tags().to_vec())
+            }).collect::<Vec<_>>()
+        });
+
+        (extra, blocks)
     }
 
     #[allow(dead_code)]

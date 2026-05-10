@@ -540,6 +540,12 @@ impl World
                     eprintln!("server overmaps: {:#?}", self.overmaps.borrow());
                     return None;
                 },
+                Message::DebugMessage(DebugMessage::PrintWorldChunk(pos)) =>
+                {
+                    let (extra_info, world_chunks) = self.overmaps.borrow().get(&id).unwrap().get_debug(GlobalPos::from(pos));
+                    eprintln!("world chunks at {pos} ({extra_info}): {world_chunks:#?}");
+                    return None;
+                },
                 _ => ()
             }
         }

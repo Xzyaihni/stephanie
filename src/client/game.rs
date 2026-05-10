@@ -1882,7 +1882,7 @@ impl<'a> PlayerContainer<'a>
         }
 
         let is_grounded = self.game_state.entities().physical(self.info.entity).as_ref()
-            .map(|physical| physical.is_grounded())
+            .map(|physical| physical.is_grounded() || physical.floating())
             .unwrap_or(false);
 
         if self.info.animation.is_none() && is_grounded

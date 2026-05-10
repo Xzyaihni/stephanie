@@ -180,6 +180,12 @@
                 'bigy))
         (define (try-put-furniture pos t)
             (big-combine-markers this-chunk pos t))
+        (define (chair-list side)
+            (list
+                'furniture
+                'wood_chair
+                side
+                '(0.0 0.25 0.0) '(-0.2 0.2 0.0) '(0.2 0.15 0.0) '(0.0 0.0 0.0)))
         (define (generate-room-with-furniture room-seed wall-areas furnitures)
             (if (null? furnitures)
                 '()
@@ -271,7 +277,7 @@
                                 'furniture
                                 'potted_plant
                                 outer-side
-                                '(0.0 -0.9 0.0) '(0.3 -0.6 0.0) '(-0.3 -0.5 0.0) '(0.1 -0.2 0.0)))
+                                '(0.0 -0.2 0.0) '(0.35 0.15 0.0) '(-0.4 0.1 0.0) '(0.0 0.5 0.0)))
                         #t)
                     (if (= (random-integer-seeded (seed-with room-seed 876) 5) 0)
                         (lambda (inside-index outer-side current-area)
@@ -316,10 +322,7 @@
                                             (begin
                                                 (try-put-furniture
                                                     (area-index current-area inside-index)
-                                                    (list
-                                                        'furniture
-                                                        'wood_chair
-                                                        (if vertical-table side-up side-left)))
+                                                    (chair-list (if vertical-table side-up side-left)))
                                                 #t)
                                             #f)))))
                         (if vertical-table
@@ -386,9 +389,7 @@
                             (begin
                                 (try-put-furniture
                                     (area-index current-area inside-index)
-                                    (list
-                                        'furniture
-                                        'wood_chair
+                                    (chair-list
                                         (side-combine
                                             outer-side
                                             (if (or (= outer-side side-left) (= outer-side side-down)) side-right side-left))))

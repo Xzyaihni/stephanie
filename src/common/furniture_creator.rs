@@ -112,6 +112,18 @@ pub fn furniture_position(
     rotate_point(Vector2::new(0.0, -(TILE_SIZE - info.textures.up.scale.y) / 2.0), rotation)
 }
 
+pub fn furniture_scale(info: &FurnitureInfo) -> Vector3<f32>
+{
+    let scale = info.textures.up.scale;
+
+    info.hitbox.map(|_x|
+    {
+        let s = scale.min();
+
+        vector![s, s, ENTITY_SCALE]
+    }).unwrap_or_else(|| with_z(scale, ENTITY_SCALE))
+}
+
 pub fn create(
     furnitures_info: &FurnituresInfo,
     items_info: &ItemsInfo,
@@ -123,13 +135,7 @@ pub fn create(
 {
     let info = furnitures_info.get(id);
 
-    let scale = info.textures.up.scale;
-    let scale = info.hitbox.map(|_x|
-    {
-        let s = scale.min();
-
-        vector![s, s, ENTITY_SCALE]
-    }).unwrap_or_else(|| with_z(scale, ENTITY_SCALE));
+    let scale = furniture_scale(info);
 
     let position = pos + with_z(furniture_position(info, rotation), 0.0);
 

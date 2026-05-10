@@ -70,8 +70,8 @@ impl MarkerTile
     {
         let pos = chunk_pos + self.pos.pos().map(|x| x as f32 * TILE_SIZE);
 
-        let half_tile = TILE_SIZE / 2.0;
-        let position = Vector3::from(pos) + Vector3::repeat(half_tile);
+        let half_tile = Vector3::repeat(TILE_SIZE / 2.0);
+        let position = Vector3::from(pos) + half_tile;
 
         match self.kind
         {

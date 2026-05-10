@@ -726,6 +726,12 @@ impl<S: SaveLoad<WorldChunksBlock>> WorldGenerator<S>
         Ok(Self{generator, saver, rules})
     }
 
+    #[cfg(debug_assertions)]
+    pub fn get_debug(&mut self, pos: GlobalPos) -> Option<WorldChunksBlock>
+    {
+        self.saver.load(pos)
+    }
+
     pub fn push_world_chunks(&self, world_chunks: Rc<RefCell<WorldPlane>>)
     {
         self.generator.push_world_chunks(world_chunks)

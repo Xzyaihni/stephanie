@@ -38,6 +38,7 @@ use crate::common::{
 pub enum DebugMessage
 {
     PrintServerOvermaps,
+    PrintWorldChunk(Pos3<i32>),
     PrintRemoveAwaiting,
     PrintEntityInfo(Entity)
 }

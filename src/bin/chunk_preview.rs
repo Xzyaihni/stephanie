@@ -73,6 +73,7 @@ use stephanie::{
         with_error,
         some_or_return,
         some_or_unexpected_return,
+        ENTITY_SCALE,
         render_info::*,
         lisp::*,
         Pos3,
@@ -1033,13 +1034,31 @@ impl YanyaApp for ChunkPreviewer
                                 {
                                     let furniture = furnitures.get(id);
 
+                                    let scale = furniture.textures.up.scale;
+
                                     let transform = Transform{
                                         rotation: tile_rotation.flip_y().to_angle(),
-                                        scale: with_z(furniture.textures.up.scale, 1.0),
+                                        scale: with_z(scale, 1.0),
                                         ..Default::default()
                                     };
 
                                     pos += furniture_creator::furniture_position(furniture, tile_rotation) + offset.get(tile_rotation).xy();
+
+                                    pos += furniture.hitbox.map(|offset|
+                                    {
+                                        let min = scale.min();
+                                        let max = scale.max();
+
+                                        let o = (max - min) * (offset - 0.5);
+
+                                        if scale.x < scale.y
+                                        {
+                                            vector![0.0, o]
+                                        } else
+                                        {
+                                            vector![o, 0.0]
+                                        }
+                                    }).unwrap_or(Vector2::zeros());
 
                                     let size_of = |t: Sprite|
                                     {
