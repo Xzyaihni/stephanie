@@ -1,6 +1,6 @@
 use vulkano::{
     descriptor_set::WriteDescriptorSet,
-    buffer::BufferContents,
+    buffer::BufferContents
 };
 
 use nalgebra::{vector, Vector2};
@@ -440,6 +440,8 @@ pub fn draw(
 
         mouse_solid.draw(info);
     }
+
+    info.next_subpass();
 
     timing_end!(8);
 }

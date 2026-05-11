@@ -701,6 +701,39 @@ impl EaseOut for Vector3<f32>
     }
 }
 
+pub trait Lerpable
+{
+    fn lerp(&self, target: &Self, amount: f32) -> Self;
+}
+
+impl Lerpable for f32
+{
+    fn lerp(&self, target: &Self, amount: f32) -> Self
+    {
+        lerp(*self, *target, amount)
+    }
+}
+
+impl<const N: usize> Lerpable for [f32; N]
+{
+    fn lerp(&self, target: &Self, amount: f32) -> Self
+    {
+        self.iter().zip(target)
+            .map(|(current, target)| lerp(*current, *target, amount))
+            .collect::<Vec<_>>()
+            .try_into()
+            .unwrap()
+    }
+}
+
+impl Lerpable for Vector3<f32>
+{
+    fn lerp(&self, target: &Self, amount: f32) -> Self
+    {
+        self.zip_map(target, |a, b| lerp(a, b, amount))
+    }
+}
+
 pub fn falloff(b: f32, value: f32) -> f32
 {
     b - (b / (1.0 + value))

@@ -116,6 +116,7 @@ fn blank_draw(info: &mut DrawInfo)
     info.next_subpass();
     info.next_subpass();
     info.next_subpass();
+    info.next_subpass();
 }
 
 pub struct Client

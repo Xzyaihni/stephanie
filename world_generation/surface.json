@@ -169,6 +169,119 @@
             }
         },
         {
+            "name": "office_tl",
+            "tags": [
+                {
+                    "name": "building-height",
+                    "content": "(+ 3 (* 4 (+ 1 (random-integer 4))))"
+                },
+                {
+                    "name": "building-seed",
+                    "content": "(random-integer)"
+                }
+            ],
+            "weight": 0.1,
+            "neighbors": {
+                "SymmetryNone": {
+                    "up": [
+                        "road_straight",
+                        "road_corner",
+                        {"rotation": "Right", "value": "road_corner"},
+                        {"rotation": "Left", "value": "road_t"},
+                        "park",
+                        {"rotation": "Down", "value": "road_end"}
+                    ],
+                    "down": ["office_bl"],
+                    "left": [
+                        {"rotation": "Right", "value": "road_straight"},
+                        "road_corner",
+                        {"rotation": "Left", "value": "road_corner"},
+                        {"rotation": "Down", "value": "road_t"},
+                        "park",
+                        {"rotation": "Left", "value": "road_end"}
+                    ],
+                    "right": ["office_tr"]
+                }
+            }
+        },
+        {
+            "name": "office_tr",
+            "neighbors": {
+                "SymmetryNone": {
+                    "up": [
+                        "park",
+                        "road_straight",
+                        {"rotation": "Left", "value": "road_t"},
+                        "road_corner",
+                        {"rotation": "Right", "value": "road_corner"},
+                        "road_end"
+                    ],
+                    "down": ["office_br"],
+                    "left": ["office_tl"],
+                    "right": [
+                        "park",
+                        {"rotation": "Right", "value": "road_straight"},
+                        "building_tl",
+                        "road_t",
+                        {"rotation": "Right", "value": "road_corner"},
+                        {"rotation": "Down", "value": "road_corner"},
+                        {"rotation": "Left", "value": "road_end"}
+                    ]
+                }
+            }
+        },
+        {
+            "name": "office_bl",
+            "neighbors": {
+                "SymmetryNone": {
+                    "up": ["office_tl"],
+                    "down": [
+                        "park",
+                        "road_straight",
+                        {"rotation": "Right", "value": "road_t"},
+                        {"rotation": "Down", "value": "road_corner"},
+                        {"rotation": "Left", "value": "road_corner"},
+                        {"rotation": "Down", "value": "road_end"}
+                    ],
+                    "left": [
+                        "park",
+                        {"rotation": "Right", "value": "road_straight"},
+                        {"rotation": "Down", "value": "road_t"},
+                        "road_corner",
+                        {"rotation": "Left", "value": "road_corner"},
+                        {"rotation": "Right", "value": "road_end"}
+                    ],
+                    "right": ["office_br"]
+                }
+            }
+        },
+        {
+            "name": "office_br",
+            "neighbors": {
+                "SymmetryNone": {
+                    "up": ["office_tr"],
+                    "down": [
+                        "park",
+                        "road_straight",
+                        {"rotation": "Right", "value": "road_t"},
+                        {"rotation": "Down", "value": "road_corner"},
+                        {"rotation": "Left", "value": "road_corner"},
+                        "road_end"
+                    ],
+                    "left": ["office_bl"],
+                    "right": [
+                        "park",
+                        {"rotation": "Right", "value": "road_straight"},
+                        "building_bl",
+                        "road_t",
+                        {"rotation": "Right", "value": "road_corner"},
+                        {"rotation": "Down", "value": "road_corner"},
+                        {"rotation": "Right", "value": "road_end"}
+                    ]
+                }
+            }
+        },
+        {
             "name": "bunker",
             "weight": 0.0001,
             "neighbors": {

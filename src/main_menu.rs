@@ -1584,6 +1584,8 @@ impl MainMenu
         info.bind_pipeline(self.shaders.ui);
 
         self.controller.draw(&mut info, &UiShaders{ui: self.shaders.ui, ui_fill: self.shaders.ui_fill});
+
+        info.next_subpass();
     }
 
     pub fn resize(&mut self, aspect: f32)

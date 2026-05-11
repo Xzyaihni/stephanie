@@ -10,7 +10,11 @@ use nalgebra::{vector, Vector2};
 
 use strum::IntoEnumIterator;
 
-use vulkano::device::Device;
+use vulkano::{
+    device::Device,
+    image::view::ImageView,
+    command_buffer::BlitImageInfo
+};
 
 #[cfg(debug_assertions)]
 use vulkano::{
@@ -705,8 +709,12 @@ impl YanyaApp for App
         }
     }
 
-    fn render_pass_ended(&mut self, _builder: &mut CommandBuilderType)
+    fn render_pass_ended(&mut self, attachments: &[Arc<ImageView>], builder: &mut CommandBuilderType)
     {
+        builder.blit_image(BlitImageInfo{
+            ..BlitImageInfo::images(attachments[5].image().clone(), attachments[6].image().clone())
+        }).unwrap();
+
         match &mut self.scene
         {
             Scene::Game => self.client.render_pass_ended(),

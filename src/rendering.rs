@@ -34,7 +34,7 @@ pub fn create() -> Rendering<App, TimestampQuery>
                 device,
                 attachments: {
                     color: {
-                        format: Format::R8G8B8A8_SRGB,
+                        format: Format::R32G32B32A32_SFLOAT,
                         samples: 1,
                         load_op: Clear,
                         store_op: DontCare
@@ -46,7 +46,7 @@ pub fn create() -> Rendering<App, TimestampQuery>
                         store_op: DontCare
                     },
                     shade: {
-                        format: Format::R8G8B8A8_SRGB,
+                        format: Format::R32G32B32A32_SFLOAT,
                         samples: 1,
                         load_op: Clear,
                         store_op: DontCare
@@ -58,10 +58,16 @@ pub fn create() -> Rendering<App, TimestampQuery>
                         store_op: DontCare
                     },
                     lighting: {
-                        format: Format::R8G8B8A8_UNORM,
+                        format: Format::R32G32B32A32_SFLOAT,
                         samples: 1,
                         load_op: Clear,
                         store_op: DontCare
+                    },
+                    output_pre: {
+                        format: Format::R32G32B32A32_SFLOAT,
+                        samples: 1,
+                        load_op: DontCare,
+                        store_op: Store
                     },
                     output: {
                         format: image_format,
@@ -87,9 +93,14 @@ pub fn create() -> Rendering<App, TimestampQuery>
                         input: []
                     },
                     {
-                        color: [output],
+                        color: [output_pre],
                         depth_stencil: {},
                         input: [color, shade, lighting]
+                    },
+                    {
+                        color: [output_pre],
+                        depth_stencil: {},
+                        input: []
                     },
                     {
                         color: [output],
@@ -135,11 +146,23 @@ pub fn create() -> Rendering<App, TimestampQuery>
                 ).unwrap()).unwrap()
             };
 
-            let color = normal_image(Format::R8G8B8A8_SRGB);
-            let shade = normal_image(Format::R8G8B8A8_SRGB);
-            let lighting = normal_image(Format::R8G8B8A8_UNORM);
+            let color = normal_image(Format::R32G32B32A32_SFLOAT);
+            let shade = normal_image(Format::R32G32B32A32_SFLOAT);
+            let lighting = normal_image(Format::R32G32B32A32_SFLOAT);
 
-            vec![color, depth, shade, shade_depth, lighting, view]
+            let output_pre = ImageView::new_default(Image::new(
+                allocator.clone(),
+                ImageCreateInfo{
+                    image_type: ImageType::Dim2d,
+                    format: Format::R32G32B32A32_SFLOAT,
+                    extent: view.image().extent(),
+                    usage: ImageUsage::COLOR_ATTACHMENT | ImageUsage::INPUT_ATTACHMENT | ImageUsage::TRANSFER_SRC,
+                    ..Default::default()
+                },
+                AllocationCreateInfo::default()
+            ).unwrap()).unwrap();
+
+            vec![color, depth, shade, shade_depth, lighting, output_pre, view]
         }),
         clear: Box::new(|app|
         {
@@ -153,6 +176,7 @@ pub fn create() -> Rendering<App, TimestampQuery>
                 Some([darksky.x, darksky.y, darksky.z, 1.0].into()),
                 Some(1.0.into()),
                 Some([sky_light[0], sky_light[1], sky_light[2], 1.0].into()),
+                None,
                 None
             ]
         })

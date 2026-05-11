@@ -9,37 +9,15 @@ use yanyaengine::Transform;
 use crate::common::{
     short_rotation,
     rotate_point_z_3d,
-    lerp,
+    animation_common::*,
     EaseOut,
     Entity,
     Physical,
-    ColliderType,
-    watcher::Lifetime
+    ColliderType
 };
 
+pub use crate::common::animation_common::ValueAnimation;
 
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-pub enum ValueAnimation
-{
-    Linear,
-    EaseIn(f32),
-    EaseOut(f32)
-}
-
-impl ValueAnimation
-{
-    pub fn apply(&self, value: f32) -> f32
-    {
-        let value = value.clamp(0.0, 1.0);
-
-        match self
-        {
-            Self::Linear => value,
-            Self::EaseIn(strength) => value.powf(*strength),
-            Self::EaseOut(strength) => 1.0 - (1.0 - value).powf(*strength)
-        }
-    }
-}
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SpringConnection
@@ -115,29 +93,6 @@ impl StretchDeformation
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct TimedConnection
-{
-    lifetime: Lifetime,
-    start: Option<Vector3<f32>>
-}
-
-impl From<f32> for TimedConnection
-{
-    fn from(lifetime: f32) -> Self
-    {
-        Self::from(Lifetime::from(lifetime))
-    }
-}
-
-impl From<Lifetime> for TimedConnection
-{
-    fn from(lifetime: Lifetime) -> Self
-    {
-        Self{lifetime, start: None}
-    }
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum LimitMode
 {
@@ -151,7 +106,7 @@ pub enum Connection
     Ignore,
     Rigid,
     Limit{mode: LimitMode},
-    Timed{lifetime: TimedConnection, animation: ValueAnimation},
+    Timed{lifetime: TimedInterpolation<Vector3<f32>>, animation: ValueAnimation},
     Constant{speed: f32},
     EaseOut{decay: f32, limit: Option<LimitMode>},
     EaseIn(EaseInInfo),
@@ -188,21 +143,9 @@ impl Connection
             {
                 *current = target;
             },
-            Connection::Timed{lifetime: TimedConnection{lifetime, ref mut start}, animation} =>
+            Connection::Timed{lifetime, animation} =>
             {
-                if start.is_none()
-                {
-                    *start = Some(*current);
-                }
-
-                let remaining = 1.0 - lifetime.fraction();
-
-                *current = start.unwrap().zip_map(&target, |a, b|
-                {
-                    lerp(a, b, animation.apply(remaining))
-                });
-
-                lifetime.current -= dt;
+                timed_interpolate(current, target, lifetime, *animation, dt);
             },
             Connection::Constant{speed} =>
             {
@@ -490,6 +433,7 @@ pub enum Scaling
     Ignore,
     Instant,
     EaseOut{decay: f32},
+    Timed{lifetime: TimedInterpolation<Vector3<f32>>, animation: ValueAnimation},
     Constant{speed: f32},
     EaseIn(EaseInInfo),
     Spring(SpringScaling)
@@ -541,6 +485,10 @@ impl Scaling
             Scaling::EaseOut{decay} =>
             {
                 *current = current.ease_out(target, *decay, dt);
+            },
+            Scaling::Timed{lifetime, animation} =>
+            {
+                timed_interpolate(current, target, lifetime, *animation, dt);
             },
             Scaling::EaseIn(info) =>
             {

@@ -13,28 +13,20 @@
 (if (>= height building-height) (filled-chunk (tile 'air))
 (begin
 
-(define big-size-x (* size-x 3))
-(define big-size-y (* size-y 3))
+(define big-size-x (* size-x 2))
+(define big-size-y (* size-y 2))
 
 (define in-big-chunk-pos
     (point-zip-map
         (make-point size-x size-y)
         (cond
-            ((eq? part 'bl) (make-point 0 2))
-            ((eq? part 'b) (make-point 1 2))
-            ((eq? part 'br) (make-point 2 2))
-            ((eq? part 'l) (make-point 0 1))
-            ((eq? part 'm) (make-point 1 1))
-            ((eq? part 'r) (make-point 2 1))
+            ((eq? part 'bl) (make-point 0 1))
+            ((eq? part 'br) (make-point 1 1))
             ((eq? part 'tl) (make-point 0 0))
-            ((eq? part 't) (make-point 1 0))
-            (else (make-point 2 0)))
+            (else (make-point 1 0)))
         (lambda (x y) (* x y))))
 
 (load "multichunk_common.scm")
-
-(define (light-intensity x)
-    (if (stop-between-difficulty 0.5 2.0) x (* x 0.2)))
 
 (define wall-tile (tile 'concrete))
 

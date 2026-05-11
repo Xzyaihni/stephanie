@@ -127,6 +127,8 @@ pub use health::Health;
 pub use systems::*;
 
 pub mod utility;
+pub mod animation_common;
+
 pub mod colors;
 
 pub mod sides;

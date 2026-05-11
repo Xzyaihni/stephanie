@@ -33,6 +33,7 @@ use crate::{
         collider::*,
         item::*,
         lazy_transform::*,
+        lazy_mix::*,
         systems::{raycast_system, collider_system, player_system},
         ENTITY_SCALE,
         SCREENSHAKE_DISTANCE,
@@ -346,6 +347,12 @@ pub fn damager<'a, 'b, 'c>(
             },
             DamagingKind::Tile(tile_pos) =>
             {
+                let is_transparent = {
+                    let tile_info = &world.tilemap()[*some_or_return!(world.tile(tile_pos))];
+
+                    tile_info.transparent
+                };
+
                 let destroyed = world.modify_tile(passer, tile_pos, |world, tile|
                 {
                     let previous_tile = *tile;
@@ -393,15 +400,30 @@ pub fn damager<'a, 'b, 'c>(
                     );
                 }
 
+                let transparency = if is_transparent { 0.2 } else { 0.007 };
                 let entity = entities.push(true, EntityInfo{
                     render: Some(RenderInfo{
                         object: Some(RenderObjectKind::TextureId{
                             id: textures.solid
                         }.into()),
                         above_world: true,
-                        mix: Some(MixColor::color([1.0, 1.0, 1.0, 0.005])),
+                        mix: Some(MixColor::color([1.0, 1.0, 1.0, transparency])),
                         ..Default::default()
                     }),
+                    lazy_mix: Some(LazyMixInfo{
+                        lifetime: HIGHLIGHT_DURATION,
+                        animation: ValueAnimation::EaseOut(2.0),
+                        target: MixColor::color([1.0, 1.0, 1.0, 0.0]),
+                        ..Default::default()
+                    }.into()),
+                    lazy_transform: Some(LazyTransformInfo{
+                        transform: Transform{
+                            scale: Vector3::repeat(TILE_SIZE * 1.3),
+                            ..transform.clone()
+                        },
+                        scaling: Scaling::Timed{lifetime: HIGHLIGHT_DURATION.into(), animation: ValueAnimation::EaseOut(4.0)},
+                        ..Default::default()
+                    }.into()),
                     transform: Some(transform),
                     ..Default::default()
                 });

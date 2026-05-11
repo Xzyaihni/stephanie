@@ -670,7 +670,7 @@ macro_rules! impl_common_systems
             {
                 if let Some(mut render) = self.render_mut_no_change(entity)
                 {
-                    let lazy_mix = lazy_mix.borrow();
+                    let mut lazy_mix = lazy_mix.borrow_mut();
 
                     render.mix = Some(if let Some(mix) = render.mix
                     {
@@ -811,14 +811,6 @@ macro_rules! entity_info_common
                 }
 
                 self.lazy_transform.as_mut().unwrap().connection = Connection::Ignore;
-            }
-
-            if let Some(lazy_mix) = self.lazy_mix.as_ref()
-            {
-                if let Some(render) = self.render.as_mut()
-                {
-                    render.mix = Some(lazy_mix.target);
-                }
             }
 
             if self.character.is_some()
