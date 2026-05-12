@@ -33,9 +33,6 @@
 
 (load "multichunk_common.scm")
 
-(define (light-intensity x)
-    (if (stop-between-difficulty 0.5 2.0) x (* x 0.2)))
-
 (define wall-tile (tile 'concrete))
 
 (define (put-outer-walls this-chunk)

@@ -40,3 +40,6 @@
                         (and (> (point-y scaled-end) 0) (< (point-y scaled-start) size-y)))
                     (fill-area this-chunk (make-area clipped-start clipped-size) fill-tile)
                     this-chunk)))))
+
+(define (light-intensity x)
+    (if (stop-between-difficulty 0.5 2.0) x (* x 0.2)))

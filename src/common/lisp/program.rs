@@ -1125,7 +1125,7 @@ impl CompiledPart
 
             if let Some(position) = position
             {
-                eprint!(" ({position})");
+                eprint!(" (source#{} {position})", position.source);
             }
 
             eprintln!();
@@ -2883,7 +2883,7 @@ impl InterReprPos
                 let is_known_primitive = op.is_known_primitive();
                 let is_known_compound = op.is_known_compound(state);
 
-                if state.apply_known
+                if state.apply_known && !state.type_checks
                 {
                     if let InterRepr::Value(value) = &op.value
                     {

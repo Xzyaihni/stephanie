@@ -669,10 +669,12 @@ impl YanyaApp for ChunkPreviewer
 
                 let logical_position = tiled_position.map(|x| x as i32) + Vector3::from(WORLD_CHUNK_SIZE).xy().cast();
 
+                let big_logical_position = logical_position + Vector3::from(WORLD_CHUNK_SIZE.map(|x| x as i32)).xy();
+
                 let tile_info_text = format!(
                     "{}, {} (big {}, {})",
                     logical_position.x, logical_position.y,
-                    logical_position.x + WORLD_CHUNK_SIZE.x as i32, logical_position.y + WORLD_CHUNK_SIZE.y as i32
+                    big_logical_position.x, big_logical_position.y
                 );
 
                 self.controller.update(UiId::TileInfo, UiElement{

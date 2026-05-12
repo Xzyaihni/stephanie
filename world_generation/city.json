@@ -100,6 +100,50 @@
             }
         },
         {
+            "name": "office_tl",
+            "range": {
+                "start": {
+                    "Number": 0
+                },
+                "end": {
+                    "Constant": "OfficeMaxHeight"
+                }
+            }
+        },
+        {
+            "name": "office_tr",
+            "range": {
+                "start": {
+                    "Number": 0
+                },
+                "end": {
+                    "Constant": "OfficeMaxHeight"
+                }
+            }
+        },
+        {
+            "name": "office_bl",
+            "range": {
+                "start": {
+                    "Number": 0
+                },
+                "end": {
+                    "Constant": "OfficeMaxHeight"
+                }
+            }
+        },
+        {
+            "name": "office_br",
+            "range": {
+                "start": {
+                    "Number": 0
+                },
+                "end": {
+                    "Constant": "OfficeMaxHeight"
+                }
+            }
+        },
+        {
             "name": "park",
             "range": {
                 "start": {
@@ -136,6 +180,10 @@
     "constants": [
         {
             "name": "BuildingMaxHeight",
+            "value": 20
+        },
+        {
+            "name": "OfficeMaxHeight",
             "value": 20
         }
     ]
