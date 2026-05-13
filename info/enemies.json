@@ -27,12 +27,11 @@
         },
         "hairstyle": {
             "base": {
-                "base": {"sprite": "old/hair"},
-                "crawling": {"sprite": "old/hair_crawling", "offset": [0, 0]},
-                "lying": {"sprite": "old/hair_lying", "offset": [0, 0]}
+                "base": {"sprite": "old/hair", "offset": [-1, 0]},
+                "crawling": {"sprite": "old/hair_crawling", "offset": [1, 0]},
+                "lying": {"sprite": "old/hair_lying", "offset": [-1, 0]}
             }
         },
-        "body": "zob",
         "face": "zob",
         "on_contents": "(if ((drop-rate 1 6)) '(lamp) (standard-drops (cons 'heal_pills trash)))"
     },

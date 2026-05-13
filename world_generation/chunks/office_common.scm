@@ -47,9 +47,12 @@
 
 (define (put-floor this-chunk)
     (big-fill-area
-        (put-outer-walls this-chunk)
-        (make-area (make-point 2 2) (make-point (- big-size-x 4) (- big-size-y 4)))
-        (tile 'wood)))
+        (big-fill-area
+            (put-outer-walls this-chunk)
+            (make-area (make-point 2 2) (make-point (- big-size-x 4) (- big-size-y 4)))
+            (tile 'wood))
+        (make-area (make-point 5 1) (make-point 6 4))
+        (tile 'concrete)))
 
 (define roof-start (- building-height 4))
 
