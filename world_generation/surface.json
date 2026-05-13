@@ -2,6 +2,7 @@
     "rules": [
         {
             "name": "building_tl",
+            "weight": 1.0,
             "neighbors": {
                 "SymmetryNone": {
                     "up": [
@@ -27,6 +28,7 @@
         },
         {
             "name": "building_t",
+            "weight": 1.0,
             "neighbors": {
                 "SymmetryNone": {
                     "up": ["road_straight", {"rotation": "Left", "value": "road_t"}, {"rotation": "Right", "value": "road_end"}],
@@ -38,6 +40,7 @@
         },
         {
             "name": "building_tr",
+            "weight": 1.0,
             "neighbors": {
                 "SymmetryNone": {
                     "up": [
@@ -64,6 +67,7 @@
         },
         {
             "name": "building_l",
+            "weight": 1.0,
             "neighbors": {
                 "SymmetryNone": {
                     "up": ["building_tl"],
@@ -85,7 +89,7 @@
                     "content": "(random-integer)"
                 }
             ],
-            "weight": 4,
+            "weight": 1.0,
             "neighbors": {
                 "SymmetryNone": {
                     "up": ["building_t"],
@@ -97,6 +101,7 @@
         },
         {
             "name": "building_r",
+            "weight": 1.0,
             "neighbors": {
                 "SymmetryNone": {
                     "up": ["building_tr"],
@@ -108,6 +113,7 @@
         },
         {
             "name": "building_bl",
+            "weight": 1.0,
             "neighbors": {
                 "SymmetryNone": {
                     "up": ["building_l"],
@@ -133,6 +139,7 @@
         },
         {
             "name": "building_b",
+            "weight": 1.0,
             "neighbors": {
                 "SymmetryNone": {
                     "up": ["building"],
@@ -144,6 +151,7 @@
         },
         {
             "name": "building_br",
+            "weight": 1.0,
             "neighbors": {
                 "SymmetryNone": {
                     "up": ["building_r"],
@@ -206,6 +214,7 @@
         },
         {
             "name": "office_tr",
+            "weight": 0.1,
             "neighbors": {
                 "SymmetryNone": {
                     "up": [
@@ -232,6 +241,7 @@
         },
         {
             "name": "office_bl",
+            "weight": 0.1,
             "neighbors": {
                 "SymmetryNone": {
                     "up": ["office_tl"],
@@ -257,6 +267,7 @@
         },
         {
             "name": "office_br",
+            "weight": 0.1,
             "neighbors": {
                 "SymmetryNone": {
                     "up": ["office_tr"],

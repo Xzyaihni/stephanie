@@ -41,5 +41,29 @@
                     (fill-area this-chunk (make-area clipped-start clipped-size) fill-tile)
                     this-chunk)))))
 
+(define (big-horizontal-line this-chunk pos length fill-tile)
+    (let ((scaled-start (point-sub pos in-big-chunk-pos)))
+        (let (
+                (scaled-end (point-zip-map (point-add scaled-start (make-point length 1)) (make-point size-x size-y) (lambda (x y) (min x y))))
+                (clipped-start (point-map scaled-start (lambda (x) (max x 0)))))
+            (let ((clipped-length (- (point-x scaled-end) (point-x clipped-start))))
+                (if (and
+                        (and (> (point-x scaled-end) 0) (< (point-x scaled-start) size-x))
+                        (and (> (point-y scaled-end) 0) (< (point-y scaled-start) size-y)))
+                    (horizontal-line-length this-chunk clipped-start clipped-length fill-tile)
+                    this-chunk)))))
+
+(define (big-vertical-line this-chunk pos length fill-tile)
+    (let ((scaled-start (point-sub pos in-big-chunk-pos)))
+        (let (
+                (scaled-end (point-zip-map (point-add scaled-start (make-point 1 length)) (make-point size-x size-y) (lambda (x y) (min x y))))
+                (clipped-start (point-map scaled-start (lambda (x) (max x 0)))))
+            (let ((clipped-length (- (point-y scaled-end) (point-y clipped-start))))
+                (if (and
+                        (and (> (point-x scaled-end) 0) (< (point-x scaled-start) size-x))
+                        (and (> (point-y scaled-end) 0) (< (point-y scaled-start) size-y)))
+                    (vertical-line-length this-chunk clipped-start clipped-length fill-tile)
+                    this-chunk)))))
+
 (define (light-intensity x)
     (if (stop-between-difficulty 0.5 2.0) x (* x 0.2)))
