@@ -1,7 +1,7 @@
 [
     {
         "name": "zob",
-        "on_contents": "(and-maybe (if ((drop-rate 1 6)) '(hammer) (standard-drops '(scissors kitchen_knife))) (drop-rate 1 5) 'heal_pills)"
+        "on_contents": "(and-maybe (if ((drop-rate 1 10)) '(hammer) (standard-drops '(scissors kitchen_knife))) (drop-rate 1 5) 'heal_pills)"
     },
     {
         "name": "smol",
@@ -33,7 +33,7 @@
             }
         },
         "face": "zob",
-        "on_contents": "(if ((drop-rate 1 6)) '(lamp) (standard-drops (cons 'heal_pills trash)))"
+        "on_contents": "(if ((drop-rate 1 8)) '(lamp) (standard-drops (cons 'heal_pills trash)))"
     },
     {
         "name": "runner",
@@ -46,7 +46,7 @@
         },
         "body": "zob",
         "face": "zob",
-        "on_contents": "(and-maybe (standard-drops '(scissors bottle baseball_bat)) (drop-rate 1 5) 'heal_pills)",
+        "on_contents": "(and-maybe (if ((drop-rate 1 10)) '(baseball_bat) (standard-drops '(scissors bottle))) (drop-rate 1 5) 'heal_pills)",
         "on_equip": "'(runner_cap)"
     },
     {
@@ -60,7 +60,19 @@
         },
         "hand": "bigy hand",
         "face": "zob",
-        "on_contents": "(and-maybe (standard-drops '(boulder pipe sledgehammer axe meat_cleaver)) (drop-rate 1 2) 'heal_pills)"
+        "on_contents": "(and-maybe (standard-drops '(boulder pipe sledgehammer)) (drop-rate 1 2) 'heal_pills)"
+    },
+    {
+        "name": "office zob",
+        "anatomy": {
+            "bone": 2.0,
+            "muscle": 2.0,
+            "skin": 2.0,
+            "base_speed": 1.3,
+            "base_strength": 1.5
+        },
+        "face": "zob",
+        "on_contents": "(and-maybe (standard-drops '(axe glock meat_cleaver)) (drop-rate 1 3) 'heal_pills)"
     },
     {
         "name": "me",

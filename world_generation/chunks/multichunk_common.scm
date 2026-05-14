@@ -64,6 +64,3 @@
                         (and (> (point-y scaled-end) 0) (< (point-y scaled-start) size-y)))
                     (vertical-line-length this-chunk clipped-start clipped-length fill-tile)
                     this-chunk)))))
-
-(define (light-intensity x)
-    (if (stop-between-difficulty 0.5 2.0) x (* x 0.2)))

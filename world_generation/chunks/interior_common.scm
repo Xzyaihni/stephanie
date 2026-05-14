@@ -8,6 +8,13 @@
         side
         '(0.0 0.25 0.0) '(-0.2 0.2 0.0) '(0.2 0.15 0.0) '(0.0 0.0 0.0)))
 
+(define (potted-plant-list side)
+    (list
+        'furniture
+        'potted_plant
+        side
+        '(0.0 -0.2 0.0) '(0.35 0.15 0.0) '(-0.4 0.1 0.0) '(0.0 0.5 0.0)))
+
 (define (generate-room-with-furniture room-seed wall-areas furnitures)
     (if (null? furnitures)
         '()
@@ -69,7 +76,7 @@
 ;    (if (not (null? middle-area))
 ;        (big-fill-area this-chunk middle-area (tile 'brick-path))))
 
-(define (generate-bathroom room-seed wall-areas middle-area)
+(define (generate-bathroom-generic room-seed wall-areas middle-area never-cabinet)
     ;(mark-room-areas wall-areas '() (tile 'asphalt))
     (generate-room-with-furniture
         (seed-with room-seed 5)
@@ -81,9 +88,11 @@
                     (area-index current-area inside-index)
                     (cons
                         'marker
-                        (list
+                        (cons
                             (list 'furniture 'sink outer-side '(0.0 0.3 0.0) '(0.0 0.0 0.0))
-                            (list 'furniture 'cabinet outer-side '(0.0 0.0 0.0) '(0.0 -0.3 0.0) '(0.0 -0.3 0.0)))))
+                            (if (or never-cabinet (difficulty-chance 0.5 0.0))
+                                '()
+                                (cons (list 'furniture 'cabinet outer-side '(0.0 0.0 0.0) '(0.0 -0.3 0.0) '(0.0 -0.3 0.0)) '())))))
                 #t))))
 
 ; (define (generate-bathroom room-seed wall-areas middle-area) (mark-room-areas wall-areas middle-area))

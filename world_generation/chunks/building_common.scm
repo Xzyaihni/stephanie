@@ -33,6 +33,9 @@
 
 (load "multichunk_common.scm")
 
+(define (light-intensity x)
+    (if (stop-between-difficulty 0.5 2.0) x (* x 0.2)))
+
 (define wall-tile (tile 'concrete))
 
 (define (put-outer-walls this-chunk)
@@ -142,6 +145,7 @@
                 (pick-weighted 'zob 'runner 0.25)
                 'bigy))
         (load "interior_common.scm")
+        (define (generate-bathroom room-seed wall-areas middle-area) (generate-bathroom-generic room-seed wall-areas middle-area #f))
         (define (generate-main-room room-seed wall-areas middle-area)
             (define skip-tracker (cons 'tracker 0))
             (define (skip-one)
@@ -189,11 +193,7 @@
                     (lambda (inside-index outer-side current-area)
                         (try-put-furniture
                             (area-index current-area inside-index)
-                            (list
-                                'furniture
-                                'potted_plant
-                                outer-side
-                                '(0.0 -0.2 0.0) '(0.35 0.15 0.0) '(-0.4 0.1 0.0) '(0.0 0.5 0.0)))
+                            (potted-plant-list outer-side))
                         #t)
                     (if (= (random-integer-seeded (seed-with room-seed 876) 5) 0)
                         (lambda (inside-index outer-side current-area)
