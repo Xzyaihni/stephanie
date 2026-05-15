@@ -693,8 +693,6 @@ impl Health
 {
     pub fn new(block: f32, max: f32) -> Self
     {
-        debug_assert!((0.0..=1.0).contains(&block));
-
         Self{block, health: SimpleHealth::new(max)}
     }
 
@@ -781,7 +779,7 @@ impl Health
             damage
         } else
         {
-            damage * (1.0 - (self.block * (1.0 - sharpness))).clamp(0.0, 1.0)
+            damage - self.block * (1.0 - sharpness).clamp(0.0, 1.0)
         };
 
         self.health.subtract_hp(damage * lerp(blunt_hp_scale, 1.0, sharpness));
@@ -942,9 +940,9 @@ impl<Contents> BodyPart<Contents>
     {
         Self::new_full(
             name,
-            Health::new(0.99, info.bone * 0.5),
-            Health::new(0.5, info.skin * 10.0),
-            Health::new(0.9, info.muscle * 10.0),
+            Health::new(info.bone * 5.0, info.bone * 0.5),
+            Health::new(info.skin * 5.0, info.skin * 10.0),
+            Health::new(info.muscle * 3.0, info.muscle * 10.0),
             size,
             contents
         )

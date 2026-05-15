@@ -86,6 +86,13 @@
         ]
     },
     {
+        "produces": ["molten plastic"],
+        "requires": [
+            {"item": {"WithTag": "fiery"}, "consume": false},
+            {"item": {"Item": "bottle"}}
+        ]
+    },
+    {
         "name": "disassemble axe",
         "produces": ["axe head", "stick"],
         "requires": [

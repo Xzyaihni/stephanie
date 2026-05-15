@@ -220,7 +220,14 @@ impl Physical
 
             if !self.floating && self.is_grounded()
             {
-                let mut change = (self.friction / transform.scale.xy().max()) * self.angular_velocity.signum() * dt;
+                let max_scale = transform.scale.xy().max();
+
+                if max_scale.abs() <= 0.0001
+                {
+                    return;
+                }
+
+                let mut change = (self.friction / max_scale) * self.angular_velocity.signum() * dt;
 
                 let angular_magnitude = self.angular_velocity.abs();
 

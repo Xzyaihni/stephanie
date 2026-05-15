@@ -94,6 +94,11 @@
         "durability": 0.2
     },
     {
+        "name": "molten plastic",
+        "inherit": "bottle",
+        "tags": ["adhesive"]
+    },
+    {
         "name": "axe",
         "comfort": 1.1,
         "side_sharpness": 0.5,

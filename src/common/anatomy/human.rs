@@ -438,8 +438,8 @@ impl HumanAnatomyValues
 
         let spine = HumanPart::new_full(
             DebugName::new("spine"),
-            Health::new(0.999, part.bone * 40.0 * 10.0), // * 10 for missing muscle protection
-            Health::new(0.5, part.skin * 10.0),
+            Health::new(part.bone * 2.0, part.bone * 40.0 * 10.0), // * 10 for missing muscle protection
+            Health::new(part.skin * 5.0, part.skin * 10.0),
             Health::new(0.0, 0.0),
             0.1,
             SpinalCord::new(1.0)
@@ -448,8 +448,8 @@ impl HumanAnatomyValues
         let head = {
             let mut head = HumanPart::new_full(
                 DebugName::new("head"),
-                Health::new(0.95, part.bone * 100.0),
-                Health::new(0.5, part.skin),
+                Health::new(part.bone * 10.0, part.bone * 100.0),
+                Health::new(part.skin * 5.0, part.skin),
                 Health::new(0.0, 0.0),
                 0.39,
                 HeadOrgans{eyes: Halves::repeat(Some(Eye::new(1.0))), brain: Some(Brain::new(0.5))}
@@ -473,9 +473,9 @@ impl HumanAnatomyValues
 
         let torso = HumanPart::new_full(
             DebugName::new("torso"),
-            Health::new(0.8, part.bone * 9.0),
-            Health::new(0.5, part.skin * 2.0),
-            Health::new(0.9, part.muscle * 5.0),
+            Health::new(part.bone * 5.0, part.bone * 9.0),
+            Health::new(part.skin * 5.0, part.skin * 2.0),
+            Health::new(part.muscle * 3.0, part.muscle * 5.0),
             0.82,
             TorsoOrgans{
                 lungs: Halves::repeat(Some(Lung::new(1.0))),
@@ -622,7 +622,7 @@ impl HumanAnatomyValues
         let start_direction = damage.direction;
         let mut current_direction = start_direction;
 
-        let mut last_damage = None;
+        let mut last_damage = damage;
 
         loop
         {
@@ -696,7 +696,7 @@ impl HumanAnatomyValues
 
                 if start_direction == current_direction
                 {
-                    return last_damage;
+                    return Some(last_damage);
                 } else
                 {
                     continue;
@@ -716,10 +716,10 @@ impl HumanAnatomyValues
             {
                 if let AnatomyId::Part(id) = picked
                 {
-                    self.maybe_wound(*id, &damage);
+                    self.maybe_wound(*id, &last_damage);
                 }
 
-                let picked_damage = self.body.get_mut::<DamagerGetter>(*picked).map(|x| x(damage.clone()));
+                let picked_damage = self.body.get_mut::<DamagerGetter>(*picked).map(|x| x(last_damage.clone()));
 
                 if let Some(damage) = picked_damage
                 {
@@ -729,9 +729,9 @@ impl HumanAnatomyValues
                     })
                 } else
                 {
-                    (on_pierce.action)(self, damage.clone())
+                    (on_pierce.action)(self, last_damage)
                 }
-            });
+            })?;
         }
     }
 

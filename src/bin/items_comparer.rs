@@ -64,8 +64,18 @@ impl AnatomyStats
     fn combine(self, other: Self) -> Self
     {
         Self{
-            kill_hits: (self.kill_hits + other.kill_hits) / 2.0,
-            kill_oxygen: (self.kill_oxygen + other.kill_oxygen) / 2.0
+            kill_hits: self.kill_hits + other.kill_hits,
+            kill_oxygen: self.kill_oxygen + other.kill_oxygen
+        }
+    }
+
+    fn divide(self, amount: usize) -> Self
+    {
+        let amount = amount as f32;
+
+        Self{
+            kill_hits: self.kill_hits / amount,
+            kill_oxygen: self.kill_oxygen / amount
         }
     }
 }
@@ -112,7 +122,9 @@ fn anatomy_stats(
     item: &ItemInfo
 ) -> AnatomyStats
 {
-    (0..5).map(|_| anatomy_stats_single(anatomy.clone(), item)).reduce(|acc, x| acc.combine(x)).unwrap()
+    let trials = 20;
+
+    (0..trials).map(|_| anatomy_stats_single(anatomy.clone(), item)).reduce(|acc, x| acc.combine(x)).unwrap().divide(trials)
 }
 
 struct ItemStats
@@ -131,10 +143,10 @@ fn main()
             x
         } else
         {
-            let modes = RunMode::iter().map(<&str>::from).fold(String::new(), |acc, x|
+            let modes = RunMode::iter().map(<&str>::from).map(str::to_owned).reduce(|acc, x|
             {
-                acc + ", " + x
-            });
+                acc + ", " + &x
+            }).unwrap_or_default();
 
             eprintln!("{x} isnt a valid mode, try: {modes}");
 
