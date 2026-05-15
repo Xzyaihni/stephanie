@@ -830,8 +830,6 @@ impl Character
             {
                 let info = self.info.as_mut().unwrap();
 
-                let holding_entity = info.holding;
-
                 let (holding, holding_is_left) = if self.holding.is_some()
                 {
                     (info.hand_left, true)
@@ -858,16 +856,7 @@ impl Character
 
                 lazy.target().rotation = start_rotation_holding - new_rotation;
 
-                if self.holding.is_some()
-                {
-                    let holding_entity = some_or_unexpected_return!(holding_entity);
-                    let mut target = some_or_unexpected_return!(entities.target(holding_entity.entity));
-                    target.scale.x = match self.bash_side
-                    {
-                        Side1d::Left => target.scale.x.abs(),
-                        Side1d::Right => -target.scale.x.abs()
-                    };
-                }
+                self.update_held_direction(entities);
             },
             CharacterAnimation::Poke =>
             {
@@ -1651,12 +1640,21 @@ impl Character
 
             drop(lazy_transform);
 
-            let height = entities.lazy_target_end(holding_entity.entity).unwrap().scale.y;
-            entities.lazy_setter.borrow_mut().set_follow_position_no_change(holding_entity.entity, Some(FollowPosition{
-                parent: hand_left,
-                connection: Connection::Rigid,
-                offset: Vector3::new(item.held_offset, -height / 2.0, 0.0)
-            }));
+            {
+                let height = entities.lazy_target_end(holding_entity.entity).unwrap().scale.y;
+
+                let offset_x = match self.bash_side
+                {
+                    Side1d::Left => item.held_offset,
+                    Side1d::Right => -item.held_offset
+                };
+
+                entities.lazy_setter.borrow_mut().set_follow_position_no_change(holding_entity.entity, Some(FollowPosition{
+                    parent: hand_left,
+                    connection: Connection::Rigid,
+                    offset: Vector3::new(offset_x, -height / 2.0, 0.0)
+                }));
+            }
 
             let mut render = some_or_unexpected_return!(entities.render_mut(holding_entity.entity));
             render.set_texture(texture);
@@ -2270,6 +2268,34 @@ impl Character
                     special.info = OffsetInfo::new(special_info, !item.ammo.is_empty());
                 }
             }
+        }
+
+        self.update_held_direction(entities);
+    }
+
+    fn update_held_direction(&self, entities: &ClientEntities)
+    {
+        if let Some(item) = self.held_item_info(entities)
+        {
+            let info = some_or_return!(self.info.as_ref());
+            let holding_entity = some_or_unexpected_return!(info.holding).entity;
+
+            {
+                let mut target = some_or_unexpected_return!(entities.target(holding_entity));
+                target.scale.x = match self.bash_side
+                {
+                    Side1d::Left => target.scale.x.abs(),
+                    Side1d::Right => -target.scale.x.abs()
+                };
+            }
+
+            let mut follow_position = some_or_return!(entities.follow_position_mut_no_change(holding_entity));
+
+            follow_position.offset.x = match self.bash_side
+            {
+                Side1d::Left => item.held_offset,
+                Side1d::Right => -item.held_offset
+            };
         }
     }
 

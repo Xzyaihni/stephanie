@@ -99,6 +99,7 @@
         "side_sharpness": 0.5,
         "mass": 2.2,
         "durability": 2.0,
+        "held_offset": 4.0,
         "tags": ["slicey", "hammerlike"]
     },
     {
@@ -314,6 +315,19 @@
             "max": 37
         },
         "texture": "glock"
+    },
+    {
+        "name": "shinebiimu",
+        "ranged": {
+            "Gun": {
+                "exit_offset": 0.0,
+                "cooldown": 0.01,
+                "damage": 1000000
+            }
+        },
+        "mass": 0.01,
+        "durability": 999999.0,
+        "texture": "bullet"
     },
     {
         "name": "bullet",
