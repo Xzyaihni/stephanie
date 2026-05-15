@@ -1,6 +1,7 @@
 use std::{
     f32,
-    rc::Rc
+    rc::Rc,
+    fmt::{self, Debug}
 };
 
 use serde::{Serialize, Deserialize};
@@ -113,6 +114,16 @@ struct PierceType
 {
     possible: Vec<AnatomyId>,
     action: Rc<dyn Fn(&mut HumanAnatomyValues, Damage) -> Option<Damage>>
+}
+
+impl Debug for PierceType
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
+    {
+        f.debug_struct("PierceType")
+            .field("possible", &self.possible)
+            .finish()
+    }
 }
 
 impl PierceType
@@ -241,11 +252,6 @@ impl PierceType
         ];
 
         Self::possible_pierce(possible, 0, Self::no_follow())
-    }
-
-    fn any_exists(&self, anatomy: &HumanAnatomyValues) -> bool
-    {
-        self.possible.iter().any(|x| anatomy.body.get::<()>(*x).is_some())
     }
 
     fn combined_scale(&self, anatomy: &HumanAnatomyValues) -> f64
@@ -508,23 +514,15 @@ impl HumanAnatomyValues
         }
     }
 
-    fn damage_random_part(
-        &mut self,
-        damage: Damage
-    ) -> Option<Damage>
+    fn parts_at_direction(DamageDirection{side, height}: DamageDirection) -> Vec<(AnatomyId, PierceType)>
     {
-        if DebugConfig::is_enabled(DebugTool::PrintDamage)
-        {
-            eprintln!("start damage {damage:?}");
-        }
-
         let no_pierce = PierceType::empty;
 
-        let mut ids: Vec<(AnatomyId, _)> = match damage.direction.height
+        match height
         {
             DamageHeight::Top =>
             {
-                match damage.direction.side
+                match side
                 {
                     Side2d::Back => vec![
                         (HumanPartId::Spine.into(), no_pierce()),
@@ -544,7 +542,7 @@ impl HumanAnatomyValues
             },
             DamageHeight::Middle =>
             {
-                match damage.direction.side
+                match side
                 {
                     Side2d::Back => vec![
                         (HumanPartId::Spine.into(), PierceType::always(HumanPartId::Torso.into())),
@@ -583,7 +581,7 @@ impl HumanAnatomyValues
             },
             DamageHeight::Bottom =>
             {
-                match damage.direction.side
+                match side
                 {
                     Side2d::Back | Side2d::Front => vec![
                         (HumanPartId::Pelvis.into(), no_pierce()),
@@ -608,56 +606,133 @@ impl HumanAnatomyValues
                     ]
                 }
             }
-        };
+        }
+    }
 
-        ids.retain(|(id, pierce)|
+    fn damage_random_part(
+        &mut self,
+        damage: Damage
+    ) -> Option<Damage>
+    {
+        if DebugConfig::is_enabled(DebugTool::PrintDamage)
         {
-            self.body.get::<()>(*id).is_some() || pierce.any_exists(self)
-        });
+            eprintln!("start damage {damage:?}");
+        }
 
-        let ids = if ids.is_empty()
+        let start_direction = damage.direction;
+        let mut current_direction = start_direction;
+
+        let mut last_damage = None;
+
+        loop
         {
-            HumanPartId::iter().filter(|id|
-            {
-                self.body.get_part::<()>(*id).is_some()
-            }).map(|id|
-            {
-                (AnatomyId::Part(id), PierceType::empty())
-            }).collect::<Vec<_>>()
-        } else
-        {
-            ids
-        };
+            let mut ids = Self::parts_at_direction(current_direction);
 
-        let picked = WeightedPicker::pick_from(
-            fastrand::f64(),
-            &ids,
-            |(id, pierce)|
+            ids.retain(|(id, _pierce)|
             {
-                self.body.get::<SizeGetter>(*id).copied().unwrap_or_else(|| pierce.combined_scale(self))
-            }
-        );
-
-        picked.and_then(|(picked, on_pierce)|
-        {
-            if let AnatomyId::Part(id) = picked
-            {
-                self.maybe_wound(*id, &damage);
-            }
-
-            let picked_damage = self.body.get_mut::<DamagerGetter>(*picked).map(|x| x(damage.clone()));
-
-            if let Some(damage) = picked_damage
-            {
-                damage.and_then(|pierce|
+                let hp = match id
                 {
-                    (on_pierce.action)(self, pierce)
-                })
-            } else
+                    AnatomyId::Part(id) => self.body.get_part::<AverageHealthGetter>(*id),
+                    AnatomyId::Organ(id) => self.body.get_organ::<AverageHealthGetter>(*id).flatten()
+                };
+
+                hp.unwrap_or(0.0) > 0.0
+            });
+
+            if ids.is_empty()
             {
-                (on_pierce.action)(self, damage)
+                current_direction = {
+                    fn next_height(start_height: DamageHeight, height: DamageHeight) -> DamageHeight
+                    {
+                        match start_height
+                        {
+                            DamageHeight::Top
+                            | DamageHeight::Middle =>
+                            {
+                                match height
+                                {
+                                    DamageHeight::Top => DamageHeight::Middle,
+                                    DamageHeight::Middle => DamageHeight::Bottom,
+                                    DamageHeight::Bottom => DamageHeight::Top
+                                }
+                            },
+                            DamageHeight::Bottom =>
+                            {
+                                match height
+                                {
+                                    DamageHeight::Top => DamageHeight::Bottom,
+                                    DamageHeight::Middle => DamageHeight::Top,
+                                    DamageHeight::Bottom => DamageHeight::Middle
+                                }
+                            }
+                        }
+                    }
+
+                    fn next_side(side: Side2d) -> Side2d
+                    {
+                        match side
+                        {
+                            Side2d::Left => Side2d::Right,
+                            Side2d::Right => Side2d::Front,
+                            Side2d::Front => Side2d::Back,
+                            Side2d::Back => Side2d::Left
+                        }
+                    }
+
+                    if current_direction.side == Side2d::Back
+                    {
+                        DamageDirection{
+                            side: Side2d::Left,
+                            height: next_height(start_direction.height, current_direction.height)
+                        }
+                    } else
+                    {
+                        DamageDirection{
+                            side: next_side(current_direction.side),
+                            height: current_direction.height
+                        }
+                    }
+                };
+
+                if start_direction == current_direction
+                {
+                    return last_damage;
+                } else
+                {
+                    continue;
+                }
             }
-        })
+
+            let picked = WeightedPicker::pick_from(
+                fastrand::f64(),
+                &ids,
+                |(id, pierce)|
+                {
+                    self.body.get::<SizeGetter>(*id).copied().unwrap_or_else(|| pierce.combined_scale(self))
+                }
+            );
+
+            last_damage = picked.and_then(|(picked, on_pierce)|
+            {
+                if let AnatomyId::Part(id) = picked
+                {
+                    self.maybe_wound(*id, &damage);
+                }
+
+                let picked_damage = self.body.get_mut::<DamagerGetter>(*picked).map(|x| x(damage.clone()));
+
+                if let Some(damage) = picked_damage
+                {
+                    damage.and_then(|pierce|
+                    {
+                        (on_pierce.action)(self, pierce)
+                    })
+                } else
+                {
+                    (on_pierce.action)(self, damage.clone())
+                }
+            });
+        }
     }
 
     fn maybe_wound(&mut self, id: HumanPartId, damage: &Damage)

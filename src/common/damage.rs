@@ -163,7 +163,7 @@ impl DamageHeight
     }
 }
 
-#[derive(Debug, Default, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DamageDirection
 {
     pub side: Side2d,
