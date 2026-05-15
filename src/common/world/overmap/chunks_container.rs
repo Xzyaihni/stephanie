@@ -91,6 +91,16 @@ macro_rules! implement_common
                 )
             }
 
+            pub fn map_pos<F, U>(&self, mut f: F) -> $name<U>
+            where
+                F: FnMut(LocalPos, &T) -> U
+            {
+                $name::from_raw_indexer(
+                    self.chunks.iter().enumerate().map(|(index, chunk)| f(self.indexer.index_to_pos(index), chunk)).collect(),
+                    self.indexer.clone()
+                )
+            }
+
             pub fn clear(&mut self)
             where
                 T: Default

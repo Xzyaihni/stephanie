@@ -4325,9 +4325,11 @@ impl Program
         Ok(Self{memory, code})
     }
 
-    pub fn eval(&self) -> Result<OutputWrapper, ErrorPos>
+    pub fn eval(&self, with_memory: impl FnOnce(&mut LispMemory)) -> Result<OutputWrapper, ErrorPos>
     {
         let mut memory = self.memory.clone();
+
+        with_memory(&mut memory);
         self.code.run(&mut memory)?;
 
         let value = memory.get_register(Register::Value);

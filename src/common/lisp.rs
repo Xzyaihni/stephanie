@@ -1950,7 +1950,7 @@ impl Lisp
 
     pub fn run(&self) -> Result<OutputWrapper, ErrorPos>
     {
-        self.program.eval()
+        self.program.eval(|_| {})
     }
 
     pub fn run_mut(&mut self) -> Result<OutputWrapperRef<'_>, ErrorPos>

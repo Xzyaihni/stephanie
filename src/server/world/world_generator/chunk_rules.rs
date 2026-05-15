@@ -13,14 +13,14 @@ use serde::{Serialize, Deserialize};
 
 use strum::IntoEnumIterator;
 
-use super::{PossibleStates, ParseError};
+use super::{PossibleState, ParseError};
 
 use crate::{
     debug_config::*,
     common::{
         some_or_return,
         BiMap,
-        generic_info::Symmetry,
+        generic_info::*,
         lisp::{self, LispConfig, Program, Primitives, LispMemory, LispValue, Register},
         world::{
             CHUNK_SIZE,
@@ -117,7 +117,7 @@ impl WorldChunkTag
 
     fn generate_content(value: &Program) -> i32
     {
-        value.eval().unwrap_or_else(|err|
+        value.eval(|_| {}).unwrap_or_else(|err|
         {
             panic!("lisp error {err}")
         }).as_integer().unwrap_or_else(|err|
@@ -366,18 +366,47 @@ struct ChunkRuleTrackerRaw
     pub neighbor: TileRotation
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
+#[serde(untagged)]
+enum ChunkWeightRaw
+{
+    Value(f64),
+    Lisp(String)
+}
+
+#[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct ChunkRuleRaw
 {
     pub name: String,
+    pub inherit: Option<String>,
     pub rotation: Option<TileRotation>,
-    #[serde(default)]
-    pub tags: Vec<ChunkRuleRawTag>,
-    pub weight: Option<f64>,
+    pub tags: Option<Vec<ChunkRuleRawTag>>,
+    pub weight: Option<ChunkWeightRaw>,
     pub rotateable: Option<bool>,
-    pub neighbors: ChunkNeighbors,
+    pub neighbors: Option<ChunkNeighbors>,
     pub track: Option<ChunkRuleTrackerRaw>
+}
+
+impl ChunkRuleRaw
+{
+    fn combine(&self, other: &Self) -> Self
+    {
+        let mut this = self.clone();
+
+        this.name = other.name.clone();
+
+        inherit_with_fields!(
+            this,
+            other,
+            tags,
+            weight,
+            rotateable,
+            neighbors
+        );
+
+        this
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -421,12 +450,19 @@ impl ChunkRuleTag
 }
 
 #[derive(Debug, Clone)]
+enum ChunkWeight
+{
+    Value(f64),
+    Lisp(Program)
+}
+
+#[derive(Debug, Clone)]
 pub struct ChunkRule
 {
     name: String,
     rotation: TileRotation,
     tags: Vec<ChunkRuleTag>,
-    weight: f64,
+    weight: ChunkWeight,
     rotateable: bool,
     symmetry: Symmetry,
     neighbors: DirectionsGroup<Vec<WorldChunkId>>,
@@ -438,9 +474,19 @@ impl ChunkRule
     fn from_raw(
         name_mappings: &mut NameMappings,
         rule: ChunkRuleRaw
-    ) -> Self
+    ) -> Option<Self>
     {
-        let symmetry = rule.neighbors.symmetry();
+        let neighbors = if let Some(x) = rule.neighbors
+        {
+            x
+        } else
+        {
+            eprintln!("rule `{}` must have a neighbors field", &rule.name);
+
+            return None;
+        };
+
+        let symmetry = neighbors.symmetry();
 
         let neighbors = {
             let n = |neighbors: ChunkNeighborType|
@@ -458,7 +504,7 @@ impl ChunkRule
                 }).collect::<Vec<_>>()
             };
 
-            match rule.neighbors
+            match neighbors
             {
                 ChunkNeighbors::SymmetryNone(x) => x.map(|_, x| n(x)),
                 ChunkNeighbors::SymmetryHorizontal{up, down, horizontal} =>
@@ -496,23 +542,52 @@ impl ChunkRule
             }
         };
 
-        Self{
+        let primitives = Rc::new(Primitives::default());
+
+        let weight = rule.weight.and_then(|weight|
+        {
+            match weight
+            {
+                ChunkWeightRaw::Value(x) => Some(ChunkWeight::Value(x)),
+                ChunkWeightRaw::Lisp(code) =>
+                {
+                    match Program::parse(
+                        LispConfig{
+                            memory: LispMemory::new(primitives.clone(), 64, 64),
+                            ..Default::default()
+                        },
+                        &[&code]
+                    )
+                    {
+                        Ok(program) => Some(ChunkWeight::Lisp(program)),
+                        Err(err) =>
+                        {
+                            eprintln!("in `{}` error evaluating program: {err}", &rule.name);
+
+                            None
+                        }
+                    }
+                }
+            }
+        }).unwrap_or_else(|| ChunkWeight::Value(1.0));
+
+        Some(Self{
             name: rule.name,
             rotation: TileRotation::Up,
-            tags: rule.tags.into_iter().map(|tag|
+            tags: rule.tags.map(|tags| tags.into_iter().map(|tag|
             {
                 ChunkRuleTag::from_raw(
                     &mut name_mappings.text,
-                    Rc::new(Primitives::default()),
+                    primitives.clone(),
                     tag
                 )
-            }).collect(),
-            weight: rule.weight.unwrap_or(1.0),
+            }).collect()).unwrap_or_default(),
+            weight,
             rotateable: rule.rotateable.unwrap_or(ROTATEABLE_DEFAULT),
             symmetry,
             neighbors,
             track: None
-        }
+        })
     }
 
     fn rotated(&self, name_mappings: &NameMappings, rotation: TileRotation) -> Self
@@ -579,11 +654,6 @@ impl ChunkRule
     pub fn rotation(&self) -> TileRotation
     {
         self.rotation
-    }
-
-    pub fn weight(&self) -> f64
-    {
-        self.weight
     }
 
     pub fn rotateable(&self) -> bool
@@ -1087,14 +1157,20 @@ pub struct ChunkRules
 {
     rules: HashMap<WorldChunkId, ChunkRule>,
     fallback: WorldChunkId,
-    all_ids: Vec<WorldChunkId>,
-    entropy: f64
+    all_ids: Vec<(WorldChunkId, Option<f64>)>
 }
 
 impl ChunkRules
 {
-    fn from_raw(name_mappings: &mut NameMappings, rules: ChunkRulesRaw) -> Self
+    fn from_raw(name_mappings: &mut NameMappings, mut rules: ChunkRulesRaw) -> Self
     {
+        inherit_infos(
+            &mut rules.rules,
+            |this_info| this_info.inherit.as_ref(),
+            |this_info| &this_info.name,
+            |a, b| a.combine(b)
+        );
+
         rules.rules.iter().for_each(|rule|
         {
             if rule.rotateable.unwrap_or(ROTATEABLE_DEFAULT)
@@ -1116,7 +1192,7 @@ impl ChunkRules
 
             let track = rule.track.clone();
 
-            let rule = ChunkRule::from_raw(name_mappings, rule);
+            let rule = some_or_return!(ChunkRule::from_raw(name_mappings, rule));
 
             let name_mappings = &*name_mappings;
 
@@ -1172,17 +1248,20 @@ impl ChunkRules
             }
         });
 
-        let weights = this_rules.values().map(|x| x.weight);
-        let total_weight: f64 = weights.clone().sum();
-        let entropy = PossibleStates::calculate_entropy(weights.into_iter().map(|x| x / total_weight));
+        let mut all_ids: Vec<_> = this_rules.keys().copied().map(|id|
+        {
+            let weight = match this_rules.get(&id).unwrap().weight
+            {
+                ChunkWeight::Value(x) => Some(x),
+                _ => None
+            };
 
-        this_rules.values_mut().for_each(|rule| rule.weight /= total_weight);
+            (id, weight)
+        }).collect();
 
-        let mut all_ids: Vec<_> = this_rules.keys().copied().collect();
-        all_ids.sort_by(|a, b| a.0.cmp(&b.0));
+        all_ids.sort_by(|a, b| a.0.0.cmp(&b.0.0));
 
         let mut this = Self{
-            entropy,
             rules: this_rules,
             all_ids,
             fallback
@@ -1432,9 +1511,51 @@ impl ChunkRules
         }).collect())
     }
 
-    pub fn ids(&self) -> Vec<WorldChunkId>
+    pub fn possible_states(&self, difficulty: f32) -> Vec<PossibleState>
     {
-        self.all_ids.clone()
+        let mut possible_states = self.all_ids.iter().filter_map(|(id, weight)|
+        {
+            let weight = weight.unwrap_or_else(||
+            {
+                match &self.rules.get(id).unwrap().weight
+                {
+                    ChunkWeight::Lisp(program) => program.eval(|memory|
+                    {
+                        if let Err(err) = memory.define("difficulty", difficulty.into())
+                        {
+                            eprintln!("error defining difficulty: {err}");
+                        }
+                    }).map(|x|
+                    {
+                        x.as_float().unwrap_or_else(|err|
+                        {
+                            eprintln!("in `{}` error generating weight: {err}", self.name(*id));
+
+                            1.0
+                        }) as f64
+                    }).unwrap_or_else(|err|
+                    {
+                        eprintln!("in `{}` error generating weight: {err}", self.name(*id));
+
+                        1.0
+                    }),
+                    ChunkWeight::Value(_) => unreachable!()
+                }
+            });
+
+            if weight <= 0.0
+            {
+                return None;
+            }
+
+            Some(PossibleState{id: *id, weight})
+        }).collect::<Vec<_>>();
+
+        let total_weight = possible_states.iter().map(|x| x.weight).sum::<f64>();
+
+        possible_states.iter_mut().for_each(|possible_state| possible_state.weight /= total_weight);
+
+        possible_states
     }
 
     pub fn name(&self, id: WorldChunkId) -> &str
@@ -1446,11 +1567,6 @@ impl ChunkRules
     {
         let rule = self.get(id);
         format_id(&rule.name, rule.rotation)
-    }
-
-    pub fn entropy(&self) -> f64
-    {
-        self.entropy
     }
 
     pub fn fallback(&self) -> WorldChunkId

@@ -1058,7 +1058,7 @@ impl YanyaApp for ChunkPreviewer
             {
                 if let Some(states) = states_at(self, logical_position)
                 {
-                    let states = states.states().to_vec();
+                    let states: Vec<_> = states.states().iter().map(|x| x.id).collect();
 
                     self.states_tooltip = Some(StatesTooltip{chunk_positions: None, states, mouse_position: self.controller.mouse_position()});
                 } else
@@ -1095,7 +1095,7 @@ impl YanyaApp for ChunkPreviewer
 
                 let plane = &mut self.world_chunks.borrow_mut().0;
 
-                let wave_collapser = WaveCollapser::new(&rules.surface, plane);
+                let wave_collapser = WaveCollapser::new(&rules.surface, plane, |_local_pos| 0.0);
 
                 let entropies = wave_collapser.entropies().clone();
 
@@ -1483,7 +1483,7 @@ mod tests
         let one = {
             let mut rng_one = SeededRandom::from(5);
 
-            let mut wave_collapser_one = WaveCollapser::new(&rules.surface, &mut plane_one);
+            let mut wave_collapser_one = WaveCollapser::new(&rules.surface, &mut plane_one, |_| 0.0);
             (0..3).for_each(|_| do_test_step(&rules.surface, &mut wave_collapser_one, &mut rng_one));
 
             wave_collapser_one
@@ -1494,10 +1494,10 @@ mod tests
         let two = {
             let mut rng_two = SeededRandom::from(5);
 
-            let mut wave_collapser_two_temp = WaveCollapser::new(&rules.surface, &mut plane_two);
+            let mut wave_collapser_two_temp = WaveCollapser::new(&rules.surface, &mut plane_two, |_| 0.0);
             do_test_step(&rules.surface, &mut wave_collapser_two_temp, &mut rng_two);
 
-            let mut wave_collapser_two = WaveCollapser::new(&rules.surface, &mut plane_two);
+            let mut wave_collapser_two = WaveCollapser::new(&rules.surface, &mut plane_two, |_| 0.0);
             (0..2).for_each(|_| do_test_step(&rules.surface, &mut wave_collapser_two, &mut rng_two));
 
             wave_collapser_two

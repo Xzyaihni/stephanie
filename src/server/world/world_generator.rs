@@ -178,7 +178,7 @@ pub fn chunk_difficulty(pos: GlobalPos) -> f32
     let mut p: Vector3<f32> = Vector3::from(pos.0).cast();
     p.z = 0.0;
 
-    p.magnitude() * 0.003
+    p.magnitude() * 0.03
 }
 
 pub enum ChunkGenerationError
@@ -763,7 +763,13 @@ impl<S: SaveLoad<WorldChunksBlock>> WorldGenerator<S>
             *plane = world.as_ref().map(|chunk| chunk[0].clone());
         });
 
-        let mut wave_collapser = crate::debug_time_this!{"wfc-new", WaveCollapser::new(&self.rules.surface, &mut plane.0)};
+        let mut wave_collapser = crate::debug_time_this!{
+            "wfc-new",
+            WaveCollapser::new(&self.rules.surface, &mut plane.0, |local_pos|
+            {
+                chunk_difficulty(global_mapper.to_global(local_pos))
+            })
+        };
 
         if let Some(local) = global_mapper.to_local(GlobalPos::new(0, 0, 0))
         {
@@ -1003,10 +1009,17 @@ impl<S: SaveLoad<WorldChunksBlock>> WorldGenerator<S>
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct PossibleState
+{
+    pub id: WorldChunkId,
+    pub weight: f64
+}
+
 #[derive(Debug, Clone)]
 pub struct PossibleStates
 {
-    states: Vec<WorldChunkId>,
+    states: Vec<PossibleState>,
     total: f64,
     entropy: f64,
     collapsed: bool,
@@ -1023,19 +1036,16 @@ impl PartialEq for PossibleStates
 
 impl PossibleStates
 {
-    fn new(rules: &ChunkRules) -> Self
+    fn new(rules: &ChunkRules, difficulty: f32) -> Self
     {
-        let states: Vec<_> = rules.ids();
+        let states: Vec<_> = rules.possible_states(difficulty);
 
-        {
-            let total_weight = states.iter().map(|x| rules.get(*x).weight()).sum::<f64>();
-            debug_assert!((total_weight - 1.0).abs() < 0.0001, "{total_weight} must be 1.0");
-        }
+        let entropy = Self::calculate_entropy(states.iter().map(|x| x.weight));
 
         Self{
             states,
             total: 1.0,
-            entropy: rules.entropy(),
+            entropy,
             collapsed: false,
             is_all: true
         }
@@ -1046,7 +1056,7 @@ impl PossibleStates
         debug_assert!(chunk.id() != WorldChunkId::none());
 
         Self{
-            states: vec![chunk.id()],
+            states: vec![PossibleState{id: chunk.id(), weight: 0.0}],
             total: 1.0,
             entropy: 0.0,
             collapsed: true,
@@ -1074,15 +1084,15 @@ impl PossibleStates
         {
             let keep = other.states.iter().any(|other_state|
             {
-                let other_rule = rules.get(*other_state);
+                let other_rule = rules.get(other_state.id);
                 let possible = &other_rule.neighbors(direction);
 
-                possible.contains(state)
+                possible.contains(&state.id)
             });
 
             if !keep
             {
-                let this_weight = rules.get(*state).weight();
+                let this_weight = state.weight;
 
                 self.total -= this_weight;
                 self.entropy += this_weight * this_weight.ln();
@@ -1097,13 +1107,13 @@ impl PossibleStates
         {
             if self.states.is_empty()
             {
-                self.states = vec![rules.fallback()];
+                self.states = vec![PossibleState{id: rules.fallback(), weight: 0.0}];
 
                 return None;
             } else
             {
                 self.is_all = false;
-                self.update_entropy(rules);
+                self.update_entropy();
             }
         }
 
@@ -1117,17 +1127,13 @@ impl PossibleStates
             rules.fallback()
         } else if self.collapsed() || (self.states.len() == 1)
         {
-            self.states[0]
+            self.states[0].id
         } else
         {
-            *WeightedPicker::new(self.total, &self.states)
-                .pick_with(rng.next_f64(), |value|
-                {
-                    let rule = rules.get(*value);
-
-                    rule.weight()
-                })
+            WeightedPicker::new(self.total, &self.states)
+                .pick_with(rng.next_f64(), |value| value.weight)
                 .expect("rules cannot be empty")
+                .id
         };
 
         self.set_collapsed_id(id);
@@ -1135,40 +1141,35 @@ impl PossibleStates
         id
     }
 
-    pub fn states(&self) -> &[WorldChunkId]
+    pub fn states(&self) -> &[PossibleState]
     {
         &self.states
     }
 
     fn set_collapsed_id(&mut self, id: WorldChunkId)
     {
-        self.states = vec![id];
+        self.states = vec![PossibleState{id, weight: 0.0}];
         self.collapsed = true;
         self.is_all = false;
     }
 
-    fn update_entropy(&mut self, rules: &ChunkRules)
+    fn update_entropy(&mut self)
     {
         self.entropy = if self.states.len() <= 1
         {
             0.0
         } else
         {
-            Self::calculate_entropy(self.states.iter().map(|state|
-            {
-                rules.get(*state).weight()
-            }))
+            Self::calculate_entropy(self.states.iter().map(|state| state.weight))
         };
     }
 
     fn calculate_entropy(weights: impl Iterator<Item=f64>) -> f64
     {
-        let s: f64 = weights.map(|value|
+        weights.map(|value|
         {
-            value * value.ln()
-        }).sum();
-
-        -s
+            -value * value.ln()
+        }).sum()
     }
 
     pub fn is_all(&self) -> bool
@@ -1194,7 +1195,7 @@ impl PossibleStates
 
     fn format_states_with(&self, f: impl Fn(WorldChunkId) -> String) -> String
     {
-        let states = self.states.iter().copied().map(f).reduce(|acc, x|
+        let states = self.states.iter().copied().map(|x| f(x.id)).reduce(|acc, x|
         {
             acc + ", " + &x
         }).unwrap_or_default();
@@ -1315,17 +1316,18 @@ impl<'a> WaveCollapser<'a>
 {
     pub fn new(
         rules: &'a ChunkRules,
-        world_chunks: &'a mut FlatChunksContainer<Option<WorldChunk>>
+        world_chunks: &'a mut FlatChunksContainer<Option<WorldChunk>>,
+        difficulty_at: impl Fn(LocalPos) -> f32
     ) -> Self
     {
-        let entropies = Entropies(world_chunks.map(|chunk|
+        let entropies = Entropies(world_chunks.map_pos(|pos, chunk|
         {
             if let Some(chunk) = chunk
             {
                 PossibleStates::new_collapsed(chunk)
             } else
             {
-                PossibleStates::new(rules)
+                PossibleStates::new(rules, difficulty_at(pos))
             }
         }));
 

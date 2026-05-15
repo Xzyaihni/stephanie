@@ -188,7 +188,7 @@
                     "content": "(random-integer)"
                 }
             ],
-            "weight": 0.1,
+            "weight": "(if (< difficulty 0.5) 0.0 (* difficulty 0.1))",
             "neighbors": {
                 "SymmetryNone": {
                     "up": [
@@ -214,7 +214,8 @@
         },
         {
             "name": "office_tr",
-            "weight": 0.1,
+            "inherit": "office_tl",
+            "tags": [],
             "neighbors": {
                 "SymmetryNone": {
                     "up": [
@@ -241,7 +242,8 @@
         },
         {
             "name": "office_bl",
-            "weight": 0.1,
+            "inherit": "office_tl",
+            "tags": [],
             "neighbors": {
                 "SymmetryNone": {
                     "up": ["office_tl"],
@@ -267,7 +269,8 @@
         },
         {
             "name": "office_br",
-            "weight": 0.1,
+            "inherit": "office_tl",
+            "tags": [],
             "neighbors": {
                 "SymmetryNone": {
                     "up": ["office_tr"],

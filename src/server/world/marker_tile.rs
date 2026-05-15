@@ -123,6 +123,11 @@ impl MarkerTile
             {
                 if DebugConfig::is_enabled(DebugTool::NoLightSpawns) { return None; }
 
+                if strength <= 0.0
+                {
+                    return None;
+                }
+
                 Some(EntityInfo{
                     transform: Some(Transform{
                         position: position + offset,
