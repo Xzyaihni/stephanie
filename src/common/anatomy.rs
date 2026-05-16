@@ -691,6 +691,11 @@ impl Debug for Health
 
 impl Health
 {
+    pub fn new_simple(max: f32) -> Self
+    {
+        Self::new(max * 0.25, max)
+    }
+
     pub fn new(block: f32, max: f32) -> Self
     {
         Self{block, health: SimpleHealth::new(max)}
@@ -940,9 +945,9 @@ impl<Contents> BodyPart<Contents>
     {
         Self::new_full(
             name,
-            Health::new(info.bone * 5.0, info.bone * 0.5),
-            Health::new(info.skin * 5.0, info.skin * 10.0),
-            Health::new(info.muscle * 3.0, info.muscle * 10.0),
+            Health::new_simple(info.bone * 4.0),
+            Health::new_simple(info.skin),
+            Health::new_simple(info.muscle * 3.0),
             size,
             contents
         )

@@ -438,9 +438,9 @@ impl HumanAnatomyValues
 
         let spine = HumanPart::new_full(
             DebugName::new("spine"),
-            Health::new(part.bone * 2.0, part.bone * 40.0 * 10.0), // * 10 for missing muscle protection
-            Health::new(part.skin * 5.0, part.skin * 10.0),
-            Health::new(0.0, 0.0),
+            Health::new_simple(part.bone * 40.0),
+            Health::new_simple(part.skin),
+            Health::new_simple(0.0),
             0.1,
             SpinalCord::new(1.0)
         );
@@ -448,9 +448,9 @@ impl HumanAnatomyValues
         let head = {
             let mut head = HumanPart::new_full(
                 DebugName::new("head"),
-                Health::new(part.bone * 10.0, part.bone * 100.0),
-                Health::new(part.skin * 5.0, part.skin),
-                Health::new(0.0, 0.0),
+                Health::new_simple(part.bone * 100.0),
+                Health::new_simple(part.skin),
+                Health::new_simple(0.0),
                 0.39,
                 HeadOrgans{eyes: Halves::repeat(Some(Eye::new(1.0))), brain: Some(Brain::new(0.5))}
             );
@@ -473,9 +473,9 @@ impl HumanAnatomyValues
 
         let torso = HumanPart::new_full(
             DebugName::new("torso"),
-            Health::new(part.bone * 5.0, part.bone * 9.0),
-            Health::new(part.skin * 5.0, part.skin * 2.0),
-            Health::new(part.muscle * 3.0, part.muscle * 5.0),
+            Health::new_simple(part.bone * 9.0),
+            Health::new_simple(part.skin * 5.0),
+            Health::new_simple(part.muscle * 15.0),
             0.82,
             TorsoOrgans{
                 lungs: Halves::repeat(Some(Lung::new(1.0))),

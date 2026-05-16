@@ -152,7 +152,6 @@ enum OxygenPartId
 {
     Outer,
     Inner,
-    BarPanel,
     Bar
 }
 
@@ -177,7 +176,6 @@ enum LoadingPart
 enum SeenNotificationPart
 {
     Body,
-    Panel,
     Fill
 }
 
@@ -2805,14 +2803,6 @@ impl Ui
                 ..Default::default()
             };
 
-            inner.update(UiId::Oxygen(OxygenPartId::BarPanel), UiElement{
-                texture: UiTexture::Custom("ui/oxygen_bar_panel.png".into()),
-                mix: Some(MixColorLch{only_alpha: true, ..MixColorLch::color(Lcha{a: 1.0, ..BLACK_COLOR})}),
-                position: UiPosition::Inherit,
-                animation: animation.clone(),
-                ..UiElement::fit_content()
-            });
-
             inner.update(UiId::Oxygen(OxygenPartId::Bar), UiElement{
                 texture: UiTexture::Custom("ui/oxygen_bar.png".into()),
                 fill: Some(UiElementFill{
@@ -2821,7 +2811,10 @@ impl Ui
                     amount: self.oxygen,
                     horizontal: true
                 }),
-                mix: Some(MixColorLch{only_alpha: true, ..MixColorLch::color(Lcha{a: 1.0, ..BLACK_COLOR})}),
+                mix: Some(MixColorLch{
+                    only_alpha: true,
+                    ..MixColorLch::color(Lcha{a: 1.0, ..BLUE_COLOR.with_added_chroma(-30.0).with_added_lightness(80.0)})
+                }),
                 position: UiPosition::Inherit,
                 animation,
                 ..UiElement::fit_content()
@@ -2965,6 +2958,7 @@ impl Ui
 
             stats.update(UiId::Health(HealthPart::Blood), UiElement{
                 texture: UiTexture::Custom("ui/blood.png".into()),
+                mix: Some(MixColorLch::color(WHITE_COLOR)),
                 fill: Some(UiElementFill{
                     full: RED_COLOR,
                     empty: RED_COLOR.with_added_chroma(-50.0).with_added_lightness(-10.0),
@@ -3104,21 +3098,21 @@ impl Ui
 
                 let distance = player_position.metric_distance(&other_position);
 
-                lerp(1.0, lowest_alpha, (distance / (TILE_SIZE * 4.0) - TILE_SIZE).clamp(0.0, 1.0))
+                let distance_mix = ((distance - TILE_SIZE * 3.0) / (TILE_SIZE * 5.0)).clamp(0.0, 1.0);
+
+                lerp(1.0, lowest_alpha, distance_mix)
             };
+
+            let lifetime_alpha = (*lifetime / 0.5).clamp(0.0, 1.0);
 
             let body_id = UiId::AnatomyNotification(*entity, AnatomyNotificationPart::Body);
             let body = self.controller.update(body_id.clone(), UiElement{
                 texture: UiTexture::CustomId(self.anatomy_locations_small.outline),
-                mix: Some(MixColorLch::color(Lcha{a: alpha, ..WHITE_COLOR})),
+                mix: Some(MixColorLch::color(Lcha{a: alpha * lifetime_alpha, ..WHITE_COLOR})),
                 position: UiPosition::Absolute{position, align: UiPositionAlign{
                     horizontal: AlignHorizontal::Middle,
                     vertical: AlignVertical::Bottom
                 }},
-                animation: Animation{
-                    position: None,
-                    ..Animation::normal()
-                },
                 ..UiElement::fit_content()
             });
 
@@ -3140,9 +3134,11 @@ impl Ui
 
                 let lightness_decay = if selected { 100.0 } else { 30.0 };
 
+                let color = Lcha{a: health_color.a * alpha * lifetime_alpha, ..health_color};
+
                 body.update(UiId::AnatomyNotification(*entity, AnatomyNotificationPart::Part(*part_id)), UiElement{
                     texture: UiTexture::CustomId(location.id),
-                    mix: Some(MixColorLch::color(Lcha{a: health_color.a * alpha, ..health_color})),
+                    mix: Some(MixColorLch::color(color)),
                     position: UiPosition::Offset(body_id.clone(), Vector2::zeros()),
                     animation: Animation{
                         mix: Some(MixAnimation{
@@ -3191,15 +3187,6 @@ impl Ui
                 ..Default::default()
             });
 
-            let panel = (!(fraction.is_none() && is_attacking)).then(||
-            {
-                body.update(id(SeenNotificationPart::Panel), UiElement{
-                    texture: UiTexture::Custom("ui/seen_panel.png".into()),
-                    position: UiPosition::Inherit,
-                    ..UiElement::fit_content()
-                })
-            });
-
             fn this_fill(amount: f32) -> UiElementFill
             {
                 UiElementFill{
@@ -3210,71 +3197,38 @@ impl Ui
                 }
             }
 
-            const MAX_LIFETIME: f32 = 0.5;
+            let disappear_lifetime = 0.15;
 
-            if let Some(fraction) = fraction
-            {
-                body.update(id(SeenNotificationPart::Fill), UiElement{
-                    texture: UiTexture::Custom("ui/seen.png".into()),
-                    mix: Some(MixColorLch{only_alpha: true, ..MixColorLch::color(BLACK_COLOR)}),
-                    fill: Some(this_fill(fraction)),
-                    animation: Animation{
-                        mix: Some(MixAnimation{
-                            start_mix: Some(Lcha{a: 0.0, ..BLACK_COLOR}),
-                            ..Default::default()
-                        }),
+            let alpha = (*lifetime / disappear_lifetime).clamp(0.0, 1.0);
+
+            let color = WHITE_COLOR;
+
+            body.update(id(SeenNotificationPart::Fill), UiElement{
+                texture: UiTexture::Custom("ui/seen.png".into()),
+                mix: Some(MixColorLch{only_alpha: true, ..MixColorLch::color(Lcha{a: alpha, ..color})}),
+                fill: Some(this_fill(fraction.unwrap_or(if is_attacking { 1.0 } else { 0.0 }))),
+                position: UiPosition::Inherit,
+                animation: Animation{
+                    mix: (!is_attacking).then(|| MixAnimation{
+                        start_decay: MixDecay::all(20.0),
+                        start_mix: Some(Lcha{a: 0.0, ..color}),
                         ..Default::default()
-                    },
-                    position: UiPosition::Inherit,
-                    ..UiElement::fit_content()
-                });
+                    }),
+                    ..Default::default()
+                },
+                ..UiElement::fit_content()
+            });
 
-                *lifetime = MAX_LIFETIME;
+            if is_attacking
+            {
+                *lifetime = lifetime.min(disappear_lifetime);
+            }
+
+            if fraction.is_some()
+            {
+                *lifetime = 1.0;
             } else
             {
-                let decay = 5.0;
-                let value = *lifetime / MAX_LIFETIME;
-
-                let alpha = 1.0 * ((1.0 - value) * -decay).exp();
-
-                if is_attacking
-                {
-                    let texture = UiTexture::Custom("ui/seen_done.png".into());
-                    let start_scaling = {
-                        let size = self.controller.texture_size(&texture);
-
-                        Vector2::repeat(1.0) + Vector2::repeat(0.5).component_div(&(size / size.min()))
-                    };
-
-                    body.update(id(SeenNotificationPart::Fill), UiElement{
-                        texture,
-                        mix: Some(MixColorLch{only_alpha: true, ..MixColorLch::color(Lcha{a: alpha, ..BLACK_COLOR})}),
-                        animation: Animation{
-                            scaling: Some(ScalingAnimation{
-                                start_scaling,
-                                start_mode: Scaling::EaseOut{decay: 15.0},
-                                ..Default::default()
-                            }),
-                            ..Default::default()
-                        },
-                        ..UiElement::fit_content()
-                    });
-                } else
-                {
-                    body.update(id(SeenNotificationPart::Fill), UiElement{
-                        texture: UiTexture::Custom("ui/seen.png".into()),
-                        mix: Some(MixColorLch{only_alpha: true, ..MixColorLch::color(Lcha{a: alpha, ..BLACK_COLOR})}),
-                        fill: Some(this_fill(0.0)),
-                        position: UiPosition::Inherit,
-                        ..UiElement::fit_content()
-                    });
-
-                    if let Some(panel) = panel
-                    {
-                        panel.element().mix = Some(MixColorLch{only_alpha: true, ..MixColorLch::color(Lcha{a: alpha, ..BLACK_COLOR})});
-                    }
-                }
-
                 *lifetime -= dt;
             }
 
