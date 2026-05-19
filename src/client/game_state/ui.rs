@@ -3210,6 +3210,11 @@ impl Ui
 
             if *lifetime >= SEEN_NOTIFICATION_START_TIME
             {
+                let anchor = AnchorOffsets{
+                    y: AnchorOffset::Above,
+                    ..Default::default()
+                };
+
                 body.update(id(SeenNotificationPart::Fill), UiElement{
                     texture: seen_texture,
                     mix: Some(MixColorLch{only_alpha: true, ..MixColorLch::color(Lcha{a: alpha, ..color})}),
@@ -3222,10 +3227,7 @@ impl Ui
                             ..Default::default()
                         }),
                         scaling: Some(ScalingAnimation{
-                            anchor_offset: Some(ScalingAnchorOffset{
-                                y: AnchorOffset::Above,
-                                ..Default::default()
-                            }),
+                            anchor_offset: anchor,
                             start_scaling: vector![1.0, 0.0],
                             start_mode: Scaling::Spring(SpringScalingInfo{
                                 start_velocity: vector![0.0, 0.4],
@@ -3235,6 +3237,14 @@ impl Ui
                             close_scaling: vector![1.0, 0.0],
                             close_mode: Scaling::EaseIn(EaseInInfo::new_with_velocity(-0.03, 0.5)),
                             ..Default::default()
+                        }),
+                        rotation: Some(RotationAnimation{
+                            anchor,
+                            kind: RotationAnimationKind::Wiggle(WiggleInfo{
+                                speed: 4.5,
+                                amount: f32::consts::PI * 0.055,
+                                animation: ValueAnimation::EaseIn(1.1)
+                            }.into())
                         }),
                         ..Default::default()
                     },

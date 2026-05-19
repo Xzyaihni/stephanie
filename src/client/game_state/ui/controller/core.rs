@@ -8,7 +8,7 @@ use std::{
     collections::HashMap
 };
 
-use nalgebra::{vector, Vector2, Vector3};
+use nalgebra::{Vector2, Vector3};
 
 use parking_lot::Mutex;
 
@@ -24,6 +24,7 @@ use yanyaengine::{
 };
 
 use crate::common::{
+    rotate_point,
     render_info::*,
     colors::Lcha,
     EaseOut
@@ -263,17 +264,32 @@ fn parental_position_of<Id>(parent_deferred: Option<&UiDeferredInfo<Id>>, elemen
         .unwrap_or_else(Vector2::zeros)
 }
 
-fn anchor_offset_of<Id>(scale: Vector2<f32>, element: &UiElement<Id>) -> Vector2<f32>
+fn anchor_offset_of<Id>(
+    scale: Vector2<f32>,
+    rotation: f32,
+    element: &UiElement<Id>
+) -> Vector2<f32>
 {
-    if let Some(anchor_offset) = element.animation.scaling.as_ref().and_then(|x| x.anchor_offset)
+    let scaling_offset = if let Some(anchor_offset) = element.animation.scaling.as_ref().map(|x| x.anchor_offset)
     {
-        let anchor_pos = vector![anchor_offset.x.with_scale(scale.x), anchor_offset.y.with_scale(scale.y)];
-
-        anchor_pos
+        anchor_offset.with_scale(&scale)
     } else
     {
         Vector2::zeros()
-    }
+    };
+
+    let rotation_offset = if let Some(anchor) = element.animation.rotation.as_ref().map(|x| x.anchor)
+    {
+        let target_position = -anchor.with_scale(&scale);
+        let current_position = rotate_point(target_position, rotation);
+
+        target_position - current_position
+    } else
+    {
+        Vector2::zeros()
+    };
+
+    scaling_offset + rotation_offset
 }
 
 #[derive(Debug, Clone)]
@@ -318,6 +334,7 @@ struct UiElementCached
     scale: Vector2<f32>,
     parental_position: Vector2<f32>,
     position: Vector2<f32>,
+    rotation: f32,
     inherit_animation: bool,
     mix: Option<MixColorLch>,
     last_scissor: Option<UiScissor>,
@@ -351,10 +368,12 @@ impl UiElementCached
             Vector2::new(width, height)
         };
 
+        let rotation = 0.0;
+
         let parental_position = parental_position_of(parent_deferred, element);
 
         let position = {
-            let anchor_offset = anchor_offset_of(scale, element);
+            let anchor_offset = anchor_offset_of(scale, rotation, element);
 
             let offset = element.animation.position
                 .as_ref()
@@ -378,6 +397,7 @@ impl UiElementCached
             fractions: Fractions::default(),
             scale,
             position,
+            rotation,
             parental_position,
             inherit_animation: element.inherit_animation,
             mix,
@@ -489,6 +509,7 @@ impl UiElementCached
                 {
                     transform.scale = Vector3::new(scale.x, scale.y, 1.0);
                     transform.position = Vector3::new(position.x, position.y, 0.0);
+                    transform.rotation = self.rotation;
                 })
             }
         }
@@ -571,10 +592,17 @@ impl UiElementCached
         parent_fraction: &Fractions,
         scissor: Option<UiScissor>,
         deferred: &UiDeferredInfo<Id>,
-        screen_size: Vector2<f32>
+        element: &mut UiElement<Id>,
+        screen_size: Vector2<f32>,
+        dt: f32
     )
     {
         self.scissor = Self::calculate_scissor(screen_size, scissor);
+
+        if let Some(rotation) = element.animation.rotation.as_mut()
+        {
+            rotation.kind.next(&mut self.rotation, dt);
+        }
 
         self.update_fraction(parent_fraction, deferred);
     }
@@ -604,7 +632,7 @@ impl UiElementCached
         self.parental_position = parental_position_of(parent_deferred, old_element);
 
         let target_position = {
-            let anchor_offset = anchor_offset_of(self.scale, old_element);
+            let anchor_offset = anchor_offset_of(self.scale, self.rotation, old_element);
 
             deferred.position.unwrap() - self.parental_position + anchor_offset
         };
@@ -642,7 +670,9 @@ impl UiElementCached
             parent_fraction,
             scissor,
             deferred,
-            Vector2::from(create_info.partial.size)
+            old_element,
+            Vector2::from(create_info.partial.size),
+            dt
         );
 
         if self.object.is_none()
@@ -714,7 +744,7 @@ impl UiElementCached
             .unwrap_or_else(Vector2::zeros);
 
         let target_position = {
-            let anchor_offset = anchor_offset_of(self.scale, element);
+            let anchor_offset = anchor_offset_of(self.scale, self.rotation, element);
 
             deferred.position.unwrap() + offset - self.parental_position + anchor_offset
         };
@@ -767,7 +797,9 @@ impl UiElementCached
             parent_fraction,
             self.last_scissor,
             deferred,
-            screen_size
+            element,
+            screen_size,
+            dt
         );
 
         if self.fractions.scale.min() < MINIMUM_SCALE
@@ -827,6 +859,11 @@ impl UiElementCached
         if new_element.animation.scaling.is_some()
         {
             new.scale = self.scale;
+        }
+
+        if new_element.animation.rotation.is_some()
+        {
+            new.rotation = self.rotation;
         }
     }
 }

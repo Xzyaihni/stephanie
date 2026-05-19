@@ -14,7 +14,7 @@ use crate::{
 
 pub use yanyaengine::{TextInfo, TextBlocks, TextInfoBlock, TextOutline};
 
-pub use crate::common::lazy_transform::{Scaling, Connection};
+pub use crate::common::lazy_transform::{Scaling, Connection, ValueAnimation};
 
 
 // i wanted to do this with FlatChunksContainer but i dont like how i made that one
@@ -643,10 +643,18 @@ impl AnchorOffset
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
-pub struct ScalingAnchorOffset
+pub struct AnchorOffsets
 {
     pub x: AnchorOffset,
     pub y: AnchorOffset
+}
+
+impl AnchorOffsets
+{
+    pub fn with_scale(&self, scale: &Vector2<f32>) -> Vector2<f32>
+    {
+        vector![self.x.with_scale(scale.x), self.y.with_scale(scale.y)]
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -656,7 +664,7 @@ pub struct ScalingAnimation
     pub start_mode: Scaling,
     pub close_scaling: Vector2<f32>,
     pub close_mode: Scaling,
-    pub anchor_offset: Option<ScalingAnchorOffset>
+    pub anchor_offset: AnchorOffsets
 }
 
 impl Default for ScalingAnimation
@@ -668,7 +676,7 @@ impl Default for ScalingAnimation
             start_mode: Scaling::Instant,
             close_scaling: Vector2::new(1.0, 1.0),
             close_mode: Scaling::Ignore,
-            anchor_offset: None
+            anchor_offset: AnchorOffsets::default()
         }
     }
 }
@@ -787,12 +795,119 @@ impl Default for MixAnimation
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct WiggleInfo
+{
+    pub speed: f32,
+    pub amount: f32,
+    pub animation: ValueAnimation
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Wiggle
+{
+    info: WiggleInfo,
+    current_fraction: f32,
+    current_direction: bool
+}
+
+impl From<WiggleInfo> for Wiggle
+{
+    fn from(info: WiggleInfo) -> Self
+    {
+        Self{info, current_fraction: 0.0, current_direction: true}
+    }
+}
+
+impl Wiggle
+{
+    pub fn with_old(self, old: &Self) -> Self
+    {
+        Self{
+            current_fraction: old.current_fraction,
+            current_direction: old.current_direction,
+            ..self
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum RotationAnimationKind
+{
+    Wiggle(Wiggle)
+}
+
+impl RotationAnimationKind
+{
+    pub fn with_old(self, old: &Self) -> Self
+    {
+        #[allow(unreachable_patterns)]
+        match (self, old)
+        {
+            (Self::Wiggle(x), Self::Wiggle(old)) => Self::Wiggle(x.with_old(old)),
+            (x, _) => x
+        }
+    }
+
+    pub fn next(&mut self, current: &mut f32, dt: f32)
+    {
+        match self
+        {
+            Self::Wiggle(Wiggle{info: WiggleInfo{speed, amount, animation}, current_fraction, current_direction}) =>
+            {
+                let change = *speed * dt;
+
+                if *current_direction
+                {
+                    *current_fraction += change;
+
+                    if *current_fraction >= 1.0
+                    {
+                        *current_direction = false;
+                    }
+                } else
+                {
+                    *current_fraction -= change;
+
+                    if *current_fraction <= -1.0
+                    {
+                        *current_direction = true;
+                    }
+                }
+
+                *current_fraction = current_fraction.clamp(-1.0, 1.0);
+
+                *current = animation.apply(current_fraction.abs()) * current_fraction.signum() * *amount;
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct RotationAnimation
+{
+    pub anchor: AnchorOffsets,
+    pub kind: RotationAnimationKind
+}
+
+impl RotationAnimation
+{
+    pub fn with_old(self, old: &Self) -> Self
+    {
+        Self{
+            kind: self.kind.with_old(&old.kind),
+            ..self
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct Animation
 {
     pub reposition_while_closing: bool,
     pub scaling: Option<ScalingAnimation>,
     pub position: Option<PositionAnimation>,
-    pub mix: Option<MixAnimation>
+    pub mix: Option<MixAnimation>,
+    pub rotation: Option<RotationAnimation>
 }
 
 impl Default for Animation
@@ -803,7 +918,8 @@ impl Default for Animation
             reposition_while_closing: false,
             scaling: None,
             position: None,
-            mix: None
+            mix: None,
+            rotation: None
         }
     }
 }
@@ -815,6 +931,7 @@ impl Animation
         Self{
             scaling: self.scaling.zip(old.scaling.as_ref()).map(|(x, old)| x.with_old(old)),
             position: self.position.zip(old.position.as_ref()).map(|(x, old)| x.with_old(old)),
+            rotation: self.rotation.zip(old.rotation.as_ref()).map(|(x, old)| x.with_old(old)),
             ..self
         }
     }
