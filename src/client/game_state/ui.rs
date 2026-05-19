@@ -81,6 +81,8 @@ const SCROLLBAR_HEIGHT: f32 = BUTTON_SIZE * 5.0;
 
 const MISSING_PART_COLOR: Lcha = Lcha{l: 50.0, a: 0.3, ..BLACK_COLOR};
 
+const SEEN_NOTIFICATION_START_TIME: f32 = 1.0;
+
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ControlUiId(UiId);
@@ -2265,7 +2267,7 @@ impl Ui
             {
                 if some_or_return!(entities.enemy(entity)).seen_fraction().is_some()
                 {
-                    ui.borrow_mut().seen_notifications.insert(entity, 1.0);
+                    ui.borrow_mut().seen_notifications.insert(entity, SEEN_NOTIFICATION_START_TIME);
                 }
             }));
         }
@@ -3176,17 +3178,6 @@ impl Ui
 
             let position = some_or_value!(position_of(entity), false);
 
-            let body_position = UiPosition::Absolute{position, align: UiPositionAlign{
-                horizontal: AlignHorizontal::Middle,
-                vertical: AlignVertical::Bottom
-            }};
-
-            let body = self.controller.update(id(SeenNotificationPart::Body), UiElement{
-                position: body_position.clone(),
-                children_layout: UiLayout::Vertical,
-                ..Default::default()
-            });
-
             fn this_fill(amount: f32) -> UiElementFill
             {
                 UiElementFill{
@@ -3203,21 +3194,52 @@ impl Ui
 
             let color = WHITE_COLOR;
 
-            body.update(id(SeenNotificationPart::Fill), UiElement{
-                texture: UiTexture::Custom("ui/seen.png".into()),
-                mix: Some(MixColorLch{only_alpha: true, ..MixColorLch::color(Lcha{a: alpha, ..color})}),
-                fill: Some(this_fill(fraction.unwrap_or(if is_attacking { 1.0 } else { 0.0 }))),
-                position: UiPosition::Inherit,
-                animation: Animation{
-                    mix: (!is_attacking).then(|| MixAnimation{
-                        start_decay: MixDecay::all(20.0),
-                        start_mix: Some(Lcha{a: 0.0, ..color}),
-                        ..Default::default()
-                    }),
+            let seen_texture = UiTexture::Custom("ui/seen.png".into());
+
+            let body = {
+                let seen_size = self.controller.texture_size(&seen_texture);
+
+                self.controller.update(id(SeenNotificationPart::Body), UiElement{
+                    position: UiPosition::Absolute{position, align: UiPositionAlign::default()},
+                    width: seen_size.x.into(),
+                    height: seen_size.y.into(),
                     ..Default::default()
-                },
-                ..UiElement::fit_content()
-            });
+                })
+            };
+
+            if *lifetime >= SEEN_NOTIFICATION_START_TIME
+            {
+                body.update(id(SeenNotificationPart::Fill), UiElement{
+                    texture: seen_texture,
+                    mix: Some(MixColorLch{only_alpha: true, ..MixColorLch::color(Lcha{a: alpha, ..color})}),
+                    fill: Some(this_fill(fraction.unwrap_or(if is_attacking { 1.0 } else { 0.0 }))),
+                    animation: Animation{
+                        reposition_while_closing: true,
+                        mix: (!is_attacking).then(|| MixAnimation{
+                            start_decay: MixDecay::all(20.0),
+                            start_mix: Some(Lcha{a: 0.0, ..color}),
+                            ..Default::default()
+                        }),
+                        scaling: Some(ScalingAnimation{
+                            anchor_offset: Some(ScalingAnchorOffset{
+                                y: AnchorOffset::Above,
+                                ..Default::default()
+                            }),
+                            start_scaling: vector![1.0, 0.0],
+                            start_mode: Scaling::Spring(SpringScalingInfo{
+                                start_velocity: vector![0.0, 0.4],
+                                damping: 0.0003,
+                                strength: 400.0
+                            }.into()),
+                            close_scaling: vector![1.0, 0.0],
+                            close_mode: Scaling::EaseIn(EaseInInfo::new_with_velocity(0.0, 0.5)),
+                            ..Default::default()
+                        }),
+                        ..Default::default()
+                    },
+                    ..UiElement::fit_content()
+                });
+            }
 
             if is_attacking
             {
@@ -3226,7 +3248,7 @@ impl Ui
 
             if fraction.is_some()
             {
-                *lifetime = 1.0;
+                *lifetime = SEEN_NOTIFICATION_START_TIME;
             } else
             {
                 *lifetime -= dt;

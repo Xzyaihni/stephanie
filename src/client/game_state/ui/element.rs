@@ -613,13 +613,50 @@ impl<Id> UiElementSize<Id>
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AnchorOffset
+{
+    Above,
+    Middle,
+    Below
+}
+
+impl Default for AnchorOffset
+{
+    fn default() -> Self
+    {
+        Self::Middle
+    }
+}
+
+impl AnchorOffset
+{
+    pub fn with_scale(&self, scale: f32) -> f32
+    {
+        match self
+        {
+            Self::Middle => 0.0,
+            Self::Above => -scale * 0.5,
+            Self::Below => scale * 0.5
+        }
+    }
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct ScalingAnchorOffset
+{
+    pub x: AnchorOffset,
+    pub y: AnchorOffset
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct ScalingAnimation
 {
     pub start_scaling: Vector2<f32>,
     pub start_mode: Scaling,
     pub close_scaling: Vector2<f32>,
-    pub close_mode: Scaling
+    pub close_mode: Scaling,
+    pub anchor_offset: Option<ScalingAnchorOffset>
 }
 
 impl Default for ScalingAnimation
@@ -630,7 +667,20 @@ impl Default for ScalingAnimation
             start_scaling: Vector2::repeat(1.0),
             start_mode: Scaling::Instant,
             close_scaling: Vector2::new(1.0, 1.0),
-            close_mode: Scaling::Ignore
+            close_mode: Scaling::Ignore,
+            anchor_offset: None
+        }
+    }
+}
+
+impl ScalingAnimation
+{
+    pub fn with_old(self, old: &Self) -> Self
+    {
+        Self{
+            start_mode: self.start_mode.with_old(&old.start_mode),
+            close_mode: self.close_mode.with_old(&old.close_mode),
+            ..self
         }
     }
 }
@@ -677,6 +727,15 @@ impl Default for PositionAnimation
 
 impl PositionAnimation
 {
+    pub fn with_old(self, old: &Self) -> Self
+    {
+        Self{
+            start_mode: self.start_mode.with_old(&old.start_mode),
+            close_mode: self.close_mode.with_old(&old.close_mode),
+            ..self
+        }
+    }
+
     pub fn ease_out(decay: f32) -> Self
     {
         Self{
@@ -730,6 +789,7 @@ impl Default for MixAnimation
 #[derive(Debug, Clone, PartialEq)]
 pub struct Animation
 {
+    pub reposition_while_closing: bool,
     pub scaling: Option<ScalingAnimation>,
     pub position: Option<PositionAnimation>,
     pub mix: Option<MixAnimation>
@@ -740,6 +800,7 @@ impl Default for Animation
     fn default() -> Self
     {
         Self{
+            reposition_while_closing: false,
             scaling: None,
             position: None,
             mix: None
@@ -749,6 +810,15 @@ impl Default for Animation
 
 impl Animation
 {
+    pub fn with_old(self, old: &Self) -> Self
+    {
+        Self{
+            scaling: self.scaling.zip(old.scaling.as_ref()).map(|(x, old)| x.with_old(old)),
+            position: self.position.zip(old.position.as_ref()).map(|(x, old)| x.with_old(old)),
+            ..self
+        }
+    }
+
     pub fn normal() -> Self
     {
         Self{
@@ -804,7 +874,8 @@ impl Animation
                 start_scaling: vector![1.0, 0.01],
                 start_mode: Scaling::EaseOut{decay: 30.0},
                 close_scaling: vector![1.0, 0.0],
-                close_mode: Scaling::EaseOut{decay: 10.0}
+                close_mode: Scaling::EaseOut{decay: 10.0},
+                ..Default::default()
             }),
             ..Default::default()
         }
@@ -883,6 +954,14 @@ impl<Id> Default for UiElement<Id>
 
 impl<Id> UiElement<Id>
 {
+    pub fn with_old(self, old: &Self) -> Self
+    {
+        Self{
+            animation: self.animation.with_old(&old.animation),
+            ..self
+        }
+    }
+
     pub fn fit_content() -> Self
     where
         Id: Clone

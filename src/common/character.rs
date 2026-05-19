@@ -607,7 +607,7 @@ impl Character
                                 damping: 0.02,
                                 ..Default::default()
                             }.into(),
-                            limit: LimitMode::Normal(0.005),
+                            limit: Some(LimitMode::Normal(0.005)),
                             strength: 100.0
                         }
                     ),

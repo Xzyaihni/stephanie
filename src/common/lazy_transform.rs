@@ -23,8 +23,22 @@ pub use crate::common::animation_common::ValueAnimation;
 pub struct SpringConnection
 {
     pub physical: Physical,
-    pub limit: LimitMode,
+    pub limit: Option<LimitMode>,
     pub strength: f32
+}
+
+impl SpringConnection
+{
+    pub fn with_old(self, old: &Self) -> Self
+    {
+        let mut physical = self.physical;
+        physical.set_velocity_raw(*old.physical.velocity());
+
+        Self{
+            physical,
+            ..self
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -115,6 +129,16 @@ pub enum Connection
 
 impl Connection
 {
+    pub fn with_old(self, old: &Self) -> Self
+    {
+        match (self, old)
+        {
+            (Self::EaseIn(x), Self::EaseIn(old)) => Self::EaseIn(x.with_old(old)),
+            (Self::Spring(x), Self::Spring(old)) => Self::Spring(x.with_old(old)),
+            (x, _) => x
+        }
+    }
+
     pub fn simple_next_2d(
         &mut self,
         current: &mut Vector2<f32>,
@@ -209,11 +233,17 @@ impl Connection
 
                 connection.physical.apply(current);
 
-                current.position = LazyTransform::clamp_distance(
-                    connection.limit,
-                    target,
-                    current.position
-                );
+                current.position = if let Some(limit) = connection.limit
+                {
+                    LazyTransform::clamp_distance(
+                        limit,
+                        target,
+                        current.position
+                    )
+                } else
+                {
+                    target
+                };
             },
             _ =>
             {
@@ -359,7 +389,20 @@ impl EaseInInfo
 {
     pub fn new(strength: f32) -> Self
     {
-        Self{velocity: 0.0, strength}
+        Self::new_with_velocity(0.0, strength)
+    }
+
+    pub fn new_with_velocity(velocity: f32, strength: f32) -> Self
+    {
+        Self{velocity, strength}
+    }
+
+    pub fn with_old(self, old: &Self) -> Self
+    {
+        Self{
+            velocity: old.velocity,
+            ..self
+        }
     }
 
     pub fn next(&mut self, current: &mut Vector3<f32>, target: Vector3<f32>, dt: f32)
@@ -425,6 +468,14 @@ impl SpringScaling
     {
         info.into()
     }
+
+    pub fn with_old(self, old: &Self) -> Self
+    {
+        Self{
+            velocity: old.velocity,
+            ..self
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -441,6 +492,16 @@ pub enum Scaling
 
 impl Scaling
 {
+    pub fn with_old(self, old: &Self) -> Self
+    {
+        match (self, old)
+        {
+            (Self::EaseIn(x), Self::EaseIn(old)) => Self::EaseIn(x.with_old(old)),
+            (Self::Spring(x), Self::Spring(old)) => Self::Spring(x.with_old(old)),
+            (x, _) => x
+        }
+    }
+
     pub fn next_2d(
         &mut self,
         current: &mut Vector2<f32>,
@@ -765,7 +826,7 @@ impl LazyTransform
             },
             Connection::Spring(connection) =>
             {
-                connection.limit = new_limit;
+                connection.limit = Some(new_limit);
             }
         }
     }

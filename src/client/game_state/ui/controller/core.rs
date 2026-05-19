@@ -1,15 +1,14 @@
 use std::{
     f32,
-    fmt,
+    fmt::{self, Debug},
     hash::Hash,
     rc::Rc,
     cell::{Ref, RefMut, RefCell},
     sync::Arc,
-    collections::HashMap,
-    fmt::Debug
+    collections::HashMap
 };
 
-use nalgebra::{Vector2, Vector3};
+use nalgebra::{vector, Vector2, Vector3};
 
 use parking_lot::Mutex;
 
@@ -264,6 +263,19 @@ fn parental_position_of<Id>(parent_deferred: Option<&UiDeferredInfo<Id>>, elemen
         .unwrap_or_else(Vector2::zeros)
 }
 
+fn anchor_offset_of<Id>(scale: Vector2<f32>, element: &UiElement<Id>) -> Vector2<f32>
+{
+    if let Some(anchor_offset) = element.animation.scaling.as_ref().and_then(|x| x.anchor_offset)
+    {
+        let anchor_pos = vector![anchor_offset.x.with_scale(scale.x), anchor_offset.y.with_scale(scale.y)];
+
+        anchor_pos
+    } else
+    {
+        Vector2::zeros()
+    }
+}
+
 #[derive(Debug, Clone)]
 struct Fractions
 {
@@ -342,13 +354,15 @@ impl UiElementCached
         let parental_position = parental_position_of(parent_deferred, element);
 
         let position = {
+            let anchor_offset = anchor_offset_of(scale, element);
+
             let offset = element.animation.position
                 .as_ref()
                 .and_then(|x| x.offsets)
                 .map(|x| x.start)
                 .unwrap_or_else(Vector2::zeros);
 
-            deferred.position.unwrap() + offset - parental_position
+            deferred.position.unwrap() + offset - parental_position + anchor_offset
         };
 
         let object = Self::create_object(create_info, &element.texture);
@@ -589,7 +603,12 @@ impl UiElementCached
 
         self.parental_position = parental_position_of(parent_deferred, old_element);
 
-        let target_position = deferred.position.unwrap() - self.parental_position;
+        let target_position = {
+            let anchor_offset = anchor_offset_of(self.scale, old_element);
+
+            deferred.position.unwrap() - self.parental_position + anchor_offset
+        };
+
         if let Some(connection) = old_element.animation.position.as_mut()
         {
             connection.start_mode.simple_next_2d(
@@ -694,7 +713,12 @@ impl UiElementCached
             .map(|x| x.end)
             .unwrap_or_else(Vector2::zeros);
 
-        let target_position = deferred.position.unwrap() + offset - self.parental_position;
+        let target_position = {
+            let anchor_offset = anchor_offset_of(self.scale, element);
+
+            deferred.position.unwrap() + offset - self.parental_position + anchor_offset
+        };
+
         if let Some(connection) = element.animation.position.as_mut()
         {
             connection.close_mode.simple_next_2d(
@@ -911,7 +935,7 @@ impl<Id: Idable> UiDeferredInfo<Id>
     }
 
     fn resolve_position(
-        &mut self,
+        &self,
         resolved: &HashMap<Id, Self>,
         element: &UiElement<Id>,
         previous: Option<&Self>,
@@ -1346,70 +1370,168 @@ impl<Id> Element<Id>
     }
 }
 
-#[derive(Debug)]
+struct CachedTreeValue<Id>
+{
+    id: Id,
+    child_index: usize,
+    remove_queued: bool
+}
+
+impl<Id: Debug> Debug for CachedTreeValue<Id>
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
+    {
+        let flags = if self.remove_queued
+        {
+            "(REMOVED) "
+        } else
+        {
+            ""
+        };
+
+        write!(f, "{flags}{:?} is child {}", &self.id, self.child_index)
+    }
+}
+
 struct CachedTree<Id>
 {
-    value: Option<Id>,
+    value: Option<CachedTreeValue<Id>>,
     children: Vec<CachedTree<Id>>
+}
+
+impl<Id: Debug> Debug for CachedTree<Id>
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
+    {
+        let maybe_value = self.value.as_ref().map(|x| format!("value: {x:?}")).unwrap_or_default();
+        let maybe_children = if self.children.is_empty()
+        {
+            "".to_owned()
+        } else
+        {
+            format!(", children: {:#?}", &self.children)
+        };
+
+        write!(f, "{maybe_value}{maybe_children}")
+    }
 }
 
 impl<Id: Idable> Default for CachedTree<Id>
 {
     fn default() -> Self
     {
-        Self{value: Some(Id::screen()), children: Vec::new()}
+        Self{value: Some(CachedTreeValue{id: Id::screen(), child_index: 0, remove_queued: false}), children: Vec::new()}
     }
 }
 
 impl<Id: Idable> CachedTree<Id>
 {
-    fn for_each(&self, mut f: impl FnMut(Option<&Id>, &Id))
+    fn for_each(&self, mut f: impl FnMut(usize, Option<&Id>, Option<&Id>, &Id))
     {
-        self.for_each_inner(None, &mut f)
+        self.for_each_inner(0, None, None, &mut f)
     }
 
-    fn for_each_inner(&self, parent: Option<&Id>, f: &mut impl FnMut(Option<&Id>, &Id))
+    fn for_each_inner(
+        &self,
+        child_index: usize,
+        previous: Option<&Id>,
+        parent: Option<&Id>,
+        f: &mut impl FnMut(usize, Option<&Id>, Option<&Id>, &Id)
+    )
     {
         if let Some(id) = self.value.as_ref()
         {
-            f(parent, id);
+            if !id.remove_queued
+            {
+                f(child_index, previous, parent, &id.id);
+            }
         }
 
-        self.children.iter().for_each(|x| x.for_each_inner(self.value.as_ref(), f));
+        self.children.iter().enumerate().for_each(|(index, x)|
+        {
+            x.for_each_inner(
+                index,
+                if index == 0 { None } else { self.children[index - 1].value.as_ref().map(|x| &x.id) },
+                self.value.as_ref().map(|x| &x.id),
+                f
+            )
+        });
+    }
+
+    fn sort_by_child_index(&mut self)
+    {
+        self.children.sort_by_key(|child| child.value.as_ref().map(|x| x.child_index).unwrap_or(0));
+
+        self.children.iter_mut().for_each(|child| child.sort_by_child_index());
+    }
+
+    fn remove_marked(&mut self)
+    {
+        self.children.iter_mut().for_each(|child| child.remove_marked());
+
+        self.children.retain(|child|
+        {
+            let remove_this = child.children.is_empty() && child.value.as_ref().map(|x| x.remove_queued).unwrap_or(true);
+
+            !remove_this
+        });
     }
 
     fn remove(&mut self, id: &Id) -> bool
     {
-        if self.value.as_ref() == Some(id)
+        if let Some(value) = self.value.as_mut()
         {
-            self.value = None;
-        } else
-        {
-            self.children.retain_mut(|child| !child.remove(id));
+            if value.id == *id
+            {
+                if self.children.iter().all(|x| x.value.is_none())
+                {
+                    self.value = None;
+                } else
+                {
+                    value.remove_queued = true;
+                }
+
+                return self.value.is_none();
+            }
         }
 
-        self.value.is_none() && self.children.is_empty()
+        self.children.retain_mut(|child| !child.remove(id));
+
+        self.value.is_none()
     }
 
-    fn push_child(&mut self, parent: &Id, value: &Id) -> bool
+    fn push_child(&mut self, child_index: usize, parent: &Id, value: &Id) -> bool
     {
-        if self.value.as_ref() == Some(value)
+        if let Some(id) = self.value.as_mut()
         {
-            return true;
-        }
-
-        if self.value.as_ref() == Some(parent)
-        {
-            if self.children.iter().all(|child| child.value.as_ref() != Some(value))
+            if id.id == *value
             {
-                self.children.push(CachedTree{value: Some(value.clone()), children: Vec::new()});
-            }
+                id.remove_queued = false;
+                id.child_index = child_index;
 
-            true
-        } else
-        {
-            self.children.iter_mut().any(|x| x.push_child(parent, value))
+                return true;
+            }
         }
+
+        if let Some(id) = self.value.as_ref()
+        {
+            if id.id == *parent
+            {
+                let tree = CachedTree{
+                    value: Some(CachedTreeValue{id: value.clone(), child_index, remove_queued: false}),
+                    children: Vec::new()
+                };
+
+                if self.children.iter().all(|child| child.value.as_ref().map(|x| x.id != *value).unwrap_or(false))
+                {
+                    self.children.push(tree);
+
+                    return true;
+                }
+            }
+        }
+
+        self.children.iter_mut().any(|x| x.push_child(child_index, parent, value))
     }
 }
 
@@ -1586,7 +1708,7 @@ impl<Id: Idable> Controller<Id>
         self.shared.borrow_mut().elements.values_mut().for_each(|element| element.closing = true);
 
         let mut replace_tree = CachedTree{
-            value: Some(Id::screen()),
+            value: Some(CachedTreeValue{id: Id::screen(), child_index: 0, remove_queued: false}),
             children: Vec::new()
         };
 
@@ -1636,7 +1758,7 @@ impl<Id: Idable> Controller<Id>
 
                         element.cached = cached;
 
-                        element.element = this.element.clone();
+                        element.element = this.element.clone().with_old(&element.element);
                     }
 
                     element.closing = false;
@@ -1689,7 +1811,7 @@ impl<Id: Idable> Controller<Id>
 
             if let Some(parent) = parent.as_ref()
             {
-                replace_tree.push_child(&parent.id, id);
+                replace_tree.push_child(0, &parent.id, id);
             }
 
             if id != &Id::screen()
@@ -1702,39 +1824,51 @@ impl<Id: Idable> Controller<Id>
             let mut shared = self.shared.borrow_mut();
             let shared: &mut SharedInfo<Id> = &mut shared;
 
-            replace_tree.for_each(|parent_id, id|
+            replace_tree.for_each(|child_index, _, parent_id, id|
             {
                 if let Some(parent_id) = parent_id
                 {
-                    shared.tree.push_child(parent_id, id);
+                    shared.tree.push_child(child_index, parent_id, id);
                 } else
                 {
-                    shared.tree.push_child(&Id::screen(), id);
+                    shared.tree.push_child(child_index, &Id::screen(), id);
                 }
             });
 
-            shared.tree.for_each(|parent, id|
+            shared.tree.sort_by_child_index();
+
             {
-                let [element, parent] = if let Some(parent) = parent
-                {
-                    shared.elements.get_disjoint_mut([id, parent])
-                } else
-                {
-                    [shared.elements.get_mut(id), None]
-                };
+                let mut keep_ids = Vec::new();
 
-                let element = element.unwrap();
-
-                if element.closing
+                shared.tree.for_each(|_, _, parent, id|
                 {
-                    element.close_soon = true;
-
-                    if let Some(parent) = parent
+                    keep_ids.push(id.clone());
+                    let [element, parent] = if let Some(parent) = parent
                     {
-                        parent.close_soon = false;
+                        shared.elements.get_disjoint_mut([id, parent])
+                    } else
+                    {
+                        [shared.elements.get_mut(id), None]
+                    };
+
+                    let element = element.unwrap();
+
+                    if element.closing
+                    {
+                        element.close_soon = true;
+
+                        if let Some(parent) = parent
+                        {
+                            parent.close_soon = false;
+                        }
                     }
-                }
-            });
+                });
+
+                shared.elements.retain(|x, _|
+                {
+                    keep_ids.contains(&x)
+                });
+            }
         }
 
         {
@@ -1746,16 +1880,46 @@ impl<Id: Idable> Controller<Id>
 
                 let elements = &mut shared.elements;
 
-                move |parent_id: Option<&Id>, id: &Id|
+                move |previous_id: Option<&Id>, parent_id: Option<&Id>, id: &Id|
                 {
                     if elements[id].closing
                     {
-                        let parent_fraction = parent_id.map(|parent_id|
-                        {
-                            elements[parent_id].cached.fractions.clone()
-                        }).unwrap_or_default();
+                        let parent_fraction = parent_id.map(|parent_id| elements[parent_id].cached.fractions.clone()).unwrap_or_default();
 
-                        let element = elements.get_mut(id).expect("id must be existing");
+                        {
+                            if let Some([previous, mut maybe_element, parent]) = parent_id.map(|parent_id|
+                            {
+                                if let Some(previous_id) = previous_id
+                                {
+                                    elements.get_disjoint_mut([previous_id, id, parent_id])
+                                } else
+                                {
+                                    let [a, b] = elements.get_disjoint_mut([id, parent_id]);
+
+                                    [None, a, b]
+                                }
+                            })
+                            {
+                                let element = maybe_element.as_ref().unwrap();
+                                let parent = parent.as_ref().unwrap();
+
+                                if element.element.animation.position.is_none() && element.element.animation.reposition_while_closing
+                                {
+                                    if let Some(resolved_position) = element.deferred.resolve_position(
+                                        &mut HashMap::new(),
+                                        &element.element,
+                                        previous.as_ref().map(|x| &x.deferred),
+                                        &parent.deferred,
+                                        &parent.element
+                                    )
+                                    {
+                                        maybe_element.as_mut().unwrap().deferred.position = Some(resolved_position);
+                                    }
+                                }
+                            }
+                        }
+
+                        let element = elements.get_mut(id).unwrap();
 
                         element.cached.update_closing(
                             &parent_fraction,
@@ -1773,9 +1937,10 @@ impl<Id: Idable> Controller<Id>
             };
 
             let mut remove_ids = Vec::new();
-            shared.tree.for_each(|parent_id, id|
+            shared.tree.for_each(|_, previous_id, parent_id, id|
             {
-                let discard = !closer(parent_id, id) || parent_id.map(|parent_id| remove_ids.contains(parent_id)).unwrap_or(false);
+                let discard = !closer(previous_id, parent_id, id)
+                    || parent_id.map(|parent_id| remove_ids.contains(parent_id)).unwrap_or(false);
 
                 if discard
                 {
@@ -1785,9 +1950,10 @@ impl<Id: Idable> Controller<Id>
 
             remove_ids.into_iter().for_each(|id|
             {
-                shared.elements.remove(&id);
                 shared.tree.remove(&id);
             });
+
+            shared.tree.remove_marked();
         }
 
         created_trees.clear();
@@ -1841,7 +2007,7 @@ impl<Id: Idable> Controller<Id>
         let mut shared = self.shared.borrow_mut();
         let shared: &mut SharedInfo<Id> = &mut shared;
 
-        shared.tree.for_each(|_, id|
+        shared.tree.for_each(|_, _, _, id|
         {
             let element = shared.elements.get_mut(id).unwrap();
 
@@ -1872,7 +2038,7 @@ impl<Id: Idable> Controller<Id>
         };
 
         let shared = self.shared.borrow();
-        shared.tree.for_each(|_, id|
+        shared.tree.for_each(|_, _, _, id|
         {
             let element = shared.elements.get(id).unwrap();
 
