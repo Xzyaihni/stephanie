@@ -3233,7 +3233,7 @@ impl Ui
                                 strength: 400.0
                             }.into()),
                             close_scaling: vector![1.0, 0.0],
-                            close_mode: Scaling::EaseIn(EaseInInfo::new_with_velocity(0.0, 0.5)),
+                            close_mode: Scaling::EaseIn(EaseInInfo::new_with_velocity(-0.03, 0.5)),
                             ..Default::default()
                         }),
                         ..Default::default()

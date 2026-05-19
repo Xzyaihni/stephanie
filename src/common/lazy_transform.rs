@@ -374,7 +374,8 @@ impl Rotation
 pub struct EaseInInfo
 {
     velocity: f32,
-    strength: f32
+    strength: f32,
+    limit_difference: bool
 }
 
 impl PartialEq for EaseInInfo
@@ -389,12 +390,12 @@ impl EaseInInfo
 {
     pub fn new(strength: f32) -> Self
     {
-        Self::new_with_velocity(0.0, strength)
+        Self{velocity: 0.0, strength, limit_difference: true}
     }
 
     pub fn new_with_velocity(velocity: f32, strength: f32) -> Self
     {
-        Self{velocity, strength}
+        Self{velocity, strength, limit_difference: false}
     }
 
     pub fn with_old(self, old: &Self) -> Self
@@ -410,9 +411,12 @@ impl EaseInInfo
         let difference = target - *current;
 
         self.velocity += self.strength * dt;
-        *current += Vector3::repeat(self.velocity)
-            .component_mul(&(difference.map(f32::signum)))
-            .zip_map(&difference, |x, limit|
+
+        let change = difference.normalize() * self.velocity;
+
+        *current += if self.limit_difference
+        {
+            change.zip_map(&difference, |x, limit|
             {
                 if limit < 0.0
                 {
@@ -421,7 +425,11 @@ impl EaseInInfo
                 {
                     x.min(limit)
                 }
-            });
+            })
+        } else
+        {
+            change
+        };
     }
 }
 
