@@ -1431,11 +1431,10 @@ impl MainMenu
         (state, action)
     }
 
-    pub fn update<'a>(
+    pub fn update(
         &mut self,
-        partial_info: UpdateBuffersPartialInfo<'a>,
         dt: f32
-    ) -> (UpdateBuffersPartialInfo<'a>, MenuAction)
+    ) -> MenuAction
     {
         let mut controls = self.controls.changed_this_frame();
 
@@ -1528,9 +1527,26 @@ impl MainMenu
 
         self.state = next_state;
 
+        self.controls.consume_changed(controls).for_each(drop);
+
+        self.animation = (self.animation + dt * 0.1).fract();
+
+        action
+    }
+
+    pub fn update_buffers<'a>(
+        &mut self,
+        partial_info: UpdateBuffersPartialInfo<'a>,
+        dt: Option<f32>
+    ) -> UpdateBuffersPartialInfo<'a>
+    {
         let mut info = partial_info.to_full(&self.ui_camera);
 
-        self.controller.create_renders(&mut info, dt);
+        if let Some(dt) = dt
+        {
+            self.controller.create_renders(&mut info, dt);
+        }
+
         self.controller.update_buffers(&mut info);
 
         info.with_projection(Matrix4::identity(), |info|
@@ -1538,16 +1554,14 @@ impl MainMenu
             self.screen_object.update_buffers(info);
         });
 
-        self.controls.consume_changed(controls).for_each(drop);
-
-        self.animation = (self.animation + dt * 0.1).fract();
-
-        (info.partial, action)
+        info.partial
     }
 
-    pub fn input(&mut self, control: Control)
+    pub fn input(&mut self, control: Control) -> bool
     {
         self.controls.handle_input(control);
+
+        false
     }
 
     pub fn mouse_move(&mut self, (x, y): (f64, f64))

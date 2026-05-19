@@ -525,7 +525,33 @@ impl YanyaApp for App
                     (partial_info, MenuAction::Start)
                 } else
                 {
-                    x.update(partial_info, dt)
+                    let values = if SlowMode::as_bool()
+                    {
+                        if self.slow_mode.running()
+                        {
+                            Some((x.update(dt), dt))
+                        } else if self.slow_mode.run_frame()
+                        {
+                            let dt = 1.0 / 60.0;
+                            Some((x.update(dt), dt))
+                        } else
+                        {
+                            None
+                        }
+                    } else
+                    {
+                        Some((x.update(dt), dt))
+                    };
+
+                    let partial_info = x.update_buffers(partial_info, values.as_ref().map(|x| x.1));
+
+                    if let Some((action, _)) = values
+                    {
+                        (partial_info, action)
+                    } else
+                    {
+                        return;
+                    }
                 };
 
                 match action
@@ -663,19 +689,24 @@ impl YanyaApp for App
 
     fn input(&mut self, control: Control)
     {
-        match &mut self.scene
+        let captured = match &mut self.scene
         {
             Scene::Game =>
             {
-                if self.client.input(control.clone())
-                {
-                    return
-                }
-
-                self.slow_mode.input(control);
+                self.client.input(control.clone())
             },
-            Scene::Menu(x) => x.input(control)
+            Scene::Menu(x) =>
+            {
+                x.input(control.clone())
+            }
+        };
+
+        if captured
+        {
+            return;
         }
+
+        self.slow_mode.input(control);
     }
 
     fn mouse_move(&mut self, position: (f64, f64))

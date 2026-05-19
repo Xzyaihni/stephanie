@@ -928,6 +928,7 @@ pub struct UiElement<Id>
     pub children_layout: UiLayout,
     pub width: UiElementSize<Id>,
     pub height: UiElementSize<Id>,
+    pub wait_for_children: bool,
     pub scissor: bool,
     pub scissor_override: Option<Id>
 }
@@ -946,6 +947,7 @@ impl<Id> Default for UiElement<Id>
             children_layout: UiLayout::Horizontal,
             width: UiElementSize::default(),
             height: UiElementSize::default(),
+            wait_for_children: false,
             scissor: false,
             scissor_override: None
         }

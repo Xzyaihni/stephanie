@@ -1859,7 +1859,10 @@ impl<Id: Idable> Controller<Id>
 
                         if let Some(parent) = parent
                         {
-                            parent.close_soon = false;
+                            if parent.element.wait_for_children
+                            {
+                                parent.close_soon = false;
+                            }
                         }
                     }
                 });

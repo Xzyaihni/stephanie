@@ -3203,6 +3203,7 @@ impl Ui
                     position: UiPosition::Absolute{position, align: UiPositionAlign::default()},
                     width: seen_size.x.into(),
                     height: seen_size.y.into(),
+                    wait_for_children: true,
                     ..Default::default()
                 })
             };
