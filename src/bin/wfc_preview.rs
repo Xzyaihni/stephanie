@@ -1106,7 +1106,7 @@ impl YanyaApp for ChunkPreviewer
             {
                 self.with_wave_collapser(|wave_collapser, rng|
                 {
-                    while wave_collapser.generate_once(rng) {}
+                    while wave_collapser.generate_once_force(rng) {}
                 });
             }
 
@@ -1262,7 +1262,7 @@ impl ChunkPreviewer
                     wave_collapser.set_verbose_constrain(next_step_verbose);
                 }
 
-                wave_collapser.generate_once(rng);
+                wave_collapser.generate_once_force(rng);
 
                 #[cfg(debug_assertions)]
                 {
@@ -1469,7 +1469,7 @@ mod tests
         {
             let generated_chunk = rules.generate(states.collapse(rules, rng));
 
-            wave_collapser.generate_single(pos, generated_chunk);
+            wave_collapser.generate_single(pos, generated_chunk, true);
         }
     }
 

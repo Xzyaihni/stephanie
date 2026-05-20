@@ -61,6 +61,7 @@ pub enum DebugTool
     PrintPushEntity,
     PrintSurfaceRules,
     PrintGeneratedChunks,
+    PrintWfcStability,
     SaveAnatomyColors,
     DebugTileField,
     DrawTileOcclusion,

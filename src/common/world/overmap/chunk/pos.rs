@@ -695,6 +695,17 @@ macro_rules! define_group
                 }
             }
 
+            pub fn try_map<D, F>(self, mut direction_map: F) -> Option<$name<D>>
+            where
+                F: FnMut(PosDirection, T) -> Option<D>
+            {
+                Some($name{
+                    $(
+                        $lowercase: direction_map(PosDirection::$uppercase, self.$lowercase)?,
+                    )+
+                })
+            }
+
             pub fn filter_map<U>(self, mut f: impl FnMut(T) -> Option<U>) -> Vec<U>
             {
                 let mut output = Vec::new();

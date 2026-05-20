@@ -1,5 +1,6 @@
 use std::{
     iter,
+    slice::GetDisjointMutError,
     ops::{Range, Index, IndexMut}
 };
 
@@ -170,6 +171,11 @@ impl<T> ObjectsStore<T>
     pub fn get_mut(&mut self, index: usize) -> Option<&mut T>
     {
         self.data.get_mut(index).and_then(Option::as_mut)
+    }
+
+    pub fn get_disjoint_mut<const N: usize>(&mut self, indices: [usize; N]) -> Result<[Option<&mut T>; N], GetDisjointMutError>
+    {
+        self.data.get_disjoint_mut(indices).map(|x| x.map(Option::as_mut))
     }
 
     pub fn swap(&mut self, a: usize, b: usize)

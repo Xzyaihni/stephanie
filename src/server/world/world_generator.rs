@@ -758,10 +758,21 @@ impl<S: SaveLoad<WorldChunksBlock>> WorldGenerator<S>
 
         crate::debug_time_this!{"load-surface-missing", self.load_missing(world_chunks.iter_mut(), global_mapper)}
 
+        let mut any_empty = false;
         plane.0.iter_mut().zip(world_chunks.iter()).for_each(|((_, plane), (_, world))|
         {
             *plane = world.as_ref().map(|chunk| chunk[0].clone());
+
+            if plane.is_none()
+            {
+                any_empty = true;
+            }
         });
+
+        if !any_empty
+        {
+            return;
+        }
 
         let mut wave_collapser = crate::debug_time_this!{
             "wfc-new",
@@ -786,7 +797,51 @@ impl<S: SaveLoad<WorldChunksBlock>> WorldGenerator<S>
             );
         }
 
-        crate::debug_time_this!{"wfc-generate", wave_collapser.generate()}
+        if DebugConfig::is_enabled(DebugTool::PrintWfcStability)
+        {
+            let times = 200;
+            let success_times = crate::debug_time_this!{"wfc-stability",
+            {
+                wave_collapser.with_cloned(|x|
+                {
+                    eprintln!("{}", x.world_chunks.pretty_print_with(|maybe_world_chunk|
+                    {
+                        maybe_world_chunk.as_ref().map(|x| self.rules.surface.format_id(x.id())).unwrap_or_else(|| "_".to_owned())
+                    }));
+                });
+
+                (0..times)
+                    .map(|_| wave_collapser.with_cloned(|mut x|
+                    {
+                        x.rng = SeededRandom::new();
+
+                        x.generate(false)
+                    }))
+                    .filter(|x| *x)
+                    .count()
+            }};
+
+            eprintln!("wfc generation success rate: {:.1}% ({success_times}/{times})", success_times as f32 / times as f32 * 100.0);
+        }
+
+        let attempts = 10;
+
+        for attempt in 0..attempts
+        {
+            let is_last_attempt = (attempt + 1) == attempts;
+
+            let is_success = crate::debug_time_this!{"wfc-generate", wave_collapser.generate(is_last_attempt)};
+
+            if DebugConfig::is_enabled(DebugTool::PrintWfcStability)
+            {
+                eprintln!("generation {attempt}: {}", if is_success { "success" } else { "failure" });
+            }
+
+            if is_success
+            {
+                break;
+            }
+        }
     }
 
     pub fn generate_missing(
@@ -1362,6 +1417,20 @@ impl<'a> WaveCollapser<'a>
         }
     }
 
+    fn with_cloned<T>(&self, f: impl for<'b> FnOnce(WaveCollapser<'b>) -> T) -> T
+    {
+        let mut world_chunks = self.world_chunks.clone();
+
+        f(WaveCollapser{
+            rng: self.rng.clone(),
+            rules: self.rules,
+            entropies: self.entropies.clone(),
+            world_chunks: &mut world_chunks,
+            #[cfg(debug_assertions)]
+            verbose_constrain: self.verbose_constrain
+        })
+    }
+
     #[cfg(debug_assertions)]
     pub fn set_verbose_constrain(&mut self, value: bool)
     {
@@ -1377,13 +1446,13 @@ impl<'a> WaveCollapser<'a>
     {
         for pos in self.entropies.positions()
         {
-            self.constrain(pos);
+            self.constrain(pos, true);
         }
     }
 
-    fn constrain(&mut self, pos: LocalPos)
+    fn constrain(&mut self, pos: LocalPos, allow_fallback: bool) -> bool
     {
-        pos.directions_group().map(|direction, value|
+        pos.directions_group().try_map(|direction, value|
         {
             if let Some(direction_pos) = value
             {
@@ -1416,6 +1485,11 @@ impl<'a> WaveCollapser<'a>
 
                 if changed.is_none()
                 {
+                    if !allow_fallback
+                    {
+                        return None;
+                    }
+
                     let neighbors = direction_pos.directions_group().map(|direction, x|
                     {
                         x.map(|x|
@@ -1434,10 +1508,12 @@ impl<'a> WaveCollapser<'a>
 
                 if changed.unwrap_or(true)
                 {
-                    self.constrain(direction_pos);
+                    self.constrain(direction_pos, allow_fallback);
                 }
             }
-        });
+
+            Some(())
+        }).is_some()
     }
 
     pub fn lowest_entropy_with(&mut self, rng: &mut SeededRandom) -> Option<(LocalPos, &mut PossibleStates)>
@@ -1455,15 +1531,16 @@ impl<'a> WaveCollapser<'a>
     {
         if self.world_chunks[local].is_none()
         {
-            self.generate_single(local, chunk());
+            self.generate_single(local, chunk(), true);
         }
     }
 
     pub fn generate_single(
         &mut self,
         local: LocalPos,
-        chunk: WorldChunk
-    )
+        chunk: WorldChunk,
+        allow_fallback: bool
+    ) -> bool
     {
         debug_assert!(local.pos.z == 0, "{local:#?}");
 
@@ -1471,28 +1548,42 @@ impl<'a> WaveCollapser<'a>
 
         self.world_chunks[local] = Some(chunk);
 
-        self.constrain(local)
+        self.constrain(local, allow_fallback)
     }
 
-    pub fn generate_once(&mut self, rng: &mut SeededRandom) -> bool
+    pub fn generate_once(&mut self, rng: &mut SeededRandom, allow_fallback: bool) -> Option<bool>
     {
         if let Some((local_pos, state)) = self.entropies.lowest_entropy(rng)
         {
             let generated_chunk = self.rules.generate(state.collapse(self.rules, rng));
 
-            self.generate_single(local_pos, generated_chunk);
+            let is_success = self.generate_single(local_pos, generated_chunk, allow_fallback);
 
-            true
+            is_success.then_some(true)
         } else
         {
-            false
+            Some(false)
         }
     }
 
-    pub fn generate(&mut self)
+    pub fn generate_once_force(&mut self, rng: &mut SeededRandom) -> bool
+    {
+        self.generate_once(rng, true).expect("with fallback it must always succeed")
+    }
+
+    pub fn generate(&mut self, allow_fallback: bool) -> bool
     {
         let mut rng = self.rng.clone();
-        while self.generate_once(&mut rng) {}
+
+        loop
+        {
+            match self.generate_once(&mut rng, allow_fallback)
+            {
+                None => return false,
+                Some(false) => return true,
+                Some(true) => ()
+            }
+        }
     }
 }
 

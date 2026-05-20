@@ -20,6 +20,7 @@ use crate::{
     common::{
         some_or_return,
         BiMap,
+        ObjectsStore,
         generic_info::*,
         lisp::{self, LispConfig, Program, Primitives, LispMemory, LispValue, Register},
         world::{
@@ -1155,7 +1156,7 @@ impl ChunkRulesGroup
 #[derive(Debug)]
 pub struct ChunkRules
 {
-    rules: HashMap<WorldChunkId, ChunkRule>,
+    rules: ObjectsStore<ChunkRule>,
     fallback: WorldChunkId,
     all_ids: Vec<(WorldChunkId, Option<f64>)>
 }
@@ -1184,7 +1185,7 @@ impl ChunkRules
 
         let fallback = name_mappings.world_chunk[&(TileRotation::Up, rules.fallback)];
 
-        let mut this_rules: HashMap<WorldChunkId, ChunkRule> = HashMap::new();
+        let mut this_rules: ObjectsStore<ChunkRule> = ObjectsStore::new();
 
         rules.rules.into_iter().for_each(|rule|
         {
@@ -1214,7 +1215,7 @@ impl ChunkRules
 
                 let id = name_mappings.world_chunk[&(rotation, rule.name.clone())];
 
-                if let Some(current) = this_rules.get_mut(&id)
+                if let Some(current) = this_rules.get_mut(id.0)
                 {
                     if !has_override
                     {
@@ -1229,7 +1230,7 @@ impl ChunkRules
                     current.combine(rule);
                 } else
                 {
-                    this_rules.insert(id, rule);
+                    this_rules.insert(id.0, rule);
                 }
             };
 
@@ -1248,9 +1249,9 @@ impl ChunkRules
             }
         });
 
-        let mut all_ids: Vec<_> = this_rules.keys().copied().map(|id|
+        let mut all_ids: Vec<_> = this_rules.iter().map(|x| WorldChunkId(x.0)).map(|id|
         {
-            let weight = match this_rules.get(&id).unwrap().weight
+            let weight = match this_rules[id.0].weight
             {
                 ChunkWeight::Value(x) => Some(x),
                 _ => None
@@ -1286,7 +1287,7 @@ impl ChunkRules
         let mut changed = false;
         ids.iter().for_each(|this_id|
         {
-            let this_symmetry = self.rules[this_id].symmetry;
+            let this_symmetry = self.rules[this_id.0].symmetry;
 
             TileRotation::iter().for_each(|direction|
             {
@@ -1309,7 +1310,7 @@ impl ChunkRules
                     })
                     .for_each(|other_direction|
                     {
-                        let this = self.rules.get_mut(this_id).unwrap();
+                        let this = &mut self.rules[this_id.0];
 
                         (0..this.neighbors[pos_direction].len()).for_each(|index|
                         {
@@ -1361,7 +1362,7 @@ impl ChunkRules
                 let other_id = some_or_return!(name_mappings.world_chunk.get(&(other_rotation, this_name.clone())));
 
                 let (this_rule, other_rule) = {
-                    let [a, b] = self.rules.get_disjoint_mut([this_id, other_id]);
+                    let [a, b] = self.rules.get_disjoint_mut([this_id.0, other_id.0]).unwrap();
 
                     (a.unwrap(), b.unwrap())
                 };
@@ -1416,10 +1417,10 @@ impl ChunkRules
         {
             PosDirection::iter_non_z().for_each(|direction|
             {
-                (0..self.rules[this_id].neighbors[direction].len()).for_each(|index|
+                (0..self.rules[this_id.0].neighbors[direction].len()).for_each(|index|
                 {
-                    let neighbor = self.rules[this_id].neighbors[direction][index];
-                    let other_rule = self.rules.get_mut(&neighbor).unwrap();
+                    let neighbor = self.rules[this_id.0].neighbors[direction][index];
+                    let other_rule = &mut self.rules[neighbor.0];
 
                     let other_direction = direction.opposite();
                     if union(&mut other_rule.neighbors[other_direction], *this_id)
@@ -1443,7 +1444,7 @@ impl ChunkRules
 
     fn union_neighbors(&mut self, name_mappings: &NameMappings)
     {
-        let rules: Vec<_> = self.rules.keys().copied().collect();
+        let rules: Vec<_> = self.rules.iter().map(|x| WorldChunkId(x.0)).collect();
 
         let unify_neighbors = |this: &mut Self|
         {
@@ -1480,7 +1481,7 @@ impl ChunkRules
     {
         self.rules.iter().for_each(|(id, rule)|
         {
-            eprintln!("{}: {{", name_mappings.format_id(id));
+            eprintln!("{}: {{", name_mappings.format_id(&WorldChunkId(id)));
 
             rule.neighbors.as_ref().for_each(|direction, ids|
             {
@@ -1517,7 +1518,7 @@ impl ChunkRules
         {
             let weight = weight.unwrap_or_else(||
             {
-                match &self.rules.get(id).unwrap().weight
+                match &self.rules[id.0].weight
                 {
                     ChunkWeight::Lisp(program) => program.eval(|memory|
                     {
@@ -1581,7 +1582,7 @@ impl ChunkRules
 
     pub fn get_maybe(&self, id: WorldChunkId) -> Option<&ChunkRule>
     {
-        self.rules.get(&id)
+        self.rules.get(id.0)
     }
 
     pub fn get(&self, id: WorldChunkId) -> &ChunkRule
@@ -1591,7 +1592,7 @@ impl ChunkRules
 
     pub fn iter(&self) -> impl Iterator<Item=&ChunkRule> + '_
     {
-        self.rules.values()
+        self.rules.iter().map(|x| x.1)
     }
 }
 

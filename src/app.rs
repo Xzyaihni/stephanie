@@ -580,7 +580,7 @@ impl YanyaApp for App
 
                         let world_name = client_info.name.world_name();
 
-                        self.server_handle = Some(thread::spawn(move ||
+                        self.server_handle = thread::Builder::new().name("stephy_server".to_owned()).spawn(move ||
                         {
                             let port = 0;
 
@@ -628,7 +628,18 @@ impl YanyaApp for App
                                     game_server.update(DELTA_TIME as f32)
                                 }
                             });
-                        }));
+                        }).map_or_else(|err|
+                        {
+                            eprintln!("failed to start the server thread: {err}");
+
+                            None
+                        }, Some);
+
+                        if self.server_handle.is_none()
+                        {
+                            self.exit();
+                            return;
+                        }
 
                         let port = rx.recv().unwrap();
 
