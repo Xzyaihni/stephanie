@@ -255,6 +255,37 @@ impl Pathfinder<'_>
         })
     }
 
+    pub fn pathfind_continuous(
+        &self,
+        entity: Entity,
+        start: Vector3<f32>,
+        end: Vector3<f32>
+    ) -> ContinuousPathfind
+    {
+        let layer = self.pathfind_layer(entity);
+        let scale = self.pathfind_scale(entity);
+
+        if let Some(path) = self.pathfind_straight_inner(entity, layer, scale, start, end)
+        {
+            return path.into();
+        }
+
+        let mut pathfind = {
+            let info = SearchingInfo{
+                layer,
+                scale,
+                entity,
+                end
+            };
+
+            ContinuousPathfind::Searching(SearchingState::new(info, start))
+        };
+
+        crate::debug_time_this!{"pathfind-continuous-step", pathfind.advance_search(*self) };
+
+        pathfind
+    }
+
     pub fn pathfind(
         &self,
         entity: Entity,
@@ -262,180 +293,7 @@ impl Pathfinder<'_>
         end: Vector3<f32>
     ) -> Option<WorldPath>
     {
-        let layer = self.pathfind_layer(entity);
-        let scale = self.pathfind_scale(entity);
-
-        if let Some(path) = self.pathfind_straight_inner(entity, layer, scale, start, end)
-        {
-            return Some(path);
-        }
-
-        crate::debug_time_this!{"pathfind-full", self.pathfind_full(entity, layer, scale, start, end)}
-    }
-
-    fn pathfind_full(
-        &self,
-        entity: Entity,
-        layer: Option<ColliderLayer>,
-        scale: Vector3<f32>,
-        start: Vector3<f32>,
-        end: Vector3<f32>
-    ) -> Option<WorldPath>
-    {
-        let mut limits = PathfindLimits(0);
-        let mut debug_timer = DebugTimer::new();
-
-        let tile_colliding = |pos| -> Option<f32>
-        {
-            self.world.tile(pos).and_then(|tile|
-            {
-                let tile_info = self.world.tile_info(*tile);
-
-                (tile_info.colliding).then_some(self.world.tile_health(*tile))
-            })
-        };
-
-        let target = TilePos::from(end);
-        let start = TilePos::from(start);
-
-        let mut steps = 0;
-
-        let mut unexplored = BinaryHeap::from([
-            Node{cost: 0.0, value: NodeValue{position: start, kind: NodeKind::MoveTo}}
-        ]);
-
-        let mut explored = HashMap::from([(start, NodeInfo{moves_from_start: 0.0, previous: None})]);
-
-        while !unexplored.is_empty()
-        {
-            steps += 1;
-            if steps > PATHFIND_MAX_STEPS || limits.over()
-            {
-                eprintln!("pathfind took too long: {steps} steps, {} points", limits.0);
-                return None;
-            }
-
-            let current = unexplored.pop()?;
-
-            if DebugConfig::is_enabled(DebugTool::DisplayPathfindAttempt)
-            {
-                debug_display_current(self.entities, current.clone());
-            }
-
-            if current.value.position == target
-            {
-                let current_z = Vector3::from(current.value.position.center_position()).z;
-                let mut path: Vec<WorldPathNode> = vec![
-                    WorldPathNode::MoveTo(Vector3::new(end.x, end.y, current_z)),
-                    current.value.clone().into()
-                ];
-
-                current.path_to(&mut explored, &mut path, Into::into);
-
-                debug_timer.print();
-                return Some(crate::debug_time_this!{"simplify-path", self.simplify_path(entity, scale, layer, path)});
-            }
-
-            let below = current.value.position.offset(Pos3::new(0, 0, -1));
-            let below_tile = self.world.tile(below).map(|tile| self.world.tile_info(*tile));
-
-            let is_grounded = below_tile.map(|x| x.colliding).unwrap_or(false);
-
-            let try_push = |
-                unexplored: &mut BinaryHeap<Node>,
-                explored: &mut HashMap<TilePos, NodeInfo>,
-                position: TilePos,
-                node: NodeKind,
-                move_cost: f32
-            |
-            {
-                let moves_from_start = explored[&current.value.position].moves_from_start;
-                let new_cost = moves_from_start + move_cost;
-
-                if let Some(explored) = explored.get_mut(&position)
-                {
-                    if explored.moves_from_start > new_cost
-                    {
-                        explored.moves_from_start = new_cost;
-                        explored.previous = Some(current.clone());
-                    }
-                } else
-                {
-                    let info = NodeInfo{moves_from_start: new_cost, previous: Some(current.clone())};
-                    explored.insert(position, info);
-
-                    let goal_distance = Vector3::from(position.distance(target)).cast::<f32>().magnitude();
-
-                    let cost = new_cost + goal_distance;
-
-                    unexplored.push(Node{
-                        cost,
-                        value: NodeValue{position, kind: node}
-                    });
-                }
-            };
-
-            if let Some(SpecialTile::StairsDown) = below_tile.and_then(|x| x.special.as_ref())
-            {
-                try_push(
-                    &mut unexplored,
-                    &mut explored,
-                    current.value.position.offset(Pos3{x: 0, y: 0, z: -2}),
-                    NodeKind::StairsMove{down: true},
-                    1.0
-                );
-            }
-
-            let current_tile_info = self.world.tile(current.value.position).map(|tile| self.world.tile_info(*tile));
-
-            if let Some(SpecialTile::StairsUp) = current_tile_info.and_then(|x| x.special.as_ref())
-            {
-                try_push(
-                    &mut unexplored,
-                    &mut explored,
-                    current.value.position.offset(Pos3{x: 0, y: 0, z: 2}),
-                    NodeKind::StairsMove{down: false},
-                    1.0
-                );
-            }
-
-            if is_grounded
-            {
-                PosDirection::iter_non_z().for_each(|direction|
-                {
-                    let position = current.value.position.offset(Pos3::from(direction));
-
-                    let is_colliding_entity = |limits, debug_timer|
-                    {
-                        let layer = some_or_value!(layer, false);
-
-                        self.is_colliding_entity(limits, entity, layer, scale, position, debug_timer)
-                    };
-
-                    if explored.contains_key(&position)
-                        || (position == target)
-                        || !is_colliding_entity(&mut limits, &mut debug_timer)
-                    {
-                        let base_move_cost = 1.0;
-                        let (node, cost) = if let Some(health) = tile_colliding(position)
-                        {
-                            (NodeKind::BreakTile, base_move_cost + health / 0.0015)
-                        } else
-                        {
-                            (NodeKind::MoveTo, base_move_cost)
-                        };
-
-                        try_push(&mut unexplored, &mut explored, position, node, cost);
-                    }
-                });
-            } else
-            {
-                try_push(&mut unexplored, &mut explored, below, NodeKind::MoveTo, 1.0);
-            }
-        }
-
-        debug_timer.print();
-        None
+        self.pathfind_continuous(entity, start, end).into_worldpath()
     }
 
     fn is_colliding_entity(
@@ -860,13 +718,276 @@ impl WorldPath
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct SearchingInfo
+{
+    scale: Vector3<f32>,
+    layer: Option<ColliderLayer>,
+    entity: Entity,
+    end: Vector3<f32>
+}
+
+enum PathfindSearchState
+{
+    Found(WorldPath),
+    Impossible,
+    Progress
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SearchingState
+{
+    info: SearchingInfo,
+    unexplored: BinaryHeap<Node>,
+    explored: HashMap<TilePos, NodeInfo>
+}
+
+impl SearchingState
+{
+    fn new(
+        info: SearchingInfo,
+        start: Vector3<f32>
+    ) -> Self
+    {
+        let start = TilePos::from(start);
+
+        let unexplored = BinaryHeap::from([
+            Node{cost: 0.0, value: NodeValue{position: start, kind: NodeKind::MoveTo}}
+        ]);
+
+        let explored = HashMap::from([(start, NodeInfo{moves_from_start: 0.0, previous: None})]);
+
+        Self{
+            info,
+            unexplored,
+            explored
+        }
+    }
+
+    fn advance(&mut self, pathfinder: Pathfinder) -> PathfindSearchState
+    {
+        let SearchingInfo{scale, layer, entity, end} = self.info;
+
+        let world = pathfinder.world;
+        let entities = pathfinder.entities;
+
+        let mut limits = PathfindLimits(0);
+        let mut debug_timer = DebugTimer::new();
+
+        let tile_colliding = |pos| -> Option<f32>
+        {
+            world.tile(pos).and_then(|tile|
+            {
+                let tile_info = world.tile_info(*tile);
+
+                (tile_info.colliding).then_some(world.tile_health(*tile))
+            })
+        };
+
+        let target = TilePos::from(end);
+
+        let mut steps = 0;
+
+        while !self.unexplored.is_empty()
+        {
+            steps += 1;
+            if steps > PATHFIND_MAX_STEPS || limits.over()
+            {
+                return PathfindSearchState::Progress;
+            }
+
+            let current = self.unexplored.pop().expect("loop must end when this is empty");
+
+            if DebugConfig::is_enabled(DebugTool::DisplayPathfindAttempt)
+            {
+                debug_display_current(entities, current.clone());
+            }
+
+            if current.value.position == target
+            {
+                let current_z = Vector3::from(current.value.position.center_position()).z;
+                let mut path: Vec<WorldPathNode> = vec![
+                    WorldPathNode::MoveTo(Vector3::new(end.x, end.y, current_z)),
+                    current.value.clone().into()
+                ];
+
+                current.path_to(&mut self.explored, &mut path, Into::into);
+
+                debug_timer.print();
+
+                let path = crate::debug_time_this!{
+                    "simplify-path",
+                    pathfinder.simplify_path(entity, scale, layer, path)
+                };
+
+                return PathfindSearchState::Found(path);
+            }
+
+            let below = current.value.position.offset(Pos3::new(0, 0, -1));
+            let below_tile = world.tile(below).map(|tile| world.tile_info(*tile));
+
+            let is_grounded = below_tile.map(|x| x.colliding).unwrap_or(false);
+
+            let try_push = |
+                unexplored: &mut BinaryHeap<Node>,
+                explored: &mut HashMap<TilePos, NodeInfo>,
+                position: TilePos,
+                node: NodeKind,
+                move_cost: f32
+            |
+            {
+                let moves_from_start = explored[&current.value.position].moves_from_start;
+                let new_cost = moves_from_start + move_cost;
+
+                if let Some(explored) = explored.get_mut(&position)
+                {
+                    if explored.moves_from_start > new_cost
+                    {
+                        explored.moves_from_start = new_cost;
+                        explored.previous = Some(current.clone());
+                    }
+                } else
+                {
+                    let info = NodeInfo{moves_from_start: new_cost, previous: Some(current.clone())};
+                    explored.insert(position, info);
+
+                    let goal_distance = Vector3::from(position.distance(target)).cast::<f32>().magnitude();
+
+                    let cost = new_cost + goal_distance;
+
+                    unexplored.push(Node{
+                        cost,
+                        value: NodeValue{position, kind: node}
+                    });
+                }
+            };
+
+            if let Some(SpecialTile::StairsDown) = below_tile.and_then(|x| x.special.as_ref())
+            {
+                try_push(
+                    &mut self.unexplored,
+                    &mut self.explored,
+                    current.value.position.offset(Pos3{x: 0, y: 0, z: -2}),
+                    NodeKind::StairsMove{down: true},
+                    1.0
+                );
+            }
+
+            let current_tile_info = world.tile(current.value.position).map(|tile| world.tile_info(*tile));
+
+            if let Some(SpecialTile::StairsUp) = current_tile_info.and_then(|x| x.special.as_ref())
+            {
+                try_push(
+                    &mut self.unexplored,
+                    &mut self.explored,
+                    current.value.position.offset(Pos3{x: 0, y: 0, z: 2}),
+                    NodeKind::StairsMove{down: false},
+                    1.0
+                );
+            }
+
+            if is_grounded
+            {
+                PosDirection::iter_non_z().for_each(|direction|
+                {
+                    let position = current.value.position.offset(Pos3::from(direction));
+
+                    let is_colliding_entity = |limits, debug_timer|
+                    {
+                        let layer = some_or_value!(layer, false);
+
+                        pathfinder.is_colliding_entity(limits, entity, layer, scale, position, debug_timer)
+                    };
+
+                    if self.explored.contains_key(&position)
+                        || (position == target)
+                        || !is_colliding_entity(&mut limits, &mut debug_timer)
+                    {
+                        let base_move_cost = 1.0;
+                        let (node, cost) = if let Some(health) = tile_colliding(position)
+                        {
+                            (NodeKind::BreakTile, base_move_cost + health / 0.0015)
+                        } else
+                        {
+                            (NodeKind::MoveTo, base_move_cost)
+                        };
+
+                        try_push(&mut self.unexplored, &mut self.explored, position, node, cost);
+                    }
+                });
+            } else
+            {
+                try_push(&mut self.unexplored, &mut self.explored, below, NodeKind::MoveTo, 1.0);
+            }
+        }
+
+        debug_timer.print();
+        PathfindSearchState::Impossible
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ContinuousPathfind
+{
+    Path(WorldPath),
+    Searching(SearchingState)
+}
+
+impl From<WorldPath> for ContinuousPathfind
+{
+    fn from(path: WorldPath) -> Self
+    {
+        Self::Path(path)
+    }
+}
+
+impl ContinuousPathfind
+{
+    pub fn target(&self) -> Option<Vector3<f32>>
+    {
+        match self
+        {
+            Self::Path(path) => path.target(),
+            Self::Searching(state) => Some(state.info.end)
+        }
+    }
+
+    pub fn into_worldpath(self) -> Option<WorldPath>
+    {
+        if let Self::Path(path) = self { Some(path) } else { None }
+    }
+
+    pub fn advance_search(&mut self, pathfinder: Pathfinder) -> bool
+    {
+        if let Self::Searching(info) = self
+        {
+            let is_progressing = match info.advance(pathfinder)
+            {
+                PathfindSearchState::Found(path) =>
+                {
+                    *self = Self::Path(path);
+
+                    true
+                },
+                PathfindSearchState::Impossible => false,
+                PathfindSearchState::Progress => true
+            };
+
+            return is_progressing;
+        }
+
+        false
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct NodeInfo
 {
     moves_from_start: f32,
     previous: Option<Node>
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 enum NodeKind
 {
     MoveTo,
@@ -874,14 +995,14 @@ enum NodeKind
     BreakTile
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct NodeValue
 {
     position: TilePos,
     kind: NodeKind
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct Node
 {
     cost: f32,

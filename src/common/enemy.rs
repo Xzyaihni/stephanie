@@ -209,8 +209,8 @@ pub enum BehaviorState
     Wait,
     Rotate(f32),
     MoveDirection(Unit<Vector3<f32>>),
-    MoveTo(WorldPath, Transform),
-    Attack(Option<WorldPath>, Entity)
+    MoveTo(ContinuousPathfind, Transform),
+    Attack(Option<ContinuousPathfind>, Entity)
 }
 
 impl Default for BehaviorState
@@ -234,6 +234,21 @@ fn close_enough(other: &Transform, this: &Transform) -> bool
     is_close_distance && angle_between < close_angle
 }
 
+fn advance_pathfind(
+    pathfinder: Pathfinder,
+    path: &mut ContinuousPathfind,
+    entity: Entity,
+    position: Vector3<f32>,
+    dt: f32
+) -> bool
+{
+    match path
+    {
+        ContinuousPathfind::Path(path) => follow_path(pathfinder.world, pathfinder.entities, path, entity, position, dt),
+        ContinuousPathfind::Searching(_) => path.advance_search(pathfinder)
+    }
+}
+
 fn follow_path(
     world: &World,
     entities: &ClientEntities,
@@ -243,6 +258,11 @@ fn follow_path(
     dt: f32
 ) -> bool
 {
+    if DebugConfig::is_enabled(DebugTool::DisplayPathfind)
+    {
+        path.debug_display(entities);
+    }
+
     let action = path.action(world, PATH_NEAR, position);
 
     let following = action.is_some();
@@ -358,18 +378,14 @@ impl Enemy
                         let start = this_transform.position;
                         let end = start + *direction * (fastrand::f32() * 0.5 + 0.5 * TILE_SIZE * 5.0);
 
-                        if let Some(path) = pathfinder.pathfind_straight(
-                            this_entity,
-                            start,
-                            end
-                        )
+                        if let Some(path) = pathfinder.pathfind_straight(this_entity, start, end)
                         {
                             let transform = Transform{
                                 position: end,
                                 ..this_transform.clone()
                             };
 
-                            BehaviorState::MoveTo(path, transform)
+                            BehaviorState::MoveTo(path.into(), transform)
                         } else
                         {
                             BehaviorState::Rotate(random_rotation())
@@ -383,13 +399,13 @@ impl Enemy
                         let other_transform = some_or_value!(entities.transform(*entity), BehaviorState::Wait);
                         let this_transform = some_or_value!(entities.transform(this_entity), BehaviorState::Wait);
 
-                        let path = pathfinder.pathfind(
+                        let path = pathfinder.pathfind_continuous(
                             this_entity,
                             this_transform.position,
                             other_transform.position
                         );
 
-                        BehaviorState::MoveTo(some_or_value!(path, BehaviorState::Wait), other_transform.clone())
+                        BehaviorState::MoveTo(path, other_transform.clone())
                     }
                 }
             }
@@ -431,7 +447,6 @@ impl Enemy
     fn do_behavior(
         &mut self,
         entities: &ClientEntities,
-        world: &World,
         pathfinder: Pathfinder,
         entity: Entity,
         dt: f32
@@ -467,11 +482,6 @@ impl Enemy
             },
             BehaviorState::MoveTo(path, other_transform) =>
             {
-                if DebugConfig::is_enabled(DebugTool::DisplayPathfind)
-                {
-                    path.debug_display(entities);
-                }
-
                 let transform = some_or_return!(entities.transform(entity));
 
                 if !close_enough(other_transform, &transform)
@@ -479,7 +489,7 @@ impl Enemy
                     let position = transform.position;
                     drop(transform);
 
-                    if follow_path(world, entities, path, entity, position, dt)
+                    if advance_pathfind(pathfinder, path, entity, position, dt)
                     {
                         return;
                     }
@@ -504,7 +514,7 @@ impl Enemy
                     let aggressive = some_or_return!(entities.character(entity)).aggressive(&other_character);
 
                     let (is_close, sees) = {
-                        let sees = sees(entities, pathfinder.space, world, entity, other_entity);
+                        let sees = sees(entities, pathfinder.space, pathfinder.world, entity, other_entity);
 
                         (sees.map(|(close, _)| close).unwrap_or(false), sees.is_some())
                     };
@@ -523,16 +533,11 @@ impl Enemy
 
                         if regenerate_path
                         {
-                            *path = pathfinder.pathfind(entity, transform.position, target);
+                            *path = Some(pathfinder.pathfind_continuous(entity, transform.position, target));
                         }
 
                         if let Some(path) = path.as_mut()
                         {
-                            if DebugConfig::is_enabled(DebugTool::DisplayPathfind)
-                            {
-                                path.debug_display(entities);
-                            }
-
                             let is_close_enough = close_enough(&other_transform, &transform);
 
                             {
@@ -554,7 +559,7 @@ impl Enemy
 
                             if !is_close_enough
                             {
-                                follow_path(world, entities, path, entity, position, dt);
+                                advance_pathfind(pathfinder, path, entity, position, dt);
                             }
 
                             if sees
@@ -595,7 +600,6 @@ impl Enemy
     pub fn update(
         &mut self,
         entities: &ClientEntities,
-        world: &World,
         pathfinder: Pathfinder,
         entity: Entity,
         dt: f32
@@ -648,7 +652,7 @@ impl Enemy
             self.set_next_state(entities, pathfinder, entity);
         }
 
-        self.do_behavior(entities, world, pathfinder, entity, dt);
+        self.do_behavior(entities, pathfinder, entity, dt);
 
         changed
     }

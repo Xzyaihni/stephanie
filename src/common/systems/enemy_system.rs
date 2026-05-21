@@ -62,7 +62,6 @@ pub fn update(
 
         let _state_changed = enemy.update(
             entities,
-            world,
             Pathfinder{world, entities, space},
             entity,
             dt
