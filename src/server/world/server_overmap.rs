@@ -14,6 +14,7 @@ use super::{
 };
 
 use crate::common::{
+    SeededRandom,
     Axis,
     SaveLoad,
     WorldChunksBlock,
@@ -521,7 +522,15 @@ impl<'a, 'b, 'c, S: SaveLoad<WorldChunksBlock>> ServerOvermapRef<'a, 'b, 'c, S>
                     outside_indexer.player_position.0.z = 0;
                     outside_indexer.size.z = 1;
 
-                    self.world_generator.generate_surface(&mut surface_blocks, self.world_plane, &outside_indexer);
+                    let rng = {
+                        let pos = outside_indexer.player_position.0;
+
+                        let mut x_rng = SeededRandom::from(pos.x as u64);
+
+                        SeededRandom::from(x_rng.next_u64().wrapping_add(pos.y as u64))
+                    };
+
+                    self.world_generator.generate_surface(rng, &mut surface_blocks, self.world_plane, &outside_indexer);
                 }
 
                 surface_blocks.into_iter().for_each(|(pos, block)|

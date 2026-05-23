@@ -32,6 +32,11 @@
         "on_destroy": "(points-drops '((rock 1) (boulder 3)) (random-integer-between 2 5))"
     },
     {
+        "name": "ceramic-tiles",
+        "health": 0.3,
+        "on_destroy": "(standard-drops '(ceramic_shard))"
+    },
+    {
         "name": "brick-path",
         "health": 0.9,
         "on_destroy": "(points-drops '((rock 1) (boulder 3)) (random-integer-between 2 5))"

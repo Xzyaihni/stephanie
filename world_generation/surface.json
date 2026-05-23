@@ -196,7 +196,6 @@
                         "road_corner",
                         {"rotation": "Right", "value": "road_corner"},
                         {"rotation": "Left", "value": "road_t"},
-                        "park",
                         {"rotation": "Down", "value": "road_end"}
                     ],
                     "down": ["office_bl"],
@@ -219,7 +218,6 @@
             "neighbors": {
                 "SymmetryNone": {
                     "up": [
-                        "park",
                         "road_straight",
                         {"rotation": "Left", "value": "road_t"},
                         "road_corner",

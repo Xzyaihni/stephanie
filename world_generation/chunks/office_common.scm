@@ -56,7 +56,7 @@
         (big-fill-area
             (put-outer-walls this-chunk)
             (make-area (make-point 2 2) (make-point (- big-size-x 4) (- big-size-y 4)))
-            (tile 'wood))
+            (tile 'ceramic-tiles))
         (make-area (make-point 5 1) (make-point 6 4))
         (tile 'concrete)))
 

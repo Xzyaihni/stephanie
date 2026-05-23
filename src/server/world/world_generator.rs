@@ -1,6 +1,7 @@
 use std::{
     fs,
     io,
+    env,
     convert,
     cell::RefCell,
     fmt::{self, Display, Debug},
@@ -705,6 +706,7 @@ impl fmt::Debug for ChunkGenerator
 #[derive(Debug)]
 pub struct WorldGenerator<S>
 {
+    world_seed: u64,
     generator: ChunkGenerator,
     saver: S,
     rules: Rc<ChunkRulesGroup>
@@ -723,7 +725,17 @@ impl<S: SaveLoad<WorldChunksBlock>> WorldGenerator<S>
 
         let generator = ChunkGenerator::new(tilemap, rules.clone(), path)?;
 
-        Ok(Self{generator, saver, rules})
+        let world_seed: u64 = if let Some(world_seed) = env::var("STEPHANIE_WORLDSEED").ok()
+        {
+            world_seed.parse().unwrap()
+        } else
+        {
+            fastrand::u64(..)
+        };
+
+        eprintln!("world seed: {world_seed}");
+
+        Ok(Self{world_seed, generator, saver, rules})
     }
 
     #[cfg(debug_assertions)]
@@ -739,6 +751,7 @@ impl<S: SaveLoad<WorldChunksBlock>> WorldGenerator<S>
 
     pub fn generate_surface<M: OvermapIndexing + Debug>(
         &mut self,
+        mut rng: SeededRandom,
         world_chunks: &mut FlatChunksContainer<Option<WorldChunksBlock>>,
         plane: &mut WorldPlane,
         global_mapper: &M
@@ -774,9 +787,11 @@ impl<S: SaveLoad<WorldChunksBlock>> WorldGenerator<S>
             return;
         }
 
+        let rng = SeededRandom::from(rng.next_u64().wrapping_add(self.world_seed));
+
         let mut wave_collapser = crate::debug_time_this!{
             "wfc-new",
-            WaveCollapser::new(&self.rules.surface, &mut plane.0, |local_pos|
+            WaveCollapser::new(rng, &self.rules.surface, &mut plane.0, |local_pos|
             {
                 chunk_difficulty(global_mapper.to_global(local_pos))
             })
@@ -797,18 +812,23 @@ impl<S: SaveLoad<WorldChunksBlock>> WorldGenerator<S>
             );
         }
 
+        fn print_worldchunks(rules: &ChunkRulesGroup, wave_collapser: &WaveCollapser)
+        {
+            wave_collapser.with_cloned(|x|
+            {
+                eprintln!("{}", x.world_chunks.pretty_print_with(|maybe_world_chunk|
+                {
+                    maybe_world_chunk.as_ref().map(|x| rules.surface.format_id(x.id())).unwrap_or_else(|| "_".to_owned())
+                }));
+            });
+        }
+
         if DebugConfig::is_enabled(DebugTool::PrintWfcStability)
         {
             let times = 200;
             let success_times = crate::debug_time_this!{"wfc-stability",
             {
-                wave_collapser.with_cloned(|x|
-                {
-                    eprintln!("{}", x.world_chunks.pretty_print_with(|maybe_world_chunk|
-                    {
-                        maybe_world_chunk.as_ref().map(|x| self.rules.surface.format_id(x.id())).unwrap_or_else(|| "_".to_owned())
-                    }));
-                });
+                print_worldchunks(&self.rules, &wave_collapser);
 
                 (0..times)
                     .map(|_| wave_collapser.with_cloned(|mut x|
@@ -829,6 +849,11 @@ impl<S: SaveLoad<WorldChunksBlock>> WorldGenerator<S>
         for attempt in 0..attempts
         {
             let is_last_attempt = (attempt + 1) == attempts;
+
+            if cfg!(debug_assertions) && is_last_attempt
+            {
+                print_worldchunks(&self.rules, &wave_collapser);
+            }
 
             let is_success = crate::debug_time_this!{"wfc-generate", wave_collapser.generate(is_last_attempt)};
 
@@ -1370,6 +1395,7 @@ impl Debug for WaveCollapser<'_>
 impl<'a> WaveCollapser<'a>
 {
     pub fn new(
+        rng: SeededRandom,
         rules: &'a ChunkRules,
         world_chunks: &'a mut FlatChunksContainer<Option<WorldChunk>>,
         difficulty_at: impl Fn(LocalPos) -> f32
@@ -1387,7 +1413,7 @@ impl<'a> WaveCollapser<'a>
         }));
 
         let mut this = Self{
-            rng: SeededRandom::new(),
+            rng,
             rules,
             entropies,
             world_chunks,

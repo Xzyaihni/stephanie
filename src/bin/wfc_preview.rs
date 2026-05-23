@@ -1095,7 +1095,7 @@ impl YanyaApp for ChunkPreviewer
 
                 let plane = &mut self.world_chunks.borrow_mut().0;
 
-                let wave_collapser = WaveCollapser::new(&rules.surface, plane, |_local_pos| 0.0);
+                let wave_collapser = WaveCollapser::new(SeededRandom::new(), &rules.surface, plane, |_local_pos| 0.0);
 
                 let entropies = wave_collapser.entropies().clone();
 
