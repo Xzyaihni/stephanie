@@ -1514,7 +1514,7 @@ impl ChunkRules
 
     pub fn possible_states(&self, difficulty: f32) -> Vec<PossibleState>
     {
-        let mut possible_states = self.all_ids.iter().filter_map(|(id, weight)|
+        let mut possible_states = self.all_ids.iter().map(|(id, weight)|
         {
             let weight = weight.unwrap_or_else(||
             {
@@ -1532,24 +1532,19 @@ impl ChunkRules
                         {
                             eprintln!("in `{}` error generating weight: {err}", self.name(*id));
 
-                            1.0
+                            0.0
                         }) as f64
                     }).unwrap_or_else(|err|
                     {
                         eprintln!("in `{}` error generating weight: {err}", self.name(*id));
 
-                        1.0
+                        0.0
                     }),
                     ChunkWeight::Value(_) => unreachable!()
                 }
             });
 
-            if weight <= 0.0
-            {
-                return None;
-            }
-
-            Some(PossibleState{id: *id, weight})
+            PossibleState{id: *id, weight}
         }).collect::<Vec<_>>();
 
         let total_weight = possible_states.iter().map(|x| x.weight).sum::<f64>();

@@ -1,7 +1,6 @@
 use std::{
     fs,
     io,
-    env,
     convert,
     cell::RefCell,
     fmt::{self, Display, Debug},
@@ -17,7 +16,9 @@ use nalgebra::Vector3;
 use crate::{
     debug_config::*,
     common::{
+        get_env_value,
         with_error,
+        write_log_ln,
         DebugRaw,
         SeededRandom,
         TileMap,
@@ -246,6 +247,11 @@ impl ChunkGenerator
             if let Err(err) = this.parse_function(&parent_directory, memory.clone(), name)
             {
                 eprintln!("{err}");
+
+                #[cfg(test)]
+                {
+                    panic!();
+                }
             }
         });
 
@@ -287,6 +293,12 @@ impl ChunkGenerator
                     {
                         eprintln!("no tile named `{name}`, using fallback");
 
+                        #[cfg(test)]
+                        {
+                            panic!();
+                        }
+
+                        #[allow(unreachable_code)]
                         &fallback_tile
                     });
 
@@ -306,6 +318,11 @@ impl ChunkGenerator
                         {
                             let err: lisp::ErrorPos = err.with_position(call_position);
                             eprintln!("{err}, ignoring");
+
+                            #[cfg(test)]
+                            {
+                                panic!();
+                            }
                         }
                     }
 
@@ -481,6 +498,12 @@ impl ChunkGenerator
                         {
                             eprintln!("error trying to load `{filename}`: {err}");
 
+                            #[cfg(test)]
+                            {
+                                panic!();
+                            }
+
+                            #[allow(unreachable_code)]
                             None
                         }
                     }
@@ -624,6 +647,12 @@ impl ChunkGenerator
 
                         eprintln!("tile error at ({}, {}) in ({chunk_name}): {err}, using fallback", pos.x, pos.y);
 
+                        #[cfg(test)]
+                        {
+                            panic!();
+                        }
+
+                        #[allow(unreachable_code)]
                         Tile::none()
                     })
                 }).collect::<Box<[Tile]>>()
@@ -677,6 +706,12 @@ impl ChunkGenerator
         {
             eprintln!("worldchunk named `{chunk_name}` doesnt exist");
 
+            #[cfg(test)]
+            {
+                panic!();
+            }
+
+            #[allow(unreachable_code)]
             return empty_worldchunk();
         };
 
@@ -685,8 +720,14 @@ impl ChunkGenerator
             Ok(x) => x,
             Err(err) =>
             {
-                eprintln!("{err} in ({chunk_name}), using fallback");
+                eprintln!("{err} in ({chunk_name}, at {}), using fallback", info.position.pos);
 
+                #[cfg(test)]
+                {
+                    panic!();
+                }
+
+                #[allow(unreachable_code)]
                 empty_worldchunk()
             }
         }
@@ -716,6 +757,7 @@ impl<S: SaveLoad<WorldChunksBlock>> WorldGenerator<S>
 {
     pub fn new(
         saver: S,
+        world_seed: u64,
         tilemap: Rc<TileMap>,
         path: impl Into<PathBuf>
     ) -> Result<Self, ParseError>
@@ -724,16 +766,6 @@ impl<S: SaveLoad<WorldChunksBlock>> WorldGenerator<S>
         let rules = Rc::new(ChunkRulesGroup::load(path.clone())?);
 
         let generator = ChunkGenerator::new(tilemap, rules.clone(), path)?;
-
-        let world_seed: u64 = if let Some(world_seed) = env::var("STEPHANIE_WORLDSEED").ok()
-        {
-            world_seed.parse().unwrap()
-        } else
-        {
-            fastrand::u64(..)
-        };
-
-        eprintln!("world seed: {world_seed}");
 
         Ok(Self{world_seed, generator, saver, rules})
     }
@@ -825,7 +857,7 @@ impl<S: SaveLoad<WorldChunksBlock>> WorldGenerator<S>
 
         if DebugConfig::is_enabled(DebugTool::PrintWfcStability)
         {
-            let times = 200;
+            let times = get_env_value("STEPHANIE_WFCSAMPLES").unwrap_or(200);
             let success_times = crate::debug_time_this!{"wfc-stability",
             {
                 print_worldchunks(&self.rules, &wave_collapser);
@@ -853,7 +885,15 @@ impl<S: SaveLoad<WorldChunksBlock>> WorldGenerator<S>
             if cfg!(debug_assertions) && is_last_attempt
             {
                 print_worldchunks(&self.rules, &wave_collapser);
+
+                if let Some(world_chunks_json) = with_error(serde_json::to_string(wave_collapser.world_chunks))
+                {
+                    write_log_ln("this forced fallbacks:");
+                    write_log_ln(world_chunks_json);
+                }
             }
+
+            let wave_collapser_state = wave_collapser.restorable_state();
 
             let is_success = crate::debug_time_this!{"wfc-generate", wave_collapser.generate(is_last_attempt)};
 
@@ -866,6 +906,10 @@ impl<S: SaveLoad<WorldChunksBlock>> WorldGenerator<S>
             {
                 break;
             }
+
+            let unique_rng = wave_collapser.rng.clone();
+            wave_collapser.restore(wave_collapser_state);
+            wave_collapser.rng = unique_rng;
         }
     }
 
@@ -1174,8 +1218,13 @@ impl PossibleStates
             {
                 let this_weight = state.weight;
 
-                self.total -= this_weight;
-                self.entropy += this_weight * this_weight.ln();
+                debug_assert!(this_weight.is_finite(), "illegal weight: {this_weight}");
+
+                if this_weight > 0.0
+                {
+                    self.total -= this_weight;
+                    self.entropy += this_weight * this_weight.ln();
+                }
 
                 any_constrained = true;
             }
@@ -1246,10 +1295,14 @@ impl PossibleStates
 
     fn calculate_entropy(weights: impl Iterator<Item=f64>) -> f64
     {
-        weights.map(|value|
+        let entropy: f64 = weights.map(|value|
         {
-            -value * value.ln()
-        }).sum()
+            if value <= 0.0 { 0.0 } else { -value * value.ln() }
+        }).sum();
+
+        debug_assert!(entropy >= 0.0 && entropy.is_finite(), "invalid entropy: {entropy}");
+
+        entropy
     }
 
     pub fn is_all(&self) -> bool
@@ -1370,17 +1423,24 @@ impl IndexMut<LocalPos> for Entropies
     }
 }
 
-pub struct WaveCollapser<'a>
+struct WaveCollapserState
+{
+    rng: SeededRandom,
+    entropies: Entropies,
+    world_chunks: FlatChunksContainer<Option<WorldChunk>>
+}
+
+pub struct WaveCollapser<'a, 'b>
 {
     rng: SeededRandom,
     rules: &'a ChunkRules,
     entropies: Entropies,
-    world_chunks: &'a mut FlatChunksContainer<Option<WorldChunk>>,
+    world_chunks: &'b mut FlatChunksContainer<Option<WorldChunk>>,
     #[cfg(debug_assertions)]
     verbose_constrain: bool
 }
 
-impl Debug for WaveCollapser<'_>
+impl Debug for WaveCollapser<'_, '_>
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
     {
@@ -1392,12 +1452,12 @@ impl Debug for WaveCollapser<'_>
     }
 }
 
-impl<'a> WaveCollapser<'a>
+impl<'a, 'm> WaveCollapser<'a, 'm>
 {
     pub fn new(
         rng: SeededRandom,
         rules: &'a ChunkRules,
-        world_chunks: &'a mut FlatChunksContainer<Option<WorldChunk>>,
+        world_chunks: &'m mut FlatChunksContainer<Option<WorldChunk>>,
         difficulty_at: impl Fn(LocalPos) -> f32
     ) -> Self
     {
@@ -1418,7 +1478,7 @@ impl<'a> WaveCollapser<'a>
             entropies,
             world_chunks,
             #[cfg(debug_assertions)]
-            verbose_constrain: false
+            verbose_constrain: DebugConfig::is_enabled(DebugTool::VerboseConstrain)
         };
 
         this.constrain_all();
@@ -1430,7 +1490,7 @@ impl<'a> WaveCollapser<'a>
         rng: SeededRandom,
         rules: &'a ChunkRules,
         entropies: Entropies,
-        world_chunks: &'a mut FlatChunksContainer<Option<WorldChunk>>
+        world_chunks: &'m mut FlatChunksContainer<Option<WorldChunk>>
     ) -> Self
     {
         Self{
@@ -1443,7 +1503,7 @@ impl<'a> WaveCollapser<'a>
         }
     }
 
-    fn with_cloned<T>(&self, f: impl for<'b> FnOnce(WaveCollapser<'b>) -> T) -> T
+    fn with_cloned<T>(&self, f: impl for<'b> FnOnce(WaveCollapser<'a, 'b>) -> T) -> T
     {
         let mut world_chunks = self.world_chunks.clone();
 
@@ -1455,6 +1515,22 @@ impl<'a> WaveCollapser<'a>
             #[cfg(debug_assertions)]
             verbose_constrain: self.verbose_constrain
         })
+    }
+
+    fn restorable_state(&self) -> WaveCollapserState
+    {
+        WaveCollapserState{
+            rng: self.rng.clone(),
+            entropies: self.entropies.clone(),
+            world_chunks: self.world_chunks.clone()
+        }
+    }
+
+    fn restore(&mut self, state: WaveCollapserState)
+    {
+        self.rng = state.rng;
+        self.entropies = state.entropies;
+        *self.world_chunks = state.world_chunks;
     }
 
     #[cfg(debug_assertions)]
@@ -1478,6 +1554,8 @@ impl<'a> WaveCollapser<'a>
 
     fn constrain(&mut self, pos: LocalPos, allow_fallback: bool) -> bool
     {
+        fn fmt_2d(p: Pos3<usize>) -> String { format!("[{}, {}]", p.x, p.y) }
+
         pos.directions_group().try_map(|direction, value|
         {
             if let Some(direction_pos) = value
@@ -1491,8 +1569,8 @@ impl<'a> WaveCollapser<'a>
                         eprintln!(
                             "{} constraining {} against {} ({} x {})",
                             direction.opposite().flip_y(),
-                            direction_pos.pos,
-                            pos.pos,
+                            fmt_2d(direction_pos.pos),
+                            fmt_2d(pos.pos),
                             other.format_states(self.rules),
                             this.format_states(self.rules)
                         );
@@ -1529,7 +1607,18 @@ impl<'a> WaveCollapser<'a>
                         acc + ", " + &x
                     }).unwrap_or_default();
 
-                    eprintln!("couldnt find a valid worldchunk with {neighbors}, using fallback");
+                    eprintln!("couldnt find a valid worldchunk at {} with {neighbors}, using fallback", fmt_2d(direction_pos.pos));
+
+                    if let Some(world_chunks_json) = with_error(serde_json::to_string(self.world_chunks))
+                    {
+                        write_log_ln("invalid state:");
+                        write_log_ln(world_chunks_json);
+                    }
+
+                    #[cfg(test)]
+                    {
+                        panic!();
+                    }
                 }
 
                 if changed.unwrap_or(true)
@@ -1597,19 +1686,28 @@ impl<'a> WaveCollapser<'a>
         self.generate_once(rng, true).expect("with fallback it must always succeed")
     }
 
-    pub fn generate(&mut self, allow_fallback: bool) -> bool
+    fn generate_inner(&mut self, rng: &mut SeededRandom, allow_fallback: bool) -> bool
     {
-        let mut rng = self.rng.clone();
-
         loop
         {
-            match self.generate_once(&mut rng, allow_fallback)
+            match self.generate_once(rng, allow_fallback)
             {
                 None => return false,
                 Some(false) => return true,
                 Some(true) => ()
             }
         }
+    }
+
+    pub fn generate(&mut self, allow_fallback: bool) -> bool
+    {
+        let mut rng = self.rng.clone();
+
+        let output = self.generate_inner(&mut rng, allow_fallback);
+
+        self.rng = rng;
+
+        output
     }
 }
 

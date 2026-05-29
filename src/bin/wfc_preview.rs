@@ -62,6 +62,7 @@ use stephanie::{
         }
     },
     common::{
+        get_env_value,
         with_z,
         with_error,
         some_or_return,
@@ -269,6 +270,15 @@ fn parse_rules() -> Option<Rc<ChunkRulesGroup>>
     }
 
     rules.ok().map(Rc::new)
+}
+
+fn maybe_prefill_worldchunks(world_chunks: &mut WorldPlane)
+{
+    let prefill_path: String = some_or_return!(get_env_value("STEPHANIE_PREFILLWORLDCHUNKS"));
+
+    let prefill_json = fs::read_to_string(prefill_path).unwrap();
+
+    world_chunks.0 = serde_json::from_str(&prefill_json).unwrap();
 }
 
 struct AssetsDependent
@@ -487,7 +497,13 @@ impl YanyaApp for ChunkPreviewer
 
         let preview = None;
 
-        let world_chunks = Rc::new(RefCell::new(WorldPlane(FlatChunksContainer::new(Pos3::new(tags.world_size, tags.world_size, 1)))));
+        let world_chunks = {
+            let mut world_chunks = WorldPlane(FlatChunksContainer::new(Pos3::new(tags.world_size, tags.world_size, 1)));
+
+            maybe_prefill_worldchunks(&mut world_chunks);
+
+            Rc::new(RefCell::new(world_chunks))
+        };
 
         let assets_dependent = ModifiedWatcher::new_many(
             vec!["world_generation".into(), "textures".into(), "info".into(), "lisp".into()],
@@ -540,17 +556,13 @@ impl YanyaApp for ChunkPreviewer
 
             let logical_position;
 
+            let world_size = self.world_chunks.borrow().0.size();
+
             let states_at = |this: &Self, logical_position: Vector2<i32>| -> Option<_>
             {
                 let (entropies, _) = this.current_generator.as_ref()?;
 
-                let size = {
-                    let size = this.preview_tags.world_size;
-
-                    Pos3::new(size, size, 1)
-                };
-
-                let local_pos = LocalPos::new(Pos3::new(logical_position.x as usize, logical_position.y as usize, 0), size);
+                let local_pos = LocalPos::new(Pos3::new(logical_position.x as usize, logical_position.y as usize, 0), world_size);
 
                 local_pos.in_bounds().then(|| entropies.get(local_pos).clone())
             };
@@ -560,8 +572,7 @@ impl YanyaApp for ChunkPreviewer
             let tile_size = TILE_SIZE / self.camera_zoom;
             let chunk_size = Vector3::from(WORLD_CHUNK_SIZE).xy().map(|x| x as f32 * tile_size);
 
-            let world_size = self.current_tags.world_size;
-            let half_offset = vector![(world_size / 2) as i32, (world_size / 2) as i32];
+            let half_offset = vector![(world_size.x / 2) as i32, (world_size.y / 2) as i32];
 
             let tile_position_of = |tiled_position: Vector2<i32>| -> Vector2<f32>
             {
@@ -1088,7 +1099,12 @@ impl YanyaApp for ChunkPreviewer
 
             let tags = self.preview_tags.clone();
 
-            self.world_chunks.borrow_mut().0 = FlatChunksContainer::new(Pos3::new(tags.world_size, tags.world_size, 1));
+            {
+                let mut world_chunks = self.world_chunks.borrow_mut();
+
+                world_chunks.0 = FlatChunksContainer::new(Pos3::new(tags.world_size, tags.world_size, 1));
+                maybe_prefill_worldchunks(&mut world_chunks);
+            }
 
             self.current_generator = {
                 let rules = some_or_return!(self.assets_dependent.rules.as_ref());
@@ -1282,10 +1298,10 @@ impl ChunkPreviewer
         world_chunk_id: WorldChunkId
     ) -> Vec<Object>
     {
-        let size = self.preview_tags.world_size;
+        let size = self.world_chunks.borrow().0.size();
 
         let chunk_info = ConditionalInfo{
-            position: chunk_pos.unwrap_or_else(|| LocalPos::new(Pos3::repeat(0), Pos3::new(size, size, 1))),
+            position: chunk_pos.unwrap_or_else(|| LocalPos::new(Pos3::repeat(0), size)),
             height: 0,
             difficulty: 0.0
         };
@@ -1357,7 +1373,7 @@ impl ChunkPreviewer
                         1
                     );
 
-                    let half_offset = Pos3::new((size / 2) as i32, (size / 2) as i32, 0);
+                    let half_offset = Pos3::new((size.x / 2) as i32, (size.y / 2) as i32, 0);
 
                     let pos_offset = if let Some(chunk_pos) = chunk_pos
                     {
@@ -1483,7 +1499,7 @@ mod tests
         let one = {
             let mut rng_one = SeededRandom::from(5);
 
-            let mut wave_collapser_one = WaveCollapser::new(&rules.surface, &mut plane_one, |_| 0.0);
+            let mut wave_collapser_one = WaveCollapser::new(SeededRandom::new(), &rules.surface, &mut plane_one, |_| 0.0);
             (0..3).for_each(|_| do_test_step(&rules.surface, &mut wave_collapser_one, &mut rng_one));
 
             wave_collapser_one
@@ -1494,10 +1510,10 @@ mod tests
         let two = {
             let mut rng_two = SeededRandom::from(5);
 
-            let mut wave_collapser_two_temp = WaveCollapser::new(&rules.surface, &mut plane_two, |_| 0.0);
+            let mut wave_collapser_two_temp = WaveCollapser::new(SeededRandom::new(), &rules.surface, &mut plane_two, |_| 0.0);
             do_test_step(&rules.surface, &mut wave_collapser_two_temp, &mut rng_two);
 
-            let mut wave_collapser_two = WaveCollapser::new(&rules.surface, &mut plane_two, |_| 0.0);
+            let mut wave_collapser_two = WaveCollapser::new(SeededRandom::new(), &rules.surface, &mut plane_two, |_| 0.0);
             (0..2).for_each(|_| do_test_step(&rules.surface, &mut wave_collapser_two, &mut rng_two));
 
             wave_collapser_two

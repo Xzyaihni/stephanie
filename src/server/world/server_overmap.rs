@@ -388,6 +388,12 @@ impl<S: SaveLoad<WorldChunksBlock>> ServerOvermap<S>
                 self.player_position().0
             );
 
+            #[cfg(test)]
+            {
+                panic!();
+            }
+
+            #[allow(unreachable_code)]
             Chunk::new()
         }
     }
@@ -620,7 +626,7 @@ mod tests
     use std::collections::HashMap;
 
     use crate::{
-        common::{TileMap, tilemap::TileLoot, world::TileRotation},
+        common::{get_env_value, TileMap, tilemap::TileLoot, world::TileRotation},
         server::world::SERVER_OVERMAP_SIZE_Z
     };
 
@@ -659,6 +665,16 @@ mod tests
         }
     }
 
+    fn with_seed() -> u64
+    {
+        let rand_seed = get_env_value("STEPHANIE_WORLDSEED").unwrap_or_else(|| fastrand::u64(..));
+        eprintln!("moving_around seed: {rand_seed}");
+
+        fastrand::seed(rand_seed);
+
+        rand_seed
+    }
+
     #[test]
     fn moving_around()
     {
@@ -674,8 +690,10 @@ mod tests
             "textures/tiles/"
         ).unwrap().tilemap;
 
+        let rand_seed = with_seed();
+
         let world_generator = Rc::new(RefCell::new(
-            WorldGenerator::new(saver, Rc::new(tilemap), "world_generation/").unwrap()
+            WorldGenerator::new(saver, rand_seed, Rc::new(tilemap), "world_generation/").unwrap()
         ));
 
         let overmap_size = Pos3::new(10, 11, SERVER_OVERMAP_SIZE_Z);
@@ -685,7 +703,7 @@ mod tests
         {
             let r = |s: usize|
             {
-                let ps = (s as i32).pow(3);
+                let ps = s as i32 * 4;
 
                 fastrand::i32(0..(ps * 2)) - ps
             };
@@ -704,7 +722,7 @@ mod tests
             Pos3::repeat(0.0)
         );
 
-        for _ in 0..30
+        for _ in 0..300
         {
             let _chunk = overmap.generate_chunk(random_chunk(), |_| {});
         }
@@ -726,8 +744,10 @@ mod tests
             "textures/tiles/"
         ).unwrap().tilemap;
 
+        let rand_seed = with_seed();
+
         let world_generator = Rc::new(RefCell::new(
-            WorldGenerator::new(saver, Rc::new(tilemap), "world_generation_test/").unwrap()
+            WorldGenerator::new(saver, rand_seed, Rc::new(tilemap), "world_generation_test/").unwrap()
         ));
 
         let overmap_size = Pos3::new(10, 11, SERVER_OVERMAP_SIZE_Z);
@@ -737,7 +757,7 @@ mod tests
         {
             let r = |s: usize|
             {
-                let ps = (s as i32).pow(2);
+                let ps = s as i32 * 4;
 
                 fastrand::i32(0..(ps * 2)) - ps
             };

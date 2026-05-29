@@ -14,6 +14,7 @@ massif*
 
 /test*
 /log.txt
+/forcedfallbacks.txt
 
 *.rdc
 

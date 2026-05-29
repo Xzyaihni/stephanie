@@ -14,6 +14,7 @@ use crate::{
     server::{DataInfos, ConnectionsHandler},
     common::{
         self,
+        get_env_value,
         world_path,
         world_save_path,
         ServerLoot,
@@ -171,7 +172,11 @@ impl World
         let world_generator = {
             let chunk_saver = WorldChunkSaver::new(world_path.join("world_chunks"), 100);
 
-            WorldGenerator::new(chunk_saver, tilemap.clone(), "world_generation/")
+            let world_seed: u64 = get_env_value("STEPHANIE_WORLDSEED").unwrap_or_else(|| fastrand::u64(..));
+
+            eprintln!("world seed: {world_seed}");
+
+            WorldGenerator::new(chunk_saver, world_seed, tilemap.clone(), "world_generation/")
         }?;
 
         let world_generator = Rc::new(RefCell::new(world_generator));

@@ -2,6 +2,7 @@ use std::{
     f32,
     env,
     iter,
+    str::FromStr,
     borrow::{Cow, Borrow},
     cmp::Ordering,
     hash::{Hash, Hasher},
@@ -1152,6 +1153,16 @@ pub fn sanitized_name(s: &str) -> String
             '_'
         }
     }).collect()
+}
+
+pub fn get_env_value<T: FromStr>(name: &str) -> Option<T>
+where
+    <T as FromStr>::Err: Debug
+{
+    env::var(name).ok().map(|s|
+    {
+        s.parse::<T>().unwrap()
+    })
 }
 
 pub fn debug_env() -> Option<String>

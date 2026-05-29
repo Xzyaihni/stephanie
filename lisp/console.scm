@@ -172,7 +172,11 @@
 
 (define (zob) (set-faction (player-entity) 'zob))
 
+(define (fast) (set-speed (player-entity) 50.0))
+
 (define (give-x-item item amount) (repeat (lambda () (add-item (player-entity) item)) amount))
+
+(define (give-item item) (give-x-item item 1))
 
 (define (givehp)
     (give-x-item 'heal_pills 5)
