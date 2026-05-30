@@ -1278,6 +1278,62 @@ impl ChunkRules
         this
     }
 
+    fn symmetrical_replicate(
+        &mut self,
+        name_mappings: &NameMappings,
+        ids: &[WorldChunkId]
+    ) -> bool
+    {
+        let mut changed = false;
+        ids.iter().for_each(|this_id|
+        {
+            TileRotation::iter().for_each(|direction|
+            {
+                let pos_direction = direction.into();
+
+                (0..self.rules[this_id.0].neighbors[pos_direction].len()).for_each(|index|
+                {
+                    let neighbor_id = self.rules[this_id.0].neighbors[pos_direction][index];
+
+                    if self.rules[neighbor_id.0].symmetry != Symmetry::All
+                    {
+                        return;
+                    }
+
+                    let this = &mut self.rules[this_id.0];
+
+                    let (this_rotation, this_name) = name_mappings.world_chunk.get_back(&neighbor_id).unwrap();
+
+                    [TileRotation::Right, TileRotation::Down, TileRotation::Left].into_iter().for_each(|current_direction|
+                    {
+                        let new_rotation = current_direction.combine(*this_rotation);
+                        if let Some(rotated_neighbor) = name_mappings.world_chunk.get(&(new_rotation, this_name.clone()))
+                        {
+                            if union(&mut this.neighbors[pos_direction], *rotated_neighbor)
+                            {
+                                changed = true;
+                                if let Some(track) = this.track.as_ref()
+                                {
+                                    if *track == direction
+                                    {
+                                        eprintln!(
+                                            "{}: {pos_direction} received {} from symmetrical replication of {}",
+                                            name_mappings.format_id(this_id),
+                                            name_mappings.format_id(rotated_neighbor),
+                                            name_mappings.format_id(&neighbor_id)
+                                        );
+                                    }
+                                }
+                            }
+                        }
+                    });
+                });
+            });
+        });
+
+        changed
+    }
+
     fn self_symmetry_union(
         &mut self,
         name_mappings: &NameMappings,
@@ -1464,6 +1520,8 @@ impl ChunkRules
 
         loop
         {
+            let symmetrical_changed = self.symmetrical_replicate(name_mappings, &rules);
+
             let self_symmetry_changed = self.self_symmetry_union(name_mappings, &rules);
 
             if self_symmetry_changed
@@ -1476,12 +1534,11 @@ impl ChunkRules
             if rotation_symmetry_changed
             {
                 unify_neighbors(self);
-            } else
+            }
+
+            if !symmetrical_changed && !rotation_symmetry_changed && !self_symmetry_changed
             {
-                if !self_symmetry_changed
-                {
-                    break;
-                }
+                break;
             }
         }
     }

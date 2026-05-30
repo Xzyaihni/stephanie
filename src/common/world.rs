@@ -54,6 +54,7 @@ pub use overmap::{
         ChunkLocal,
         GlobalPos,
         LocalPos,
+        CheckedPos,
         PosDirection,
         DirectionsGroup,
         MaybeGroup,

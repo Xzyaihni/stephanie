@@ -149,10 +149,10 @@ macro_rules! implement_common
                 self.chunks.get(self.indexer.to_index(value))
             }
 
-            pub fn get_two_mut(&mut self, one: LocalPos, two: LocalPos) -> (&mut T, &mut T)
+            pub fn get_two_mut(&mut self, one: Pos3<usize>, two: Pos3<usize>) -> (&mut T, &mut T)
             {
-                let one = self.indexer.to_index(one.pos);
-                let two = self.indexer.to_index(two.pos);
+                let one = self.indexer.to_index(one);
+                let two = self.indexer.to_index(two);
 
                 let [a, b] = self.chunks.get_disjoint_mut([one, two]).unwrap();
 

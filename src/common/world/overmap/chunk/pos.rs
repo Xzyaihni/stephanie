@@ -247,6 +247,14 @@ impl<T> From<Pos3<T>> for Vector3<T>
     }
 }
 
+impl From<LocalPos> for Pos3<usize>
+{
+    fn from(value: LocalPos) -> Self
+    {
+        value.pos
+    }
+}
+
 impl From<GlobalPos> for Pos3<f32>
 {
     fn from(value: GlobalPos) -> Self
@@ -1173,6 +1181,12 @@ macro_rules! impl_directionals
         }
     }
 }
+
+#[cfg(debug_assertions)]
+pub type CheckedPos = LocalPos;
+
+#[cfg(not(debug_assertions))]
+pub type CheckedPos = Pos3<usize>;
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
 pub struct LocalPos

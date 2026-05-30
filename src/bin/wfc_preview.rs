@@ -41,6 +41,7 @@ use stephanie::{
     extra_common::*,
     server::world::{
         world_generator::{
+            edge_map,
             WORLD_CHUNK_SIZE,
             WorldChunkId,
             Entropies,
@@ -79,6 +80,8 @@ use stephanie::{
             CHUNK_SIZE,
             TILE_SIZE,
             CHUNK_VISUAL_SIZE,
+            overmap::{CommonIndexing, OvermapIndexing},
+            GlobalPos,
             TileRotation,
             MaybeGroup,
             DirectionsGroup,
@@ -461,6 +464,22 @@ impl ChunkPreviewer
     }
 }
 
+struct SimpleMapper
+{
+    size: Pos3<usize>,
+    pos: Pos3<i32>
+}
+
+impl CommonIndexing for SimpleMapper
+{
+    fn size(&self) -> Pos3<usize> { self.size }
+}
+
+impl OvermapIndexing for SimpleMapper
+{
+    fn player_position(&self) -> GlobalPos { GlobalPos(self.pos) }
+}
+
 struct DrawShaders
 {
     normal: ShaderId,
@@ -564,7 +583,7 @@ impl YanyaApp for ChunkPreviewer
 
                 let local_pos = LocalPos::new(Pos3::new(logical_position.x as usize, logical_position.y as usize, 0), world_size);
 
-                local_pos.in_bounds().then(|| entropies.get(local_pos).clone())
+                local_pos.in_bounds().then(|| entropies.get(edge_map(local_pos)).clone())
             };
 
             let absolute_camera = self.camera_position / self.camera_zoom;
@@ -988,31 +1007,7 @@ impl YanyaApp for ChunkPreviewer
 
             if let Some((entropies, _)) = self.current_generator.as_ref()
             {
-                let mut lowest_entropy = f64::MAX;
-                let mut mins: Vec<LocalPos> = Vec::new();
-
-                for pos in entropies.positions()
-                {
-                    let value = entropies.get(pos);
-
-                    if !value.collapsed()
-                    {
-                        let entropy = value.entropy();
-
-                        if entropy < lowest_entropy
-                        {
-                            lowest_entropy = entropy;
-
-                            mins.clear();
-                            mins.push(pos);
-                        } else if entropy == lowest_entropy
-                        {
-                            mins.push(pos);
-                        }
-                    }
-                }
-
-                mins.iter().enumerate().for_each(|(index, x)|
+                entropies.lowest_entropies().into_iter().enumerate().for_each(|(index, x)|
                 {
                     self.controller.update(UiId::MinHighlight(index as u32), UiElement{
                         texture: UiTexture::Solid,
@@ -1111,7 +1106,12 @@ impl YanyaApp for ChunkPreviewer
 
                 let plane = &mut self.world_chunks.borrow_mut().0;
 
-                let wave_collapser = WaveCollapser::new(SeededRandom::new(), &rules.surface, plane, |_local_pos| 0.0);
+                let mapper = SimpleMapper{
+                    size: plane.size(),
+                    pos: Pos3::new(0, 0, 0)
+                };
+
+                let wave_collapser = WaveCollapser::new(SeededRandom::new(), &rules.surface, plane, &mapper);
 
                 let entropies = wave_collapser.entropies().clone();
 
@@ -1268,14 +1268,14 @@ impl ChunkPreviewer
 
     fn do_step_n(&mut self, n: usize)
     {
-        let next_step_verbose = self.next_step_verbose;
+        let _next_step_verbose = self.next_step_verbose;
         self.with_wave_collapser(|wave_collapser, rng|
         {
             (0..n).for_each(|_|
             {
                 #[cfg(debug_assertions)]
                 {
-                    wave_collapser.set_verbose_constrain(next_step_verbose);
+                    wave_collapser.set_verbose_constrain(_next_step_verbose);
                 }
 
                 wave_collapser.generate_once_force(rng);
@@ -1494,26 +1494,33 @@ mod tests
     {
         let rules = ChunkRulesGroup::load(PathBuf::from("world_generation/")).unwrap();
 
-        let mut plane_one = FlatChunksContainer::new(Pos3::new(5, 5, 1));
+        let size = Pos3::new(5, 5, 1);
+
+        let mapper = SimpleMapper{
+            size,
+            pos: Pos3::new(0, 0, 0)
+        };
+
+        let mut plane_one = FlatChunksContainer::new(size);
 
         let one = {
             let mut rng_one = SeededRandom::from(5);
 
-            let mut wave_collapser_one = WaveCollapser::new(SeededRandom::new(), &rules.surface, &mut plane_one, |_| 0.0);
+            let mut wave_collapser_one = WaveCollapser::new(SeededRandom::new(), &rules.surface, &mut plane_one, &mapper);
             (0..3).for_each(|_| do_test_step(&rules.surface, &mut wave_collapser_one, &mut rng_one));
 
             wave_collapser_one
         };
 
-        let mut plane_two = FlatChunksContainer::new(Pos3::new(5, 5, 1));
+        let mut plane_two = FlatChunksContainer::new(size);
 
         let two = {
             let mut rng_two = SeededRandom::from(5);
 
-            let mut wave_collapser_two_temp = WaveCollapser::new(SeededRandom::new(), &rules.surface, &mut plane_two, |_| 0.0);
+            let mut wave_collapser_two_temp = WaveCollapser::new(SeededRandom::new(), &rules.surface, &mut plane_two, &mapper);
             do_test_step(&rules.surface, &mut wave_collapser_two_temp, &mut rng_two);
 
-            let mut wave_collapser_two = WaveCollapser::new(SeededRandom::new(), &rules.surface, &mut plane_two, |_| 0.0);
+            let mut wave_collapser_two = WaveCollapser::new(SeededRandom::new(), &rules.surface, &mut plane_two, &mapper);
             (0..2).for_each(|_| do_test_step(&rules.surface, &mut wave_collapser_two, &mut rng_two));
 
             wave_collapser_two
