@@ -18,6 +18,7 @@ use crate::{
     common::{
         get_env_value,
         with_error,
+        write_log,
         write_log_ln,
         DebugRaw,
         SeededRandom,
@@ -71,6 +72,16 @@ mod chunk_rules;
 pub fn empty_worldchunk() -> ChunksContainer<Tile>
 {
     ChunksContainer::new(WORLD_CHUNK_SIZE)
+}
+
+fn log_worldchunks(label: &str, world_chunks: &FlatChunksContainer<Option<WorldChunk>>)
+{
+    if let Some(world_chunks_json) = with_error(serde_json::to_string(world_chunks))
+    {
+        write_log(label);
+        write_log_ln(":");
+        write_log_ln(world_chunks_json);
+    }
 }
 
 #[derive(Debug)]
@@ -724,6 +735,11 @@ impl ChunkGenerator
 
                 #[cfg(test)]
                 {
+                    let planes = self.overmaps_world_chunks.borrow();
+                    let this_plane = planes[overmap_index as usize].borrow();
+
+                    log_worldchunks("chunk error", &this_plane.0);
+
                     panic!();
                 }
 
@@ -886,11 +902,7 @@ impl<S: SaveLoad<WorldChunksBlock>> WorldGenerator<S>
             {
                 print_worldchunks(&self.rules, &wave_collapser);
 
-                if let Some(world_chunks_json) = with_error(serde_json::to_string(wave_collapser.world_chunks))
-                {
-                    write_log_ln("this forced fallbacks:");
-                    write_log_ln(world_chunks_json);
-                }
+                log_worldchunks("this forced fallbacks", wave_collapser.world_chunks);
             }
 
             let wave_collapser_state = wave_collapser.restorable_state();
@@ -1609,11 +1621,7 @@ impl<'a, 'm> WaveCollapser<'a, 'm>
 
                     eprintln!("couldnt find a valid worldchunk at {} with {neighbors}, using fallback", fmt_2d(direction_pos.pos));
 
-                    if let Some(world_chunks_json) = with_error(serde_json::to_string(self.world_chunks))
-                    {
-                        write_log_ln("invalid state:");
-                        write_log_ln(world_chunks_json);
-                    }
+                    log_worldchunks("invalid stage", self.world_chunks);
 
                     #[cfg(test)]
                     {

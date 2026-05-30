@@ -61,8 +61,8 @@ mod server_overmap;
 mod marker_tile;
 
 
-pub const SERVER_OVERMAP_SIZE: usize = CLIENT_OVERMAP_SIZE + 3;
-pub const SERVER_OVERMAP_SIZE_Z: usize = CLIENT_OVERMAP_SIZE_Z + 3;
+pub const SERVER_OVERMAP_SIZE: usize = CLIENT_OVERMAP_SIZE + 2;
+pub const SERVER_OVERMAP_SIZE_Z: usize = CLIENT_OVERMAP_SIZE_Z + 2;
 
 type OvermapsType = Rc<RefCell<HashMap<ConnectionId, ServerOvermap<WorldChunkSaver>>>>;
 

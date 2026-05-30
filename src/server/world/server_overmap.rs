@@ -20,6 +20,7 @@ use crate::common::{
     WorldChunksBlock,
     world::{
         CHUNK_SIZE,
+        PosDirection,
         LocalPos,
         GlobalPos,
         Pos3,
@@ -240,7 +241,9 @@ impl<S: SaveLoad<WorldChunksBlock>> ServerOvermap<S>
         assert_eq!(CHUNK_SIZE % WORLD_CHUNK_SIZE.y, 0);
         assert_eq!(CHUNK_SIZE % WORLD_CHUNK_SIZE.z, 0);
 
-        let size = Pos3::new(CHUNK_RATIO.x, CHUNK_RATIO.y, 1) * size;
+        debug_assert!(size.x % 2 != 0 && size.y % 2 != 0, "size must not be even: {size}");
+
+        let size = (Pos3::new(CHUNK_RATIO.x, CHUNK_RATIO.y, 1) * size).map(|x| if x % 2 == 0 { x + 1 } else { x });
 
         let indexer = Indexer::new(size, player_position.rounded());
 
@@ -336,25 +339,17 @@ impl<S: SaveLoad<WorldChunksBlock>> ServerOvermap<S>
 
     fn to_grid_pos(size: Pos3<usize>, world_pos: GlobalPos) -> GlobalPos
     {
+        const MAX_RATIO: usize = if CHUNK_RATIO.x > CHUNK_RATIO.y { CHUNK_RATIO.x } else { CHUNK_RATIO.y };
+
         let non_z_grid = world_pos.0.zip(size).map(|(pos, original_size)|
         {
-            let h = original_size as i32 / 2;
+            let grid_size = original_size as i32 - ((MAX_RATIO as i32 + 1) * 2);
 
-            let pos = pos + (h - 1);
+            let grid = pos - (pos % grid_size);
 
-            let s = original_size as i32 - 3;
+            let top_left = if pos < 0 { grid - grid_size } else { grid };
 
-            if pos < 0
-            {
-                let pos = pos + 1;
-
-                pos - (pos % s) - s
-            } else
-            {
-                let pos = pos - 1;
-
-                pos - (pos % s)
-            }
+            top_left + grid_size / 2
         });
 
         let grid_pos = Pos3{z: world_pos.0.z, ..non_z_grid};
@@ -422,6 +417,9 @@ impl<S: SaveLoad<WorldChunksBlock>> ServerOvermap<S>
                     let this_pos = Pos3{x, y, z};
 
                     let local_pos = local_pos + Pos3{x, y, z: 0};
+
+                    debug_assert!(local_pos.size == world_chunks.size());
+                    debug_assert!(!PosDirection::iter_non_z().any(|direction| local_pos.is_edge(direction)), "{local_pos:?} is an edge pos");
 
                     let this_chunk = world_chunks[local_pos].as_ref().map(|chunk| chunk[z].clone()).unwrap();
 
@@ -696,7 +694,7 @@ mod tests
             WorldGenerator::new(saver, rand_seed, Rc::new(tilemap), "world_generation/").unwrap()
         ));
 
-        let overmap_size = Pos3::new(10, 11, SERVER_OVERMAP_SIZE_Z);
+        let overmap_size = Pos3::new(9, 11, SERVER_OVERMAP_SIZE_Z);
         let size = Pos3::new(overmap_size.x * CHUNK_RATIO.x, overmap_size.y * CHUNK_RATIO.y, SERVER_OVERMAP_SIZE_Z);
 
         let random_chunk = ||
@@ -750,7 +748,7 @@ mod tests
             WorldGenerator::new(saver, rand_seed, Rc::new(tilemap), "world_generation_test/").unwrap()
         ));
 
-        let overmap_size = Pos3::new(10, 11, SERVER_OVERMAP_SIZE_Z);
+        let overmap_size = Pos3::new(9, 11, SERVER_OVERMAP_SIZE_Z);
         let size = Pos3::new(overmap_size.x * CHUNK_RATIO.x, overmap_size.y * CHUNK_RATIO.y, SERVER_OVERMAP_SIZE_Z);
 
         let random_chunk = ||

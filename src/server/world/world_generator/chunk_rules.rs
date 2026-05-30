@@ -1310,11 +1310,20 @@ impl ChunkRules
                     })
                     .for_each(|other_direction|
                     {
-                        let this = &mut self.rules[this_id.0];
-
-                        (0..this.neighbors[pos_direction].len()).for_each(|index|
+                        (0..self.rules[this_id.0].neighbors[pos_direction].len()).for_each(|index|
                         {
-                            let from_id = this.neighbors[pos_direction][index];
+                            let from_id = self.rules[this_id.0].neighbors[pos_direction][index];
+
+                            match self.rules[from_id.0].symmetry
+                            {
+                                Symmetry::None => return,
+                                Symmetry::Horizontal => if !direction.is_vertical() { return },
+                                Symmetry::Vertical => if !direction.is_horizontal() { return },
+                                Symmetry::Both | Symmetry::All => ()
+                            }
+
+                            let this = &mut self.rules[this_id.0];
+
                             let (this_rotation, this_name) = name_mappings.world_chunk.get_back(&from_id).unwrap();
 
                             let new_rotation = other_direction.subtract(direction).combine(*this_rotation);

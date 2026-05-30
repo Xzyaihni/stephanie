@@ -318,6 +318,8 @@ impl ClientOvermap
         player_position: Pos3<f32>
     ) -> Self
     {
+        debug_assert!(size.x % 2 != 0 && size.y % 2 != 0, "size must not be even: {size}");
+
         let indexer = Indexer::new(size, player_position);
 
         let chunks = ChunksContainer::new(size);

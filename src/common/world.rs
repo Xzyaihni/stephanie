@@ -82,7 +82,7 @@ mod sky_light;
 pub mod pathfind;
 
 
-pub const CLIENT_OVERMAP_SIZE: usize = 8;
+pub const CLIENT_OVERMAP_SIZE: usize = 9;
 pub const CLIENT_OVERMAP_SIZE_Z: usize = 3;
 
 pub const DAY_LENGTH: f64 = 60.0 * 6.0;
