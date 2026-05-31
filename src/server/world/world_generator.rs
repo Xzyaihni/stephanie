@@ -74,7 +74,7 @@ pub use chunk_rules::{
 mod chunk_rules;
 
 
-const ENTROPY_EDGE: usize = 1;
+const ENTROPY_EDGE: usize = 3;
 
 pub fn empty_worldchunk() -> ChunksContainer<Tile>
 {
@@ -1691,7 +1691,7 @@ impl<'a, 'm> WaveCollapser<'a, 'm>
     {
         let fmt_2d = |p: Pos3<usize>| -> String
         {
-            format!("[{}, {}]", p.x as i32 - ENTROPY_EDGE as i32, p.y as i32 - ENTROPY_EDGE as i32)
+            format!("{}", Pos2::from(p).map(|x| x as i32 - ENTROPY_EDGE as i32))
         };
 
         pos.directions_group().try_map(|direction, value|

@@ -88,6 +88,14 @@ impl<T> Pos2<T>
     }
 }
 
+impl<T: Display> Display for Pos2<T>
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
+    {
+        write!(f, "[{}, {}]", self.x, self.y)
+    }
+}
+
 impl SizeTensor for Pos2<usize>
 {
     fn product(self) -> usize
