@@ -26,6 +26,7 @@ use super::{
         ChunksContainer,
         Overmap,
         OvermapIndexing,
+        OvermapIndexing3d,
         CommonIndexing,
         chunk::{
             TILE_SIZE,
@@ -71,6 +72,8 @@ impl OvermapIndexing for Indexer
         self.player_position.rounded()
     }
 }
+
+impl OvermapIndexing3d for Indexer {}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct TilePosHeight

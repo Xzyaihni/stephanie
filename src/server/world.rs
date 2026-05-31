@@ -43,7 +43,7 @@ use crate::{
             LocalPos,
             GlobalPos,
             Pos3,
-            overmap::{Overmap, OvermapIndexing, CommonIndexing}
+            overmap::{Overmap, OvermapIndexing, OvermapIndexing3d, CommonIndexing}
         }
     }
 };
@@ -88,6 +88,8 @@ impl OvermapIndexing for ClientIndexer
         self.player_position
     }
 }
+
+impl OvermapIndexing3d for ClientIndexer {}
 
 struct EntitiesTracker
 {

@@ -72,6 +72,7 @@ use stephanie::{
         SeededRandom,
         render_info::*,
         lisp::*,
+        Pos2,
         Pos3,
         FlatChunksContainer,
         TileMap,
@@ -275,7 +276,7 @@ fn parse_rules() -> Option<Rc<ChunkRulesGroup>>
     rules.ok().map(Rc::new)
 }
 
-fn load_prefill() -> Option<(FlatChunksContainer<Option<WorldChunk>>, Vec<(LocalPos, WorldChunkId)>)>
+fn load_prefill() -> Option<(FlatChunksContainer<Option<WorldChunk>>, Vec<(Pos2<i32>, WorldChunkId)>)>
 {
     let prefill_path: String = some_or_return!(get_env_value("STEPHANIE_PREFILLWORLDCHUNKS"));
 
@@ -1107,7 +1108,7 @@ impl YanyaApp for ChunkPreviewer
 
                 let wave_collapser = WaveCollapser::new(SeededRandom::new(), &rules.surface, plane, &mapper, |local_pos_unconverted|
                 {
-                    loader_chunks.iter().find(|x| x.0.pos.map(|x| x as i32) == local_pos_unconverted.0).map(|x| x.1)
+                    loader_chunks.iter().find(|x| x.0 == Pos2::from(local_pos_unconverted.0)).map(|x| x.1)
                 });
 
                 let entropies = wave_collapser.entropies().clone();

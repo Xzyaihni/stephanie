@@ -30,6 +30,7 @@ use crate::common::{
         overmap::{
             Overmap,
             OvermapIndexing,
+            OvermapIndexing3d,
             CommonIndexing,
             FlatChunksContainer,
             ChunksContainer
@@ -71,6 +72,8 @@ impl OvermapIndexing for Indexer
         self.player_position
     }
 }
+
+impl OvermapIndexing3d for Indexer {}
 
 #[derive(Debug)]
 pub struct WorldPlane(pub FlatChunksContainer<Option<WorldChunk>>);
@@ -500,6 +503,8 @@ impl<S> OvermapIndexing for ServerOvermap<S>
     }
 }
 
+impl<S> OvermapIndexing3d for ServerOvermap<S> {}
+
 impl<'a, 'b, 'c, S: SaveLoad<WorldChunksBlock>> ServerOvermapRef<'a, 'b, 'c, S>
 {
     fn generate_missing_inner(&mut self, offset: Option<Pos3<i32>>, surface_override: bool)
@@ -616,6 +621,8 @@ impl<'a, 'b, 'c, S> OvermapIndexing for ServerOvermapRef<'a, 'b, 'c, S>
     }
 }
 
+impl<'a, 'b, 'c, S> OvermapIndexing3d for ServerOvermapRef<'a, 'b, 'c, S> {}
+
 #[cfg(test)]
 mod tests
 {
@@ -720,8 +727,9 @@ mod tests
             Pos3::repeat(0.0)
         );
 
-        for _ in 0..300
+        for i in 0..300
         {
+            eprintln!("running generation {i}");
             let _chunk = overmap.generate_chunk(random_chunk(), |_| {});
         }
     }

@@ -49,6 +49,8 @@ pub use overmap::{
         CHUNK_VISUAL_SIZE,
         TILE_SIZE,
         Axis,
+        SizeTensor,
+        Pos2,
         Pos3,
         Chunk,
         ChunkLocal,

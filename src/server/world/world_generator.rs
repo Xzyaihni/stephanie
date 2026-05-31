@@ -28,6 +28,8 @@ use crate::{
         WorldChunksBlock,
         lisp::{self, *},
         world::{
+            SizeTensor,
+            Pos2,
             Pos3,
             CheckedPos,
             LocalPos,
@@ -37,6 +39,7 @@ use crate::{
                 Indexer,
                 CommonIndexing,
                 OvermapIndexing,
+                OvermapIndexing3d,
                 FlatIndexer,
                 FlatChunksContainer,
                 ChunksContainer
@@ -86,7 +89,7 @@ fn log_worldchunks(
 {
     let world_size = world_chunks.size();
     let entropy_size = world_size + Pos3::new(ENTROPY_EDGE * 2, ENTROPY_EDGE * 2, 0);
-    let edge_chunks: Vec<(LocalPos, WorldChunkId)> = Indexer::new(entropy_size).positions().filter_map(|local_pos|
+    let edge_chunks: Vec<(Pos2<i32>, WorldChunkId)> = Indexer::new(entropy_size).positions().filter_map(|local_pos|
     {
         let pos = local_pos.pos.map(|x| x as i32) - Pos3::new(ENTROPY_EDGE as i32, ENTROPY_EDGE as i32, 0);
 
@@ -95,7 +98,7 @@ fn log_worldchunks(
             return None;
         }
 
-        edges(local_pos).map(|x| (local_pos, x))
+        edges(local_pos).map(|x| (Pos2::from(local_pos.pos).map(|x| x as i32), x))
     }).collect();
 
     let info = (world_chunks.clone(), edge_chunks);
@@ -960,7 +963,7 @@ impl<S: SaveLoad<WorldChunksBlock>> WorldGenerator<S>
         &mut self,
         world_chunks: &mut ChunksContainer<Option<WorldChunksBlock>>,
         world_plane: &WorldPlane,
-        global_mapper: &impl OvermapIndexing
+        global_mapper: &impl OvermapIndexing3d
     )
     {
         debug_assert!(world_plane.all_exist());

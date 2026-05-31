@@ -48,6 +48,91 @@ pub fn to_tile_single(value: f32) -> usize
     ((x / TILE_SIZE) as usize).min(CHUNK_SIZE - 1)
 }
 
+pub trait SizeTensor
+{
+    fn product(self) -> usize;
+    fn from_rectangle(size: Self, index: usize) -> Self;
+    fn to_rectangle(self, size: Self) -> usize;
+}
+
+#[derive(Debug, Clone, Copy, Hash, Eq, PartialEq, Serialize, Deserialize)]
+pub struct Pos2<T>
+{
+    pub x: T,
+    pub y: T
+}
+
+impl<T> Pos2<T>
+{
+    pub fn new(x: T, y: T) -> Self
+    {
+        Self{x, y}
+    }
+
+    pub fn all<F: FnMut(T) -> bool>(self, mut f: F) -> bool
+    {
+        f(self.x) && f(self.y)
+    }
+
+    pub fn map<F: FnMut(T) -> V, V>(self, mut f: F) -> Pos2<V>
+    {
+        Pos2::<V>{x: f(self.x), y: f(self.y)}
+    }
+
+    pub fn zip<V>(self, other: Pos2<V>) -> Pos2<(T, V)>
+    {
+        Pos2{
+            x: (self.x, other.x),
+            y: (self.y, other.y)
+        }
+    }
+}
+
+impl SizeTensor for Pos2<usize>
+{
+    fn product(self) -> usize
+    {
+        self.x * self.y
+    }
+
+    fn from_rectangle(size: Self, index: usize) -> Self
+    {
+        let x = index % size.x;
+        let y = (index / size.x) % size.y;
+
+        Self{x, y}
+    }
+
+    fn to_rectangle(self, Self{x, ..}: Self) -> usize
+    {
+        self.x + self.y * x
+    }
+}
+
+impl<T> From<Pos3<T>> for Pos2<T>
+{
+    fn from(Pos3{x, y, ..}: Pos3<T>) -> Self
+    {
+        Self{x, y}
+    }
+}
+
+impl From<Pos2<i32>> for Pos2<usize>
+{
+    fn from(value: Pos2<i32>) -> Self
+    {
+        value.map(|value| value as usize)
+    }
+}
+
+impl From<Pos2<usize>> for Pos2<i32>
+{
+    fn from(value: Pos2<usize>) -> Self
+    {
+        value.map(|value| value as i32)
+    }
+}
+
 #[derive(Debug, Clone, Copy, Hash, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Pos3<T>
 {
@@ -136,17 +221,32 @@ impl<T> Pos3<T>
         }
     }
 
-    pub fn product(self) -> T
-    where
-        T: Mul<T, Output=T>
-    {
-        self.x * self.y * self.z
-    }
-
     #[allow(dead_code)]
     pub fn cast<V: From<T>>(self) -> Pos3<V>
     {
         self.map(|value| V::from(value))
+    }
+}
+
+impl SizeTensor for Pos3<usize>
+{
+    fn product(self) -> usize
+    {
+        self.x * self.y * self.z
+    }
+
+    fn from_rectangle(size: Self, index: usize) -> Self
+    {
+        let x = index % size.x;
+        let y = (index / size.x) % size.y;
+        let z = index / (size.x * size.y);
+
+        Self{x, y, z}
+    }
+
+    fn to_rectangle(self, Self{x, y, ..}: Self) -> usize
+    {
+        self.x + self.y * x + self.z * x * y
     }
 }
 
@@ -161,15 +261,6 @@ impl Pos3<usize>
                 (0..self.x).map(move |x| Pos3::new(x, y, z))
             })
         })
-    }
-
-    pub fn from_rectangle(size: Pos3<usize>, index: usize) -> Self
-    {
-        let x = index % size.x;
-        let y = (index / size.x) % size.y;
-        let z = index / (size.x * size.y);
-
-        Self{x, y, z}
     }
 }
 
@@ -228,14 +319,6 @@ impl<T: Copy> Pos3<T>
     pub fn repeat(v: T) -> Self
     {
         Self{x: v, y: v, z: v}
-    }
-}
-
-impl<T: Mul<Output=T> + Add<Output=T> + Copy> Pos3<T>
-{
-    pub fn to_rectangle(self, x: T, y: T) -> T
-    {
-        self.x + self.y * x + self.z * x * y
     }
 }
 
@@ -308,7 +391,7 @@ impl<T: Copy + Scalar + fmt::Debug> From<Point3<T>> for Pos3<T>
     }
 }
 
-macro_rules! pos3_op_impl
+macro_rules! pos_op_impl
 {
     ($op_trait:ident, $op_assign:ident, $op_func:ident, $op_assign_func:ident) =>
     {
@@ -355,13 +438,55 @@ macro_rules! pos3_op_impl
                 *self = (self.clone()).$op_func(rhs);
             }
         }
+
+        impl<T: $op_trait<Output=T>> $op_trait for Pos2<T>
+        {
+            type Output = Self;
+
+            fn $op_func(self, rhs: Self) -> Self::Output
+            {
+                Self::new(
+                    self.x.$op_func(rhs.x),
+                    self.y.$op_func(rhs.y)
+                )
+            }
+        }
+
+        impl<T: $op_trait<Output=T> + Copy> $op_trait<T> for Pos2<T>
+        {
+            type Output = Self;
+
+            fn $op_func(self, rhs: T) -> Self::Output
+            {
+                Self::new(
+                    self.x.$op_func(rhs),
+                    self.y.$op_func(rhs)
+                )
+            }
+        }
+
+        impl<T: $op_trait<Output=T> + Copy> $op_assign<T> for Pos2<T>
+        {
+            fn $op_assign_func(&mut self, rhs: T)
+            {
+                *self = self.$op_func(rhs);
+            }
+        }
+
+        impl<T: $op_trait<Output=T> + Clone> $op_assign for Pos2<T>
+        {
+            fn $op_assign_func(&mut self, rhs: Self)
+            {
+                *self = (self.clone()).$op_func(rhs);
+            }
+        }
     }
 }
 
-pos3_op_impl!{Add, AddAssign, add, add_assign}
-pos3_op_impl!{Sub, SubAssign, sub, sub_assign}
-pos3_op_impl!{Mul, MulAssign, mul, mul_assign}
-pos3_op_impl!{Div, DivAssign, div, div_assign}
+pos_op_impl!{Add, AddAssign, add, add_assign}
+pos_op_impl!{Sub, SubAssign, sub, sub_assign}
+pos_op_impl!{Mul, MulAssign, mul, mul_assign}
+pos_op_impl!{Div, DivAssign, div, div_assign}
 
 impl<T: Neg<Output=T>> Neg for Pos3<T>
 {
@@ -389,6 +514,14 @@ impl From<Pos3<usize>> for Pos3<f32>
     }
 }
 
+impl From<Pos3<i32>> for Pos3<usize>
+{
+    fn from(value: Pos3<i32>) -> Self
+    {
+        value.map(|value| value as usize)
+    }
+}
+
 impl From<Pos3<usize>> for Pos3<i32>
 {
     fn from(value: Pos3<usize>) -> Self
@@ -408,7 +541,15 @@ impl From<LocalPos> for Pos3<f32>
 }
 
 #[derive(Debug, Clone, Copy, Hash, Eq, PartialEq, Serialize, Deserialize)]
-pub struct GlobalPos(pub Pos3<i32>);
+pub struct GlobalPos<T=Pos3<i32>>(pub T);
+
+impl GlobalPos<Pos2<i32>>
+{
+    pub fn new_2d(x: i32, y: i32) -> Self
+    {
+        Self(Pos2::new(x, y))
+    }
+}
 
 impl GlobalPos
 {
@@ -493,6 +634,19 @@ impl Neg for GlobalPos
     }
 }
 
+impl From<LocalPos<Pos2<usize>>> for GlobalPos<Pos2<i32>>
+{
+    fn from(value: LocalPos<Pos2<usize>>) -> Self
+    {
+        let LocalPos{pos, ..} = value;
+
+        Self::new_2d(
+            pos.x as i32,
+            pos.y as i32
+        )
+    }
+}
+
 impl From<LocalPos> for GlobalPos
 {
     fn from(value: LocalPos) -> Self
@@ -512,6 +666,14 @@ impl From<Pos3<i32>> for GlobalPos
     fn from(value: Pos3<i32>) -> Self
     {
         Self(value)
+    }
+}
+
+impl From<Pos2<usize>> for GlobalPos<Pos2<i32>>
+{
+    fn from(value: Pos2<usize>) -> Self
+    {
+        Self(value.into())
     }
 }
 
@@ -1189,30 +1351,55 @@ pub type CheckedPos = LocalPos;
 pub type CheckedPos = Pos3<usize>;
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
-pub struct LocalPos
+pub struct LocalPos<T=Pos3<usize>>
 {
-    pub pos: Pos3<usize>,
-    pub size: Pos3<usize>
+    pub pos: T,
+    pub size: T
+}
+
+pub trait BoundsCheckable
+{
+    fn in_bounds(&self) -> bool;
+}
+
+impl BoundsCheckable for LocalPos<Pos2<usize>>
+{
+    fn in_bounds(&self) -> bool
+    {
+        self.pos.zip(self.size).all(|(pos, size)| pos < size)
+    }
+}
+
+impl BoundsCheckable for LocalPos
+{
+    fn in_bounds(&self) -> bool
+    {
+        Self::in_bounds(self)
+    }
 }
 
 impl_directionals!{LocalPos}
 
-impl LocalPos
+impl<T> LocalPos<T>
 {
-    pub fn new(pos: Pos3<usize>, size: Pos3<usize>) -> Self
+    pub fn new(pos: T, size: T) -> Self
     {
         Self{pos, size}
     }
 
-    pub fn from_global(other: GlobalPos, size: Pos3<usize>) -> Option<Self>
+    pub fn from_global<U>(other: GlobalPos<U>, size: T) -> Option<Self>
+    where
+        Self: BoundsCheckable,
+        T: From<U>
     {
-        let GlobalPos(pos) = other;
-
-        let this = Self::new(Pos3::new(pos.x as usize, pos.y as usize, pos.z as usize), size);
+        let this = Self::new(T::from(other.0), size);
 
         this.in_bounds().then_some(this)
     }
+}
 
+impl LocalPos
+{
     pub fn moved(&self, x: usize, y: usize, z: usize) -> Self
     {
         Self{pos: Pos3::new(x, y, z), size: self.size}
@@ -1260,12 +1447,12 @@ impl LocalPos
     #[allow(dead_code)]
     pub fn to_cube(self, side: usize) -> usize
     {
-        self.to_rectangle(side, side)
+        self.to_rectangle(Pos3::repeat(side))
     }
 
-    pub fn to_rectangle(self, x: usize, y: usize) -> usize
+    pub fn to_rectangle(self, size: Pos3<usize>) -> usize
     {
-        self.pos.to_rectangle(x, y)
+        self.pos.to_rectangle(size)
     }
 }
 

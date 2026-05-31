@@ -20,7 +20,7 @@ use crate::{
             CLIENT_OVERMAP_SIZE_Z,
             TILE_SIZE,
             TilePos,
-            overmap::{self, OvermapIndexing},
+            overmap::{self, OvermapIndexing3d},
             chunk::{rounded_single, to_tile_single}
         },
         entity::{iterate_components_with, for_each_component, ClientEntities}
@@ -484,7 +484,7 @@ impl ZMapper
     }
 }
 
-fn player_z(entities: &ClientEntities, mapper: &impl OvermapIndexing) -> Option<usize>
+fn player_z(entities: &ClientEntities, mapper: &impl OvermapIndexing3d) -> Option<usize>
 {
     iterate_components_with!(entities, player, find_map, |entity, _|
     {
@@ -562,7 +562,7 @@ impl SpatialGrid
 {
     pub fn new(
         entities: &ClientEntities,
-        mapper: impl OvermapIndexing,
+        mapper: impl OvermapIndexing3d,
         follow_target: Entity
     ) -> Self
     {
@@ -597,7 +597,7 @@ impl SpatialGrid
     pub fn rebuild_spatial(
         &mut self,
         entities: &ClientEntities,
-        mapper: impl OvermapIndexing,
+        mapper: impl OvermapIndexing3d,
         follow_target: Entity
     )
     {
@@ -624,7 +624,7 @@ impl SpatialGrid
         self.debug_z_nodes(entities, &mapper);
     }
 
-    fn debug_z_nodes(&self, entities: &ClientEntities, mapper: &impl OvermapIndexing)
+    fn debug_z_nodes(&self, entities: &ClientEntities, mapper: &impl OvermapIndexing3d)
     {
         if DebugConfig::is_disabled(DebugTool::DisplaySpatial) && DebugConfig::is_disabled(DebugTool::Spatial)
         {

@@ -24,6 +24,7 @@
                         {"rotation": "Down", "value": "road_t"},
                         "park",
                         "road_end",
+                        {"rotation": "Right", "value": "road_end"},
                         {"rotation": "Left", "value": "road_end"}
                     ],
                     "right": ["building_t"]
@@ -38,6 +39,7 @@
                     "up": [
                         "road_corner",
                         "road_straight",
+                        {"rotation": "Right", "value": "road_corner"},
                         {"rotation": "Left", "value": "road_t"},
                         {"rotation": "Right", "value": "road_end"}
                     ],
@@ -72,6 +74,7 @@
                         {"rotation": "Right", "value": "road_corner"},
                         {"rotation": "Down", "value": "road_corner"},
                         {"rotation": "Down", "value": "road_end"},
+                        {"rotation": "Right", "value": "road_end"},
                         {"rotation": "Left", "value": "road_end"}
                     ]
                 }
@@ -90,6 +93,7 @@
                         "building_br",
                         "park",
                         "road_corner",
+                        "road_end",
                         {"rotation": "Right", "value": "road_end"},
                         {"rotation": "Left", "value": "road_end"},
                         {"rotation": "Right", "value": "road_straight"},
@@ -134,6 +138,7 @@
                         "building_l",
                         "building_bl",
                         "park",
+                        {"rotation": "Down", "value": "road_end"},
                         {"rotation": "Right", "value": "road_end"},
                         {"rotation": "Left", "value": "road_end"},
                         {"rotation": "Right", "value": "road_straight"},
@@ -439,7 +444,7 @@
             "weight": 0.5,
             "neighbors": {
                 "SymmetryNone": {
-                    "up": ["road_t"],
+                    "up": ["road_t", {"rotation": "Left", "value": "road_straight"}],
                     "down": ["park", "bunker"],
                     "right": ["park", "bunker"],
                     "left": ["road_straight"]

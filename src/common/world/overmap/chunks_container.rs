@@ -13,6 +13,7 @@ use serde::{Serialize, Deserialize};
 
 use crate::common::world::{
     Axis,
+    SizeTensor,
     Pos3,
     LocalPos
 };
@@ -227,25 +228,25 @@ macro_rules! implement_common
     }
 }
 
-pub trait CommonIndexing
+pub trait CommonIndexing<T=Pos3<usize>>
+where
+    T: SizeTensor + Copy
 {
-    fn size(&self) -> Pos3<usize>;
+    fn size(&self) -> T;
 
-    fn to_index(&self, pos: Pos3<usize>) -> usize
+    fn to_index(&self, pos: T) -> usize
+    {
+        pos.to_rectangle(self.size())
+    }
+
+    fn index_to_pos(&self, index: usize) -> LocalPos<T>
     {
         let size = self.size();
 
-        pos.to_rectangle(size.x, size.y)
+        LocalPos::new(T::from_rectangle(size, index), size)
     }
 
-    fn index_to_pos(&self, index: usize) -> LocalPos
-    {
-        let size = self.size();
-
-        LocalPos::new(Pos3::from_rectangle(size, index), size)
-    }
-
-    fn positions(self) -> impl Iterator<Item=LocalPos>
+    fn positions(self) -> impl Iterator<Item=LocalPos<T>>
     where
         Self: Sized
     {

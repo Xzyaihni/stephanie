@@ -1,6 +1,13 @@
-use std::cmp::Ordering;
+use std::{
+    fmt::Debug,
+    cmp::Ordering,
+    ops::{Add, Sub, Div}
+};
 
 use chunk::{
+    BoundsCheckable,
+    SizeTensor,
+    Pos2,
     Pos3,
     GlobalPos,
     LocalPos
@@ -52,6 +59,27 @@ impl SimpleMapper
             pos: size.map(|x| x as i32) / 2
         }
     }
+}
+
+pub struct OvermapDimension2;
+pub struct OvermapDimension3;
+
+pub trait OvermapDimension
+{
+    type LP: SizeTensor + Copy;
+    type GP: Copy;
+}
+
+impl OvermapDimension for OvermapDimension2
+{
+    type LP = Pos2<usize>;
+    type GP = Pos2<i32>;
+}
+
+impl OvermapDimension for OvermapDimension3
+{
+    type LP = Pos3<usize>;
+    type GP = Pos3<i32>;
 }
 
 pub trait Overmap<T>: OvermapIndexing
@@ -146,78 +174,60 @@ pub trait Overmap<T>: OvermapIndexing
     }
 }
 
-pub trait OvermapIndexing: CommonIndexing + Sized
+pub trait OvermapIndexing<D=OvermapDimension3>: CommonIndexing<D::LP> + Sized
+where
+    D: OvermapDimension,
+    D::LP: From<D::GP> + Eq + Debug,
+    D::GP: Sub<D::GP, Output=D::GP> + Add<D::GP, Output=D::GP>,
+    LocalPos<D::LP>: BoundsCheckable,
+    GlobalPos<D::GP>: From<D::LP> + Add<GlobalPos<D::GP>, Output=GlobalPos<D::GP>> + Sub<GlobalPos<D::GP>, Output=GlobalPos<D::GP>> + Div<i32, Output=GlobalPos<D::GP>>
 {
-    fn player_position(&self) -> GlobalPos;
+    fn player_position(&self) -> GlobalPos<D::GP>;
 
-    fn default_ordering(&self) -> Box<[LocalPos]>
-    {
-        let size = self.size();
-        let mut ordering = (0..size.x * size.y).map(|index|
-        {
-            (index % size.x, index / size.x)
-        }).collect::<Vec<_>>();
-
-        ordering.sort_unstable_by(move |a, b|
-        {
-            let distance = |(x, y): (usize, usize)| -> f32
-            {
-                let x_offset = x as i32 - size.x as i32 / 2;
-                let y_offset = y as i32 - size.y as i32 / 2;
-
-                ((x_offset.pow(2) + y_offset.pow(2)) as f32).sqrt()
-            };
-
-            distance(*a).partial_cmp(&distance(*b)).unwrap_or(Ordering::Equal)
-        });
-
-        (0..size.z).rev().flat_map(|z|
-        {
-            ordering.iter().map(move |&(x, y)| LocalPos::new(Pos3{x, y, z}, size))
-        }).collect()
-    }
-
-    fn to_local(&self, pos: GlobalPos) -> Option<LocalPos>
+    fn to_local(&self, pos: GlobalPos<D::GP>) -> Option<LocalPos<D::LP>>
     {
         let pos = self.to_local_unconverted(pos);
 
         LocalPos::from_global(pos, self.size())
     }
 
-    fn to_local_unconverted(&self, pos: GlobalPos) -> GlobalPos
+    fn to_local_unconverted(&self, pos: GlobalPos<D::GP>) -> GlobalPos<D::GP>
     {
         let player_distance = pos - self.player_position();
 
         player_distance + GlobalPos::from(self.size()) / 2
     }
 
-    fn to_global(&self, pos: LocalPos) -> GlobalPos
+    fn to_global(&self, pos: LocalPos<D::LP>) -> GlobalPos<D::GP>
     {
         debug_assert!(self.size() == pos.size, "{:?} != {:?}", self.size(), pos.size);
 
-        self.to_global_unconverted(GlobalPos(pos.pos.map(|x| x as i32)))
+        self.to_global_unconverted(GlobalPos::from(pos.pos))
     }
 
-    fn to_global_unconverted(&self, pos: GlobalPos) -> GlobalPos
+    fn to_global_unconverted(&self, pos: GlobalPos<D::GP>) -> GlobalPos<D::GP>
     {
         self.player_offset_unconverted(pos) + self.player_position()
     }
 
-    fn to_global_z(&self, z: usize) -> i32
+    fn player_offset(&self, pos: LocalPos<D::LP>) -> GlobalPos<D::GP>
     {
-        (z as i32 - self.size().z as i32 / 2) + self.player_position().0.z
+        self.player_offset_unconverted(GlobalPos::from(pos.pos))
     }
 
-    fn to_local_z(&self, z: i32) -> Option<usize>
+    fn player_offset_unconverted(&self, pos: GlobalPos<D::GP>) -> GlobalPos<D::GP>
     {
-        to_local_z(self.player_position().0.z, self.size().z, z)
+        pos - GlobalPos::from(self.size()) / 2
     }
 
-    fn inbounds(&self, pos: GlobalPos) -> bool
+    fn inbounds(&self, pos: GlobalPos<D::GP>) -> bool
     {
         self.to_local(pos).is_some()
     }
+}
 
+pub trait OvermapIndexing3d: OvermapIndexing<OvermapDimension3>
+{
     fn over_bounds(&self, pos: GlobalPos, margin: Pos3<i32>) -> Pos3<i32>
     {
         self.over_bounds_with_padding(pos, margin, Pos3::repeat(0))
@@ -252,14 +262,41 @@ pub trait OvermapIndexing: CommonIndexing + Sized
         })
     }
 
-    fn player_offset(&self, pos: LocalPos) -> GlobalPos
+    fn default_ordering(&self) -> Box<[LocalPos]>
     {
-        self.player_offset_unconverted(GlobalPos::from(pos))
+        let size = self.size();
+        let mut ordering = (0..size.x * size.y).map(|index|
+        {
+            (index % size.x, index / size.x)
+        }).collect::<Vec<_>>();
+
+        ordering.sort_unstable_by(move |a, b|
+        {
+            let distance = |(x, y): (usize, usize)| -> f32
+            {
+                let x_offset = x as i32 - size.x as i32 / 2;
+                let y_offset = y as i32 - size.y as i32 / 2;
+
+                ((x_offset.pow(2) + y_offset.pow(2)) as f32).sqrt()
+            };
+
+            distance(*a).partial_cmp(&distance(*b)).unwrap_or(Ordering::Equal)
+        });
+
+        (0..size.z).rev().flat_map(|z|
+        {
+            ordering.iter().map(move |&(x, y)| LocalPos::new(Pos3{x, y, z}, size))
+        }).collect()
     }
 
-    fn player_offset_unconverted(&self, pos: GlobalPos) -> GlobalPos
+    fn to_global_z(&self, z: usize) -> i32
     {
-        pos - GlobalPos::from(self.size()) / 2
+        (z as i32 - self.size().z as i32 / 2) + self.player_position().0.z
+    }
+
+    fn to_local_z(&self, z: i32) -> Option<usize>
+    {
+        to_local_z(self.player_position().0.z, self.size().z, z)
     }
 }
 
@@ -285,6 +322,8 @@ mod tests
             self.0
         }
     }
+
+    impl OvermapIndexing3d for TestOvermap {}
 
     #[test]
     fn over_bounds()

@@ -111,6 +111,7 @@ pub use world::{
     SkyOccludingVertex,
     SkyLightVertex,
     PosDirection,
+    Pos2,
     Pos3,
     Axis,
     FlatChunksContainer,
