@@ -1295,16 +1295,13 @@ impl ChunkRules
                 {
                     let neighbor_id = self.rules[this_id.0].neighbors[pos_direction][index];
 
-                    if self.rules[neighbor_id.0].symmetry != Symmetry::All
-                    {
-                        return;
-                    }
-
-                    let this = &mut self.rules[this_id.0];
+                    let neighbor_symmetry = self.rules[neighbor_id.0].symmetry;
 
                     let (this_rotation, this_name) = name_mappings.world_chunk.get_back(&neighbor_id).unwrap();
 
-                    [TileRotation::Right, TileRotation::Down, TileRotation::Left].into_iter().for_each(|current_direction|
+                    let this = &mut self.rules[this_id.0];
+
+                    let mut for_rotation = |current_direction: TileRotation|
                     {
                         let new_rotation = current_direction.combine(*this_rotation);
                         if let Some(rotated_neighbor) = name_mappings.world_chunk.get(&(new_rotation, this_name.clone()))
@@ -1326,7 +1323,14 @@ impl ChunkRules
                                 }
                             }
                         }
-                    });
+                    };
+
+                    match neighbor_symmetry
+                    {
+                        Symmetry::None | Symmetry::Horizontal | Symmetry::Vertical => return,
+                        Symmetry::Both => for_rotation(TileRotation::Down),
+                        Symmetry::All => [TileRotation::Right, TileRotation::Down, TileRotation::Left].into_iter().for_each(for_rotation)
+                    }
                 });
             });
         });

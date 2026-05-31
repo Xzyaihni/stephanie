@@ -34,6 +34,7 @@ use crate::{
             GlobalPos,
             ChunkLocal,
             overmap::{
+                Indexer,
                 CommonIndexing,
                 OvermapIndexing,
                 FlatIndexer,
@@ -77,9 +78,29 @@ pub fn empty_worldchunk() -> ChunksContainer<Tile>
     ChunksContainer::new(WORLD_CHUNK_SIZE)
 }
 
-fn log_worldchunks(label: &str, world_chunks: &FlatChunksContainer<Option<WorldChunk>>)
+fn log_worldchunks(
+    label: impl Into<String>,
+    world_chunks: &FlatChunksContainer<Option<WorldChunk>>,
+    mut edges: impl FnMut(LocalPos) -> Option<WorldChunkId>
+)
 {
-    if let Some(world_chunks_json) = with_error(serde_json::to_string(world_chunks))
+    let world_size = world_chunks.size();
+    let entropy_size = world_size + Pos3::new(ENTROPY_EDGE * 2, ENTROPY_EDGE * 2, 0);
+    let edge_chunks: Vec<(LocalPos, WorldChunkId)> = Indexer::new(entropy_size).positions().filter_map(|local_pos|
+    {
+        let pos = local_pos.pos.map(|x| x as i32) - Pos3::new(ENTROPY_EDGE as i32, ENTROPY_EDGE as i32, 0);
+
+        if !(0..world_size.x as i32).contains(&pos.x) || !(0..world_size.y as i32).contains(&pos.y)
+        {
+            return None;
+        }
+
+        edges(local_pos).map(|x| (local_pos, x))
+    }).collect();
+
+    let info = (world_chunks.clone(), edge_chunks);
+
+    if let Some(world_chunks_json) = with_error(serde_json::to_string(&info))
     {
         write_log(label);
         write_log_ln(":");
@@ -741,7 +762,7 @@ impl ChunkGenerator
                     let planes = self.overmaps_world_chunks.borrow();
                     let this_plane = planes[overmap_index as usize].borrow();
 
-                    log_worldchunks("chunk error", &this_plane.0);
+                    log_worldchunks("chunk error", &this_plane.0, |_| None);
 
                     panic!();
                 }
@@ -840,9 +861,16 @@ impl<S: SaveLoad<WorldChunksBlock>> WorldGenerator<S>
 
         let rng = SeededRandom::from(rng.next_u64().wrapping_add(self.world_seed));
 
+        let saver = &mut self.saver;
+
         let mut wave_collapser = crate::debug_time_this!{
             "wfc-new",
-            WaveCollapser::new(rng, &self.rules.surface, &mut plane.0, global_mapper)
+            WaveCollapser::new(rng, &self.rules.surface, &mut plane.0, global_mapper, move |global_pos|
+            {
+                debug_assert!(global_pos.0.z == 0);
+
+                saver.load(global_pos).map(|chunk| chunk[0].id())
+            })
         };
 
         if let Some(local) = global_mapper.to_local(GlobalPos::new(0, 0, 0))
@@ -876,8 +904,6 @@ impl<S: SaveLoad<WorldChunksBlock>> WorldGenerator<S>
             let times = get_env_value("STEPHANIE_WFCSAMPLES").unwrap_or(200);
             let success_times = crate::debug_time_this!{"wfc-stability",
             {
-                print_worldchunks(&self.rules, &wave_collapser);
-
                 (0..times)
                     .map(|_| wave_collapser.with_cloned(|mut x|
                     {
@@ -889,7 +915,12 @@ impl<S: SaveLoad<WorldChunksBlock>> WorldGenerator<S>
                     .count()
             }};
 
-            eprintln!("wfc generation success rate: {:.1}% ({success_times}/{times})", success_times as f32 / times as f32 * 100.0);
+            let success_percent = success_times as f32 / times as f32 * 100.0;
+
+            print_worldchunks(&self.rules, &wave_collapser);
+            log_worldchunks(format!("this has {success_percent:.1}% success rate"), wave_collapser.world_chunks, |_| None);
+
+            eprintln!("wfc generation success rate: {success_percent:.1}% ({success_times}/{times})");
         }
 
         let attempts = 10;
@@ -902,7 +933,7 @@ impl<S: SaveLoad<WorldChunksBlock>> WorldGenerator<S>
             {
                 print_worldchunks(&self.rules, &wave_collapser);
 
-                log_worldchunks("this forced fallbacks", wave_collapser.world_chunks);
+                log_worldchunks("this forced fallbacks", wave_collapser.world_chunks, |_| None);
             }
 
             let wave_collapser_state = wave_collapser.restorable_state();
@@ -1187,12 +1218,12 @@ impl PossibleStates
         }
     }
 
-    fn new_collapsed(chunk: &WorldChunk) -> Self
+    fn new_collapsed(id: WorldChunkId) -> Self
     {
-        debug_assert!(chunk.id() != WorldChunkId::none());
+        debug_assert!(id != WorldChunkId::none());
 
         Self{
-            states: vec![PossibleState{id: chunk.id(), weight: 0.0}],
+            states: vec![PossibleState{id, weight: 0.0}],
             total: 1.0,
             entropy: 0.0,
             collapsed: true,
@@ -1360,6 +1391,11 @@ fn edge_unmap(pos: LocalPos) -> Option<LocalPos>
     })
 }
 
+pub fn edge_map_raw(pos: Pos3<i32>) -> Pos3<i32>
+{
+    pos + Pos3::new(ENTROPY_EDGE as i32, ENTROPY_EDGE as i32, 0)
+}
+
 fn edge_map_local(mut pos: LocalPos) -> LocalPos
 {
     pos.size += Pos3::new(ENTROPY_EDGE * 2, ENTROPY_EDGE * 2, 0);
@@ -1369,13 +1405,13 @@ fn edge_map_local(mut pos: LocalPos) -> LocalPos
 }
 
 #[cfg(debug_assertions)]
-pub fn edge_map(pos: LocalPos) -> LocalPos
+fn edge_map(pos: LocalPos) -> LocalPos
 {
     edge_map_local(pos)
 }
 
 #[cfg(not(debug_assertions))]
-pub fn edge_map(pos: Pos3<usize>) -> Pos3<usize>
+fn edge_map(pos: Pos3<usize>) -> Pos3<usize>
 {
     pos + Pos3::new(ENTROPY_EDGE, ENTROPY_EDGE, 0)
 }
@@ -1395,6 +1431,11 @@ impl Debug for Entropies
 
 impl Entropies
 {
+    pub fn size(&self) -> Pos3<usize>
+    {
+        self.0.size()
+    }
+
     pub fn positions(&self) -> impl Iterator<Item=LocalPos>
     {
         self.0.positions()
@@ -1523,7 +1564,8 @@ impl<'a, 'm> WaveCollapser<'a, 'm>
         rng: SeededRandom,
         rules: &'a ChunkRules,
         world_chunks: &'m mut FlatChunksContainer<Option<WorldChunk>>,
-        global_mapper: &M
+        global_mapper: &M,
+        mut edge_chunk: impl FnMut(GlobalPos) -> Option<WorldChunkId>
     ) -> Self
     {
         let entropies_size = world_chunks.size() + Pos3::new(ENTROPY_EDGE * 2, ENTROPY_EDGE * 2, 0);
@@ -1531,21 +1573,31 @@ impl<'a, 'm> WaveCollapser<'a, 'm>
         {
             let shifted_pos = pos.pos.map(|x| x as i32) - Pos3::new(ENTROPY_EDGE as i32, ENTROPY_EDGE as i32, 0);
 
+            let global_pos = global_mapper.to_global_unconverted(GlobalPos(shifted_pos));
+
             let new_uncollapsed = ||
             {
-                let difficulty = chunk_difficulty(global_mapper.to_local_unconverted(GlobalPos(shifted_pos)));
-
-                PossibleStates::new(rules, difficulty)
+                PossibleStates::new(rules, chunk_difficulty(global_pos))
             };
 
-            if shifted_pos.x < 0 || shifted_pos.y < 0
+            let size = world_chunks.size();
+
+            if !(0..size.x as i32).contains(&shifted_pos.x) || !(0..size.y as i32).contains(&shifted_pos.y)
             {
-                return new_uncollapsed();
+                let states = if let Some(id) = edge_chunk(global_pos)
+                {
+                    PossibleStates::new_collapsed(id)
+                } else
+                {
+                    new_uncollapsed()
+                };
+
+                return states;
             }
 
-            if let Some(chunk) = world_chunks.get(shifted_pos.map(|x| x as usize)).map(|x| x.as_ref()).flatten()
+            if let Some(chunk) = world_chunks.get(shifted_pos.map(|x| x as usize)).unwrap()
             {
-                PossibleStates::new_collapsed(chunk)
+                PossibleStates::new_collapsed(chunk.id())
             } else
             {
                 new_uncollapsed()
@@ -1692,7 +1744,15 @@ impl<'a, 'm> WaveCollapser<'a, 'm>
 
                     eprintln!("couldnt find a valid worldchunk at {} with {neighbors}, using fallback", fmt_2d(direction_pos.pos));
 
-                    log_worldchunks("invalid stage", self.world_chunks);
+                    log_worldchunks("invalid stage", self.world_chunks, |local_pos|
+                    {
+                        let possible_states = &self.entropies.get(local_pos.into()).states;
+
+                        (possible_states.len() == 1).then(||
+                        {
+                            possible_states[0].id
+                        })
+                    });
 
                     #[cfg(test)]
                     {

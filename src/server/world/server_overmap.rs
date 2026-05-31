@@ -343,14 +343,14 @@ impl<S: SaveLoad<WorldChunksBlock>> ServerOvermap<S>
 
         let non_z_grid = world_pos.0.zip(size).map(|(pos, original_size)|
         {
-            let grid_size = original_size as i32 - ((MAX_RATIO as i32 + 1) * 2);
+            let grid_size = original_size as i32 - (MAX_RATIO as i32 * 2);
 
             let grid = pos - (pos % grid_size);
 
             let top_left = if pos < 0 { grid - grid_size } else { grid };
 
             top_left + grid_size / 2
-        });
+        }) + CHUNK_RATIO.map(|x| x as i32) / 2;
 
         let grid_pos = Pos3{z: world_pos.0.z, ..non_z_grid};
 

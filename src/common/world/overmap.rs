@@ -27,6 +27,33 @@ pub fn to_local_z(position: i32, size: usize, z: i32) -> Option<usize>
     (0..size as i32).contains(&z).then_some(z as usize)
 }
 
+pub struct SimpleMapper
+{
+    pub size: Pos3<usize>,
+    pub pos: Pos3<i32>
+}
+
+impl CommonIndexing for SimpleMapper
+{
+    fn size(&self) -> Pos3<usize> { self.size }
+}
+
+impl OvermapIndexing for SimpleMapper
+{
+    fn player_position(&self) -> GlobalPos { GlobalPos(self.pos) }
+}
+
+impl SimpleMapper
+{
+    pub fn identity(size: Pos3<usize>) -> Self
+    {
+        Self{
+            size,
+            pos: size.map(|x| x as i32) / 2
+        }
+    }
+}
+
 pub trait Overmap<T>: OvermapIndexing
 {
     fn remove(&mut self, pos: LocalPos);
@@ -168,7 +195,12 @@ pub trait OvermapIndexing: CommonIndexing + Sized
     {
         debug_assert!(self.size() == pos.size, "{:?} != {:?}", self.size(), pos.size);
 
-        self.player_offset(pos) + self.player_position()
+        self.to_global_unconverted(GlobalPos(pos.pos.map(|x| x as i32)))
+    }
+
+    fn to_global_unconverted(&self, pos: GlobalPos) -> GlobalPos
+    {
+        self.player_offset_unconverted(pos) + self.player_position()
     }
 
     fn to_global_z(&self, z: usize) -> i32
@@ -222,7 +254,12 @@ pub trait OvermapIndexing: CommonIndexing + Sized
 
     fn player_offset(&self, pos: LocalPos) -> GlobalPos
     {
-        GlobalPos::from(pos) - GlobalPos::from(self.size()) / 2
+        self.player_offset_unconverted(GlobalPos::from(pos))
+    }
+
+    fn player_offset_unconverted(&self, pos: GlobalPos) -> GlobalPos
+    {
+        pos - GlobalPos::from(self.size()) / 2
     }
 }
 
