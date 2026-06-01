@@ -75,6 +75,7 @@ use stephanie::{
         some_or_unexpected_return,
         render_info::*,
         lisp::*,
+        Pos2,
         Pos3,
         FlatChunksContainer,
         Sprite,
@@ -327,7 +328,7 @@ struct ChunkPreview
 struct Tags
 {
     name: TextboxWrapper,
-    chunks: Vec<(Pos3<usize>, TextboxWrapper)>,
+    chunks: Vec<(Pos2<usize>, TextboxWrapper)>,
     height: i32,
     difficulty: f32,
     rotation: TileRotation,
@@ -575,7 +576,7 @@ impl YanyaApp for ChunkPreviewer
 
         let tags = ModifiedWatcher::new(PARENT_DIRECTORY, Tags{
             name: String::new().into(),
-            chunks: (0..9).map(|i| (Pos3::new((i % 3) + 1, (i / 3) + 1, 0), String::new().into())).collect(),
+            chunks: (0..9).map(|i| (Pos2::new((i % 3) + 1, (i / 3) + 1), String::new().into())).collect(),
             height: 0,
             difficulty: 0.0,
             rotation: TileRotation::Up,
@@ -585,7 +586,7 @@ impl YanyaApp for ChunkPreviewer
 
         let preview = None;
 
-        let world_chunks = Rc::new(RefCell::new(WorldPlane(FlatChunksContainer::new(Pos3::new(5, 5, 1)))));
+        let world_chunks = Rc::new(RefCell::new(WorldPlane(FlatChunksContainer::new(Pos2::new(5, 5)))));
 
         let assets_dependent = ModifiedWatcher::new_many(
             vec!["textures".into(), "info".into(), "lisp".into()],
@@ -919,7 +920,7 @@ impl YanyaApp for ChunkPreviewer
                 fastrand::seed(seed);
             }
 
-            let set_chunk = |pos: Pos3<usize>, name: String, tags|
+            let set_chunk = |pos: Pos2<usize>, name: String, tags|
             {
                 let chunks_rotation = self.preview_tags.rotation;
 
@@ -936,7 +937,7 @@ impl YanyaApp for ChunkPreviewer
                 *world_chunk = Some(WorldChunk::default());
             });
 
-            self.preview_tags.chunks.iter().for_each(|(pos, x): &(Pos3<usize>, TextboxWrapper)|
+            self.preview_tags.chunks.iter().for_each(|(pos, x): &(Pos2<usize>, TextboxWrapper)|
             {
                 fn ti(x: usize) -> i32 { x as i32 - 2 }
                 fn tu(x: i32) -> usize { (x + 2) as usize }
@@ -944,9 +945,9 @@ impl YanyaApp for ChunkPreviewer
                 let rotated_pos = match self.preview_tags.rotation
                 {
                     TileRotation::Up => *pos,
-                    TileRotation::Right => Pos3::new(tu(-ti(pos.y)), pos.x, pos.z),
-                    TileRotation::Down => Pos3::new(tu(-ti(pos.x)), tu(-ti(pos.y)), pos.z),
-                    TileRotation::Left => Pos3::new(pos.y, tu(-ti(pos.x)), pos.z)
+                    TileRotation::Right => Pos2::new(tu(-ti(pos.y)), pos.x),
+                    TileRotation::Down => Pos2::new(tu(-ti(pos.x)), tu(-ti(pos.y))),
+                    TileRotation::Left => Pos2::new(pos.y, tu(-ti(pos.x)))
                 };
 
                 set_chunk(rotated_pos, x.0.text.clone(), Vec::new());
@@ -970,17 +971,17 @@ impl YanyaApp for ChunkPreviewer
                 }).collect::<Vec<_>>()
             };
 
-            set_chunk(Pos3::new(2, 2, 0), self.preview_tags.name.0.text.clone(), middle_tags.clone());
+            set_chunk(Pos2::new(2, 2), self.preview_tags.name.0.text.clone(), middle_tags.clone());
 
             let mut chunk_objects = Vec::new();
 
             let mut markers = Vec::new();
-            let mut create_chunk_at = |chunk_pos: Pos3<usize>|
+            let mut create_chunk_at = |chunk_pos: Pos2<usize>|
             {
-                let pos_offset: Vector3<f32> = Vector3::from(chunk_pos.map(|x| x as i32) - Pos3::new(2_i32, 2_i32, 0)).cast();
+                let pos_offset: Vector3<f32> = Vector3::from(chunk_pos.map(|x| x as i32 - 2).with_z(0)).cast();
 
                 let chunk_info = ConditionalInfo{
-                    position: LocalPos::new(chunk_pos, Pos3::new(3, 3, 1)),
+                    position: LocalPos::new(chunk_pos, Pos2::new(3, 3)),
                     height: self.preview_tags.height,
                     difficulty: self.preview_tags.difficulty
                 };
@@ -1183,7 +1184,7 @@ impl YanyaApp for ChunkPreviewer
             {
                 (0..3).map(move |y|
                 {
-                    Pos3::new(x + 1, y + 1, 0)
+                    Pos2::new(x + 1, y + 1)
                 })
             }).for_each(|pos|
             {

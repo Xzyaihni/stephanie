@@ -23,12 +23,15 @@ use crate::common::{
         PosDirection,
         LocalPos,
         GlobalPos,
+        Pos2,
         Pos3,
         Chunk,
         ChunkLocal,
         chunk::tile::Tile,
         overmap::{
             Overmap,
+            OvermapDimension2,
+            OvermapDimension3,
             OvermapIndexing,
             OvermapIndexing3d,
             CommonIndexing,
@@ -57,11 +60,27 @@ impl Indexer
     }
 }
 
+impl CommonIndexing<Pos2<usize>> for Indexer
+{
+    fn size(&self) -> Pos2<usize>
+    {
+        self.size.into()
+    }
+}
+
 impl CommonIndexing for Indexer
 {
     fn size(&self) -> Pos3<usize>
     {
         self.size
+    }
+}
+
+impl OvermapIndexing<OvermapDimension2> for Indexer
+{
+    fn player_position(&self) -> GlobalPos<Pos2<i32>>
+    {
+        self.player_position.into()
     }
 }
 
@@ -86,9 +105,8 @@ impl WorldPlane
         self.0.iter().all(|x| x.1.is_some())
     }
 
-    pub fn world_chunk(&self, pos: LocalPos) -> &WorldChunk
+    pub fn world_chunk(&self, pos: LocalPos<Pos2<usize>>) -> &WorldChunk
     {
-        // flatindexer ignores the z pos, so i dont have to clear it
         self.0[pos].as_ref().expect("worldchunk must exist")
     }
 }
@@ -252,7 +270,7 @@ impl<S: SaveLoad<WorldChunksBlock>> ServerOvermap<S>
 
         let world_chunks = Rc::new(RefCell::new(ChunksContainer::new(size)));
 
-        let world_plane = Rc::new(RefCell::new(WorldPlane(FlatChunksContainer::new(size))));
+        let world_plane = Rc::new(RefCell::new(WorldPlane(FlatChunksContainer::new(size.into()))));
 
         world_generator.borrow().push_world_chunks(world_plane.clone());
 
@@ -398,7 +416,7 @@ impl<S: SaveLoad<WorldChunksBlock>> ServerOvermap<S>
 
     fn shift_overmap_by(&mut self, shift_offset: Pos3<i32>)
     {
-        self.indexer.player_position += shift_offset;
+        self.indexer.player_position += GlobalPos(shift_offset);
 
         self.with_ref(|mut overmap| overmap.position_offset(shift_offset))
     }
@@ -435,9 +453,9 @@ impl<S: SaveLoad<WorldChunksBlock>> ServerOvermap<S>
                         let global_pos = self.to_global(local_pos);
 
                         ConditionalInfo{
-                            position: local_pos,
+                            position: local_pos.into(),
                             height: global_pos.0.z * CHUNK_RATIO.z as i32 + z as i32,
-                            difficulty: chunk_difficulty(global_pos)
+                            difficulty: chunk_difficulty(global_pos.into())
                         }
                     };
 
@@ -524,7 +542,7 @@ impl<'a, 'b, 'c, S: SaveLoad<WorldChunksBlock>> ServerOvermapRef<'a, 'b, 'c, S>
 
             if let Some(local_z) = local_z
             {
-                let mut surface_blocks = self.world_chunks.map_slice_ref(local_z, |(_pos, chunk)| chunk.clone());
+                let mut surface_blocks = self.world_chunks.map_slice_3d_ref(local_z, |(_pos, chunk)| chunk.clone());
 
                 {
                     let mut outside_indexer = self.indexer.clone();
@@ -544,21 +562,22 @@ impl<'a, 'b, 'c, S: SaveLoad<WorldChunksBlock>> ServerOvermapRef<'a, 'b, 'c, S>
 
                 surface_blocks.into_iter().for_each(|(pos, block)|
                 {
-                    let pos = LocalPos::new(Pos3{z: local_z, ..pos.pos}, Pos3{z: self.indexer.size.z, ..pos.size});
-                    self.world_chunks[pos] = block;
+                    self.world_chunks[Pos2::from(pos.pos).with_z(local_z)] = block;
                 });
             } else
             {
                 debug_assert!(!surface_override);
 
-                let new_offset = Pos3::new(0, 0, -self.indexer.player_position().0.z);
+                let player_z = OvermapIndexing::<OvermapDimension3>::player_position(&self.indexer).0.z;
 
-                self.indexer.player_position += new_offset;
+                let new_offset = Pos3::new(0, 0, -player_z);
+
+                self.indexer.player_position += GlobalPos(new_offset);
                 self.shift_chunks(new_offset);
 
                 self.generate_missing_inner(None, true);
 
-                self.indexer.player_position -= new_offset;
+                self.indexer.player_position -= GlobalPos(new_offset);
                 self.shift_chunks(-new_offset);
             }
         }
@@ -757,7 +776,7 @@ mod tests
         ));
 
         let overmap_size = Pos3::new(9, 11, SERVER_OVERMAP_SIZE_Z);
-        let size = Pos3::new(overmap_size.x * CHUNK_RATIO.x, overmap_size.y * CHUNK_RATIO.y, SERVER_OVERMAP_SIZE_Z);
+        let size = Pos3::new(overmap_size.x * CHUNK_RATIO.x + 1, overmap_size.y * CHUNK_RATIO.y + 1, SERVER_OVERMAP_SIZE_Z);
 
         let random_chunk = ||
         {

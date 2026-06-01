@@ -1,4 +1,5 @@
 use std::{
+    marker::PhantomData,
     fmt::{self, Display, Debug},
     vec::IntoIter as VecIntoIter,
     slice::{
@@ -14,6 +15,7 @@ use serde::{Serialize, Deserialize};
 use crate::common::world::{
     Axis,
     SizeTensor,
+    Pos2,
     Pos3,
     LocalPos
 };
@@ -21,11 +23,11 @@ use crate::common::world::{
 
 macro_rules! implement_common
 {
-    ($name:ident, $indexer_name:ident) =>
+    ($name:ident, $indexer_name:ident, $tensor_t:ident) =>
     {
         impl<T: Default> $name<T>
         {
-            pub fn new(size: Pos3<usize>) -> Self
+            pub fn new(size: $tensor_t<usize>) -> Self
             {
                 Self::new_with(size, |_| Default::default())
             }
@@ -33,8 +35,8 @@ macro_rules! implement_common
 
         impl<T> IntoIterator for $name<T>
         {
-            type Item = (LocalPos, T);
-            type IntoIter = IntoIter<$indexer_name, T>;
+            type Item = (LocalPos<$tensor_t<usize>>, T);
+            type IntoIter = IntoIter<$indexer_name, T, $tensor_t<usize>>;
 
             fn into_iter(self) -> Self::IntoIter
             {
@@ -44,7 +46,7 @@ macro_rules! implement_common
 
         impl<T> $name<T>
         {
-            pub fn from_raw(size: Pos3<usize>, chunks: Box<[T]>) -> Self
+            pub fn from_raw(size: $tensor_t<usize>, chunks: Box<[T]>) -> Self
             {
                 let indexer = $indexer_name::new(size);
 
@@ -62,7 +64,7 @@ macro_rules! implement_common
                 Self{chunks, indexer}
             }
 
-            pub fn new_with<F: FnMut(LocalPos) -> T>(size: Pos3<usize>, mut default_function: F) -> Self
+            pub fn new_with<F: FnMut(LocalPos<$tensor_t<usize>>) -> T>(size: $tensor_t<usize>, mut default_function: F) -> Self
             {
                 let indexer = $indexer_name::new(size);
 
@@ -94,7 +96,7 @@ macro_rules! implement_common
 
             pub fn map_pos<F, U>(&self, mut f: F) -> $name<U>
             where
-                F: FnMut(LocalPos, &T) -> U
+                F: FnMut(LocalPos<$tensor_t<usize>>, &T) -> U
             {
                 $name::from_raw_indexer(
                     self.chunks.iter().enumerate().map(|(index, chunk)| f(self.indexer.index_to_pos(index), chunk)).collect(),
@@ -110,18 +112,18 @@ macro_rules! implement_common
             }
 
             #[allow(dead_code)]
-            fn to_index(&self, pos: Pos3<usize>) -> usize
+            fn to_index(&self, pos: $tensor_t<usize>) -> usize
             {
                 self.indexer.to_index(pos)
             }
 
             #[allow(dead_code)]
-            fn index_to_pos(&self, index: usize) -> LocalPos
+            fn index_to_pos(&self, index: usize) -> LocalPos<$tensor_t<usize>>
             {
                 self.indexer.index_to_pos(index)
             }
 
-            pub fn swap(&mut self, a: LocalPos, b: LocalPos)
+            pub fn swap(&mut self, a: LocalPos<$tensor_t<usize>>, b: LocalPos<$tensor_t<usize>>)
             {
                 let (index_a, index_b) = (self.indexer.to_index(a.pos), self.indexer.to_index(b.pos));
 
@@ -129,7 +131,7 @@ macro_rules! implement_common
             }
 
             #[allow(dead_code)]
-            pub fn size(&self) -> Pos3<usize>
+            pub fn size(&self) -> $tensor_t<usize>
             {
                 self.indexer.size
             }
@@ -140,7 +142,7 @@ macro_rules! implement_common
                 self.chunks.len()
             }
 
-            pub fn get(&self, value: Pos3<usize>) -> Option<&T>
+            pub fn get(&self, value: $tensor_t<usize>) -> Option<&T>
             {
                 if value.x >= self.indexer.size.x || value.y >= self.indexer.size.y
                 {
@@ -150,7 +152,7 @@ macro_rules! implement_common
                 self.chunks.get(self.indexer.to_index(value))
             }
 
-            pub fn get_two_mut(&mut self, one: Pos3<usize>, two: Pos3<usize>) -> (&mut T, &mut T)
+            pub fn get_two_mut(&mut self, one: $tensor_t<usize>, two: $tensor_t<usize>) -> (&mut T, &mut T)
             {
                 let one = self.indexer.to_index(one);
                 let two = self.indexer.to_index(two);
@@ -160,66 +162,66 @@ macro_rules! implement_common
                 (a, b)
             }
 
-            pub fn positions(&self) -> impl Iterator<Item=LocalPos>
+            pub fn positions(&self) -> impl Iterator<Item=LocalPos<$tensor_t<usize>>>
             {
                 let indexer = self.indexer.clone();
 
                 indexer.positions()
             }
 
-            pub fn positions_2d(&self) -> impl Iterator<Item=LocalPos>
+            pub fn positions_2d(&self) -> impl Iterator<Item=LocalPos<$tensor_t<usize>>>
             {
                 self.indexer.size().clone().positions_2d()
             }
 
-            pub fn iter(&self) -> Iter<'_, $indexer_name, T>
+            pub fn iter(&self) -> Iter<'_, $indexer_name, T, $tensor_t<usize>>
             {
                 Iter::new(self.chunks.iter(), self.indexer.clone())
             }
 
-            pub fn iter_mut(&mut self) -> IterMut<'_, $indexer_name, T>
+            pub fn iter_mut(&mut self) -> IterMut<'_, $indexer_name, T, $tensor_t<usize>>
             {
                 IterMut::new(self.chunks.iter_mut(), self.indexer.clone())
             }
 
-            fn verify_pos(&self, pos: LocalPos)
+            fn verify_pos(&self, pos: LocalPos<$tensor_t<usize>>)
             {
                 debug_assert!(pos.size == self.indexer.size, "{} != {}", pos.size, self.indexer.size);
             }
         }
 
-        impl<T> Index<Pos3<usize>> for $name<T>
+        impl<T> Index<$tensor_t<usize>> for $name<T>
         {
             type Output = T;
 
-            fn index(&self, value: Pos3<usize>) -> &Self::Output
+            fn index(&self, value: $tensor_t<usize>) -> &Self::Output
             {
                 &self.chunks[self.indexer.to_index(value)]
             }
         }
 
-        impl<T> IndexMut<Pos3<usize>> for $name<T>
+        impl<T> IndexMut<$tensor_t<usize>> for $name<T>
         {
-            fn index_mut(&mut self, value: Pos3<usize>) -> &mut Self::Output
+            fn index_mut(&mut self, value: $tensor_t<usize>) -> &mut Self::Output
             {
                 &mut self.chunks[self.indexer.to_index(value)]
             }
         }
 
-        impl<T> Index<LocalPos> for $name<T>
+        impl<T> Index<LocalPos<$tensor_t<usize>>> for $name<T>
         {
             type Output = T;
 
-            fn index(&self, value: LocalPos) -> &Self::Output
+            fn index(&self, value: LocalPos<$tensor_t<usize>>) -> &Self::Output
             {
                 self.verify_pos(value);
                 &self.chunks[self.indexer.to_index(value.pos)]
             }
         }
 
-        impl<T> IndexMut<LocalPos> for $name<T>
+        impl<T> IndexMut<LocalPos<$tensor_t<usize>>> for $name<T>
         {
-            fn index_mut(&mut self, value: LocalPos) -> &mut Self::Output
+            fn index_mut(&mut self, value: LocalPos<$tensor_t<usize>>) -> &mut Self::Output
             {
                 self.verify_pos(value);
                 &mut self.chunks[self.indexer.to_index(value.pos)]
@@ -254,31 +256,30 @@ where
     }
 }
 
-pub type ValuePair<T> = (LocalPos, T);
+pub type ValuePair<C, T> = (LocalPos<C>, T);
 
 macro_rules! impl_iter
 {
     ($name:ident, $other_iter:ident $(, $l:lifetime)?) =>
     {
-        pub struct $name<$($l, )?I, T>
+        pub struct $name<$($l, )?I, T, C>
         {
             data: Enumerate<$other_iter<$($l, )?T>>,
-            indexer: I
+            indexer: I,
+            phantom: PhantomData<C>
         }
 
-        impl<$($l, )?I, T> $name<$($l, )?I, T>
+        impl<$($l, )?I: CommonIndexing<C>, T, C: Copy + SizeTensor> $name<$($l, )?I, T, C>
         {
             pub fn new(data: $other_iter<$($l, )?T>, indexer: I) -> Self
             {
-                Self{data: data.enumerate(), indexer}
+                Self{data: data.enumerate(), indexer, phantom: PhantomData}
             }
         }
 
-        impl<$($l, )?I, T> Iterator for $name<$($l, )?I, T>
-        where
-            I: CommonIndexing
+        impl<$($l, )?I: CommonIndexing<C>, T, C: Copy + SizeTensor> Iterator for $name<$($l, )?I, T, C>
         {
-            type Item = ValuePair<<$other_iter<$($l, )?T> as Iterator>::Item>;
+            type Item = ValuePair<C, <$other_iter<$($l, )?T> as Iterator>::Item>;
 
             fn next(&mut self) -> Option<Self::Item>
             {
@@ -286,9 +287,7 @@ macro_rules! impl_iter
             }
         }
 
-        impl<$($l, )?I, T> DoubleEndedIterator for $name<$($l, )?I, T>
-        where
-            I: CommonIndexing
+        impl<$($l, )?I: CommonIndexing<C>, T, C: Copy + SizeTensor> DoubleEndedIterator for $name<$($l, )?I, T, C>
         {
             fn next_back(&mut self) -> Option<Self::Item>
             {
@@ -331,7 +330,7 @@ pub struct ChunksContainer<T>
     indexer: Indexer
 }
 
-implement_common!{ChunksContainer, Indexer}
+implement_common!{ChunksContainer, Indexer, Pos3}
 
 impl<T> ChunksContainer<T>
 {
@@ -376,16 +375,16 @@ impl<T> ChunksContainer<T>
     }
 
     #[allow(dead_code)]
-    pub fn flat_slice_iter(&self, z: usize) -> Iter<'_, FlatIndexer, T>
+    pub fn flat_slice_iter(&self, z: usize) -> Iter<'_, FlatIndexer, T, Pos2<usize>>
     {
         let s = self.flat_slice(z).iter();
 
-        Iter::new(s, FlatIndexer::from(self.indexer.clone()).with_z(z))
+        Iter::new(s, FlatIndexer::from(self.indexer.clone()))
     }
 
-    pub fn flat_slice_iter_mut(&mut self, z: usize) -> IterMut<'_, FlatIndexer, T>
+    pub fn flat_slice_iter_mut(&mut self, z: usize) -> IterMut<'_, FlatIndexer, T, Pos2<usize>>
     {
-        let indexer = FlatIndexer::from(self.indexer.clone()).with_z(z);
+        let indexer = FlatIndexer::from(self.indexer.clone());
         let s = self.flat_slice_mut(z).iter_mut();
 
         IterMut::new(s, indexer)
@@ -393,11 +392,23 @@ impl<T> ChunksContainer<T>
 
     pub fn map_slice_ref<U, F>(&self, z: usize, f: F) -> FlatChunksContainer<U>
     where
-        F: FnMut((LocalPos, &T)) -> U
+        F: FnMut((LocalPos<Pos2<usize>>, &T)) -> U
     {
         FlatChunksContainer::from_raw_indexer(
             self.flat_slice_iter(z).map(f).collect(),
             self.indexer.clone().into()
+        )
+    }
+
+    pub fn map_slice_3d_ref<U, F>(&self, z: usize, mut f: F) -> ChunksContainer<U>
+    where
+        F: FnMut((LocalPos, &T)) -> U
+    {
+        let z_size = self.indexer.size.z;
+
+        ChunksContainer::from_raw_indexer(
+            self.flat_slice_iter(z).map(|(pos, x)| f((pos.with_z(z, z_size), x))).collect(),
+            Indexer{size: Pos3{z: 1, ..self.indexer.size}}
         )
     }
 
@@ -412,29 +423,19 @@ impl<T> ChunksContainer<T>
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FlatIndexer
 {
-    size: Pos3<usize>,
-    z: usize
+    size: Pos2<usize>
 }
 
 impl FlatIndexer
 {
-    pub fn new(mut size: Pos3<usize>) -> Self
+    pub fn new(size: Pos2<usize>) -> Self
     {
-        size.z = 1;
-
-        Self{size, z: 0}
+        Self{size}
     }
 
-    pub fn size(&self) -> &Pos3<usize>
+    pub fn size(&self) -> &Pos2<usize>
     {
         &self.size
-    }
-
-    pub fn with_z(mut self, z: usize) -> Self
-    {
-        self.z = z;
-
-        self
     }
 }
 
@@ -442,30 +443,28 @@ impl From<Indexer> for FlatIndexer
 {
     fn from(value: Indexer) -> Self
     {
-        Self::new(value.size)
+        Self::new(value.size.into())
     }
 }
 
-impl CommonIndexing for FlatIndexer
+impl CommonIndexing<Pos2<usize>> for FlatIndexer
 {
-    fn size(&self) -> Pos3<usize>
+    fn size(&self) -> Pos2<usize>
     {
         self.size
     }
 
-    fn to_index(&self, pos: Pos3<usize>) -> usize
+    fn to_index(&self, pos: Pos2<usize>) -> usize
     {
-        debug_assert!(pos.z == self.z, "{} != {}", pos.z, self.z);
-
         pos.y * self.size.x + pos.x
     }
 
-    fn index_to_pos(&self, index: usize) -> LocalPos
+    fn index_to_pos(&self, index: usize) -> LocalPos<Pos2<usize>>
     {
         let x = index % self.size.x;
         let y = (index / self.size.x) % self.size.y;
 
-        LocalPos::new(Pos3::new(x, y, self.z), self.size)
+        LocalPos::new(Pos2::new(x, y), self.size)
     }
 }
 
@@ -476,7 +475,7 @@ pub struct FlatChunksContainer<T>
     indexer: FlatIndexer
 }
 
-implement_common!{FlatChunksContainer, FlatIndexer}
+implement_common!{FlatChunksContainer, FlatIndexer, Pos2}
 
 impl<T> FlatChunksContainer<T>
 {
@@ -513,14 +512,6 @@ impl<T> FlatChunksContainer<T>
         {
             acc + &value
         }).unwrap_or_default()
-    }
-
-    #[allow(dead_code)]
-    pub fn with_z(mut self, z: usize) -> Self
-    {
-        self.indexer = self.indexer.with_z(z);
-
-        self
     }
 }
 
@@ -596,7 +587,7 @@ mod tests
 
         flat_slice_iter.zip(manual_flat_slice).for_each(|(a, b)|
         {
-            assert_eq!(a.0.pos, b.0.pos);
+            assert_eq!(a.0.pos.with_z(random_z), b.0.pos);
             assert_eq!(a.1, b.1);
         });
     }

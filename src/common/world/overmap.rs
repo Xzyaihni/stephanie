@@ -40,6 +40,11 @@ pub struct SimpleMapper
     pub pos: Pos3<i32>
 }
 
+impl CommonIndexing<Pos2<usize>> for SimpleMapper
+{
+    fn size(&self) -> Pos2<usize> { self.size.into() }
+}
+
 impl CommonIndexing for SimpleMapper
 {
     fn size(&self) -> Pos3<usize> { self.size }
@@ -48,6 +53,11 @@ impl CommonIndexing for SimpleMapper
 impl OvermapIndexing for SimpleMapper
 {
     fn player_position(&self) -> GlobalPos { GlobalPos(self.pos) }
+}
+
+impl OvermapIndexing<OvermapDimension2> for SimpleMapper
+{
+    fn player_position(&self) -> GlobalPos<Pos2<i32>> { GlobalPos(self.pos.into()) }
 }
 
 impl SimpleMapper
@@ -160,7 +170,7 @@ pub trait Overmap<T>: OvermapIndexing
         }
 
         let old_position = self.to_global(old_local);
-        let position = old_position - offset;
+        let position = old_position - GlobalPos(offset);
 
         if let Some(local_pos) = self.to_local(position)
         {
@@ -177,10 +187,10 @@ pub trait Overmap<T>: OvermapIndexing
 pub trait OvermapIndexing<D=OvermapDimension3>: CommonIndexing<D::LP> + Sized
 where
     D: OvermapDimension,
-    D::LP: From<D::GP> + Eq + Debug,
+    D::LP: From<D::GP> + Div<usize, Output=D::LP> + Eq + Debug,
     D::GP: Sub<D::GP, Output=D::GP> + Add<D::GP, Output=D::GP>,
     LocalPos<D::LP>: BoundsCheckable,
-    GlobalPos<D::GP>: From<D::LP> + Add<GlobalPos<D::GP>, Output=GlobalPos<D::GP>> + Sub<GlobalPos<D::GP>, Output=GlobalPos<D::GP>> + Div<i32, Output=GlobalPos<D::GP>>
+    GlobalPos<D::GP>: From<D::LP> + Add<GlobalPos<D::GP>, Output=GlobalPos<D::GP>> + Sub<GlobalPos<D::GP>, Output=GlobalPos<D::GP>>
 {
     fn player_position(&self) -> GlobalPos<D::GP>;
 
@@ -195,7 +205,7 @@ where
     {
         let player_distance = pos - self.player_position();
 
-        player_distance + GlobalPos::from(self.size()) / 2
+        player_distance + GlobalPos::from(self.size() / 2)
     }
 
     fn to_global(&self, pos: LocalPos<D::LP>) -> GlobalPos<D::GP>
@@ -217,7 +227,7 @@ where
 
     fn player_offset_unconverted(&self, pos: GlobalPos<D::GP>) -> GlobalPos<D::GP>
     {
-        pos - GlobalPos::from(self.size()) / 2
+        pos - GlobalPos::from(self.size() / 2)
     }
 
     fn inbounds(&self, pos: GlobalPos<D::GP>) -> bool

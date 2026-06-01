@@ -39,7 +39,7 @@ use crate::{
         OccludingCaster,
         TileMap,
         world::{
-            Pos3,
+            Pos2,
             ChunkLocal,
             LocalPos,
             GlobalPos,
@@ -497,7 +497,7 @@ impl VisualChunk
 
         type ContainerType = FlatChunksContainer<Option<OccludingState>>;
 
-        let add_horizontal = |plane: &mut ContainerType, pos: Pos3<usize>, inside|
+        let add_horizontal = |plane: &mut ContainerType, pos: Pos2<usize>, inside|
         {
             if let Some(occluding) = plane[pos].as_mut()
             {
@@ -508,7 +508,7 @@ impl VisualChunk
             }
         };
 
-        let add_vertical = |plane: &mut ContainerType, pos: Pos3<usize>, inside|
+        let add_vertical = |plane: &mut ContainerType, pos: Pos2<usize>, inside|
         {
             if let Some(occluding) = plane[pos].as_mut()
             {
@@ -521,13 +521,13 @@ impl VisualChunk
 
         (0..CHUNK_SIZE).map(|z|
         {
-            let mut plane: ContainerType = FlatChunksContainer::new(Pos3::repeat(CHUNK_SIZE));
+            let mut plane: ContainerType = FlatChunksContainer::new(Pos2::repeat(CHUNK_SIZE));
 
             for y in 0..CHUNK_SIZE
             {
                 for x in 0..CHUNK_SIZE
                 {
-                    let pos = Pos3{x, y, z: 0};
+                    let pos = Pos2{x, y};
                     let tile = tiles.tile(ChunkLocal::new(x, y, z));
 
                     let is_transparent = |tile|
@@ -559,9 +559,9 @@ impl VisualChunk
         mut occluders: FlatChunksContainer<Option<OccludingState>>
     ) -> impl Iterator<Item=OccluderInfoRaw>
     {
-        let to_pos = |pos: LocalPos|
+        let to_pos = |pos: LocalPos<Pos2<usize>>|
         {
-            Vector3::<usize>::from(pos.pos).xy()
+            Vector2::<usize>::from(pos.pos)
         };
 
         occluders.positions().flat_map(move |pos|

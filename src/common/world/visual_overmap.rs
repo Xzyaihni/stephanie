@@ -42,6 +42,7 @@ use super::{
         rounded_single,
         to_tile_single,
         CHUNK_SIZE,
+        Pos2,
         Pos3,
         Chunk,
         ChunkLocal,
@@ -51,6 +52,8 @@ use super::{
     },
     overmap::{
         OvermapIndexing,
+        OvermapDimension2,
+        OvermapDimension3,
         CommonIndexing,
         ChunksContainer,
         visual_chunk::{VisualChunk, VisualChunkInfo, OccluderCached}
@@ -86,7 +89,7 @@ impl VisibilityChecker
         Self{size, camera_size, player_position}
     }
 
-    pub fn visible(&self, pos: GlobalPos) -> bool
+    pub fn visible(&self, pos: GlobalPos<Pos2<i32>>) -> bool
     {
         EntityVisibilityChecker::visible_chunk_associated(
             self.camera_size,
@@ -146,11 +149,27 @@ impl VisibilityChecker
     }
 }
 
+impl CommonIndexing<Pos2<usize>> for VisibilityChecker
+{
+    fn size(&self) -> Pos2<usize>
+    {
+        self.size.into()
+    }
+}
+
 impl CommonIndexing for VisibilityChecker
 {
     fn size(&self) -> Pos3<usize>
     {
         self.size
+    }
+}
+
+impl OvermapIndexing<OvermapDimension2> for VisibilityChecker
+{
+    fn player_position(&self) -> GlobalPos<Pos2<i32>>
+    {
+        self.player_position.read().rounded().into()
     }
 }
 
@@ -249,18 +268,18 @@ impl<T> TileReader<T>
 fn for_visible_2d<'a>(
     chunks: &ChunksContainer<VisualOvermapChunk>,
     visibility: &'a VisibilityChecker
-) -> impl Iterator<Item=LocalPos> + use<'a>
+) -> impl Iterator<Item=LocalPos<Pos2<usize>>> + use<'a>
 {
     for_visible_2d_with(chunks, visibility, visibility)
 }
 
-fn for_visible_2d_with<'a, M: OvermapIndexing>(
+fn for_visible_2d_with<'a, M: OvermapIndexing<OvermapDimension2>>(
     chunks: &ChunksContainer<VisualOvermapChunk>,
     mapper: &'a M,
     visibility: &'a VisibilityChecker
-) -> impl Iterator<Item=LocalPos> + use<'a, M>
+) -> impl Iterator<Item=LocalPos<Pos2<usize>>> + use<'a, M>
 {
-    chunks.positions_2d().filter(|pos| visibility.visible(mapper.to_global(*pos)))
+    Pos2::from(chunks.size()).positions_2d().filter(|pos| visibility.visible(mapper.to_global(*pos)))
 }
 
 #[derive(Debug, Clone)]
@@ -1059,9 +1078,11 @@ impl VisualOvermap
     {
         let z = self.visibility_checker.top_z();
         let height = self.visibility_checker.player_height();
+        let z_size = self.chunks.size().z;
+
         for_visible_2d(&self.chunks, &self.visibility_checker).for_each(|pos|
         {
-            self.visibility_checker.visible_z(&self.chunks, pos).for_each(|pos|
+            self.visibility_checker.visible_z(&self.chunks, pos.with_z(0, z_size)).for_each(|pos|
             {
                 self.chunks[pos].chunk.update_buffers(
                     info,
@@ -1069,7 +1090,7 @@ impl VisualOvermap
                 )
             });
 
-            let pos = pos.with_z(z);
+            let pos = pos.with_z(z, z_size);
 
             self.chunks[pos].chunk.update_sky_buffers(info, height);
         });
@@ -1122,9 +1143,11 @@ impl VisualOvermap
     {
         let z = self.visibility_checker.top_z();
         let height = self.visibility_checker.player_height();
+        let z_size = self.chunks.size().z;
+
         for_visible_2d(&self.chunks, &self.visibility_checker).for_each(|pos|
         {
-            let pos = pos.with_z(z);
+            let pos = pos.with_z(z, z_size);
 
             let chunk_pos = Chunk::position_of_chunk(self.to_global(pos));
 
@@ -1225,14 +1248,16 @@ impl VisualOvermap
     {
         let z = self.visibility_checker.top_z();
         let player_height = self.visibility_checker.player_height();
+        let z_size = self.chunks.size().z;
+
         for_visible_2d(&self.chunks, &self.visibility_checker).for_each(|pos|
         {
-            if !is_shaded && self.occluded[pos.with_z(z)][player_height].is_fully_occluded()
+            if !is_shaded && self.occluded[pos.with_z(z, z_size)][player_height].is_fully_occluded()
             {
                 return;
             }
 
-            self.visibility_checker.visible_z(&self.chunks, pos).rev().for_each(|pos|
+            self.visibility_checker.visible_z(&self.chunks, pos.with_z(0, z_size)).rev().for_each(|pos|
             {
                 self.chunks[pos].chunk.draw_tiles(
                     info,
@@ -1256,10 +1281,11 @@ impl VisualOvermap
 
         let z = self.visibility_checker.top_z();
         let height = self.visibility_checker.player_height();
+        let z_size = self.chunks.size().z;
 
         for_visible_2d(&self.chunks, &self.visibility_checker).for_each(|pos|
         {
-            let pos = pos.with_z(z);
+            let pos = pos.with_z(z, z_size);
 
             let occluded = &mut self.occluded[pos][height];
 
@@ -1290,14 +1316,17 @@ impl VisualOvermap
 
         let player_position = self.visibility_checker.player_position.read();
         let height = self.visibility_checker.player_height();
-        size.positions_2d().for_each(|pos|
+
+        let z_size = size.z;
+
+        Pos2::from(size).positions_2d().for_each(|pos|
         {
-            if !self.visibility_checker.visible(self.visibility_checker.to_global(pos))
+            if !self.visibility_checker.visible(OvermapIndexing::<OvermapDimension2>::to_global(&self.visibility_checker, pos))
             {
                 return;
             }
 
-            let pos = pos.with_z(z);
+            let pos = pos.with_z(z, z_size);
 
             self.chunks[pos].chunk.update_buffers_shadows(
                 info,
@@ -1333,14 +1362,16 @@ impl VisualOvermap
 
             self.chunks[pos].chunk.set_occluder_visible(height, occluder_index, true);
 
-            size.positions_2d().for_each(|check_pos|
+            let z_size = size.z;
+
+            Pos2::from(size).positions_2d().for_each(|check_pos|
             {
-                if !self.visibility_checker.visible(self.visibility_checker.to_global(check_pos))
+                if !self.visibility_checker.visible(OvermapIndexing::<OvermapDimension2>::to_global(&self.visibility_checker, check_pos))
                 {
                     return;
                 }
 
-                let check_pos = check_pos.with_z(z);
+                let check_pos = check_pos.with_z(z, z_size);
 
                 let chunk_pos = Chunk::position_of_chunk(mapper.to_global(check_pos));
                 self.occluded[check_pos][height].update(&occluder, chunk_pos.xy());
@@ -1355,9 +1386,11 @@ impl VisualOvermap
     {
         let z = self.visibility_checker.top_z();
         let height = self.visibility_checker.player_height();
+        let z_size = self.chunks.size().z;
+
         for_visible_2d(&self.chunks, &self.visibility_checker).for_each(|pos|
         {
-            let pos = pos.with_z(z);
+            let pos = pos.with_z(z, z_size);
 
             self.chunks[pos].chunk.draw_shadows(
                 info,
@@ -1385,16 +1418,17 @@ impl VisualOvermap
     }
 
     fn with_position(
-        mut pos: LocalPos,
+        pos: LocalPos<Pos2<usize>>,
         position: f32,
-        player_position: i32
+        player_position: i32,
+        z_size: usize
     ) -> Option<(LocalPos, usize)>
     {
-        pos.pos.z = Self::chunk_height_of(pos.size.z, position, player_position)?;
+        let new_pos = pos.with_z(Self::chunk_height_of(z_size, position, player_position)?, z_size);
 
         let height = to_tile_single(position);
 
-        Some((pos, height))
+        Some((new_pos, height))
     }
 
     pub fn visual_chunks(&self) -> &ChunksContainer<VisualOvermapChunk>
@@ -1488,9 +1522,11 @@ impl VisualOvermap
     )
     {
         let player_position = self.visibility_checker.player_chunk_height();
+        let z_size = self.chunks.size().z;
+
         for_visible_2d_with(&self.chunks, &self.visibility_checker, &self.light_visibility_checker(visibility)).for_each(|pos|
         {
-            if let Some((pos, height)) = Self::with_position(pos, visibility.position.z, player_position)
+            if let Some((pos, height)) = Self::with_position(pos, visibility.position.z, player_position, z_size)
             {
                 self.chunks[pos].chunk.update_buffers_light_shadows(
                     info,
@@ -1514,9 +1550,11 @@ impl VisualOvermap
     {
         let mut f = Some(f);
         let player_position = self.visibility_checker.player_chunk_height();
+        let z_size = self.chunks.size().z;
+
         for_visible_2d_with(&self.chunks, &self.visibility_checker, &self.light_visibility_checker(visibility)).for_each(|pos|
         {
-            if let Some((pos, height)) = Self::with_position(pos, visibility.position.z, player_position)
+            if let Some((pos, height)) = Self::with_position(pos, visibility.position.z, player_position, z_size)
             {
                 self.chunks[pos].chunk.draw_light_shadows(
                     info,
@@ -1532,9 +1570,12 @@ impl VisualOvermap
     {
         let z = self.visibility_checker.top_z();
         let player_height = self.visibility_checker.player_height();
+
+        let z_size = self.chunks.size().z;
+
         for_visible_2d(&self.chunks, &self.visibility_checker).for_each(|pos|
         {
-            let pos = pos.with_z(z);
+            let pos = pos.with_z(z, z_size);
 
             if self.occluded[pos][player_height].is_fully_occluded()
             {
@@ -1574,6 +1615,6 @@ impl OvermapIndexing for VisualOvermap
 {
     fn player_position(&self) -> GlobalPos
     {
-        self.visibility_checker.player_position()
+        OvermapIndexing::<OvermapDimension3>::player_position(&self.visibility_checker)
     }
 }

@@ -502,7 +502,7 @@ impl YanyaApp for ChunkPreviewer
         let preview = None;
 
         let world_chunks = {
-            let mut world_chunks = WorldPlane(FlatChunksContainer::new(Pos3::new(tags.world_size, tags.world_size, 1)));
+            let mut world_chunks = WorldPlane(FlatChunksContainer::new(Pos2::repeat(tags.world_size)));
 
             if let Some((fill_world_chunks, _)) = load_prefill()
             {
@@ -569,7 +569,7 @@ impl YanyaApp for ChunkPreviewer
             {
                 let (entropies, _) = this.current_generator.as_ref()?;
 
-                let pos = Pos3::new(logical_position.x, logical_position.y, 0);
+                let pos = Pos2::new(logical_position.x, logical_position.y);
 
                 let edge_pos = edge_map_raw(pos);
                 let edge_local_pos = LocalPos::new(edge_pos.map(|x| x as usize), entropies.size());
@@ -1006,7 +1006,7 @@ impl YanyaApp for ChunkPreviewer
                         width: UiSize::Absolute(chunk_size.x).into(),
                         height: UiSize::Absolute(chunk_size.y).into(),
                         position: UiPosition::Absolute{
-                            position: tile_position_of(Vector3::from(x.pos).xy().cast()),
+                            position: tile_position_of(Vector3::from(x.pos.with_z(0)).xy().cast()),
                             align: UiPositionAlign::default()
                         },
                         ..Default::default()
@@ -1090,7 +1090,7 @@ impl YanyaApp for ChunkPreviewer
             {
                 let mut world_chunks = self.world_chunks.borrow_mut();
 
-                world_chunks.0 = FlatChunksContainer::new(Pos3::new(tags.world_size, tags.world_size, 1));
+                world_chunks.0 = FlatChunksContainer::new(Pos2::new(tags.world_size, tags.world_size));
 
                 if let Some((fill_world_chunks, edges)) = load_prefill()
                 {
@@ -1104,11 +1104,11 @@ impl YanyaApp for ChunkPreviewer
 
                 let plane = &mut self.world_chunks.borrow_mut().0;
 
-                let mapper = SimpleMapper::identity(plane.size());
+                let mapper = SimpleMapper::identity(plane.size().with_z(1));
 
                 let wave_collapser = WaveCollapser::new(SeededRandom::new(), &rules.surface, plane, &mapper, |local_pos_unconverted|
                 {
-                    loader_chunks.iter().find(|x| x.0 == Pos2::from(local_pos_unconverted.0)).map(|x| x.1)
+                    loader_chunks.iter().find(|x| x.0 == local_pos_unconverted.0).map(|x| x.1)
                 });
 
                 let entropies = wave_collapser.entropies().clone();
@@ -1254,7 +1254,7 @@ impl ChunkPreviewer
         {
             (0..size.x).for_each(|x|
             {
-                let chunk_pos = LocalPos::new(Pos3::new(x, y, 0), size);
+                let chunk_pos = LocalPos::new(Pos2::new(x, y), size);
 
                 if self.world_chunks.borrow().0[chunk_pos].is_some()
                 {
@@ -1292,14 +1292,14 @@ impl ChunkPreviewer
 
     fn chunk_objects(
         &mut self,
-        chunk_pos: Option<LocalPos>,
+        chunk_pos: Option<LocalPos<Pos2<usize>>>,
         world_chunk_id: WorldChunkId
     ) -> Vec<Object>
     {
         let size = self.world_chunks.borrow().0.size();
 
         let chunk_info = ConditionalInfo{
-            position: chunk_pos.unwrap_or_else(|| LocalPos::new(Pos3::repeat(0), size)),
+            position: chunk_pos.unwrap_or_else(|| LocalPos::new(Pos2::repeat(0), size)),
             height: 0,
             difficulty: 0.0
         };
@@ -1371,11 +1371,11 @@ impl ChunkPreviewer
                         1
                     );
 
-                    let half_offset = Pos3::new((size.x / 2) as i32, (size.y / 2) as i32, 0);
+                    let half_offset = size.map(|x| x as i32) / 2;
 
                     let pos_offset = if let Some(chunk_pos) = chunk_pos
                     {
-                        let pos_offset: Vector3<f32> = Vector3::from(chunk_pos.pos.map(|x| x as i32) - half_offset).cast();
+                        let pos_offset: Vector3<f32> = Vector3::from((chunk_pos.pos.map(|x| x as i32) - half_offset).with_z(0)).cast();
 
                         Vector3::repeat(-CHUNK_VISUAL_SIZE * 0.5) + (pos_offset * CHUNK_VISUAL_SIZE).component_div(&chunk_ratio.cast())
                     } else
@@ -1395,7 +1395,7 @@ impl ChunkPreviewer
 
     fn generate_chunk_at(
         &mut self,
-        chunk_pos: LocalPos
+        chunk_pos: LocalPos<Pos2<usize>>
     )
     {
         let world_chunk_id = self.world_chunks.borrow().0[chunk_pos].as_ref().unwrap().id();
@@ -1492,10 +1492,10 @@ mod tests
     {
         let rules = ChunkRulesGroup::load(PathBuf::from("world_generation/")).unwrap();
 
-        let size = Pos3::new(5, 5, 1);
+        let size = Pos2::new(5, 5);
 
         let mapper = SimpleMapper{
-            size,
+            size: size.with_z(1),
             pos: Pos3::new(0, 0, 0)
         };
 

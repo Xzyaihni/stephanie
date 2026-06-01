@@ -11,7 +11,7 @@ use std::{
     path::{Path, PathBuf}
 };
 
-use nalgebra::Vector3;
+use nalgebra::Vector2;
 
 use crate::{
     debug_config::*,
@@ -30,14 +30,13 @@ use crate::{
         world::{
             SizeTensor,
             Pos2,
-            Pos3,
             CheckedPos,
             LocalPos,
             GlobalPos,
             ChunkLocal,
             overmap::{
-                Indexer,
                 CommonIndexing,
+                OvermapDimension2,
                 OvermapIndexing,
                 OvermapIndexing3d,
                 FlatIndexer,
@@ -51,6 +50,9 @@ use crate::{
         }
     }
 };
+
+#[allow(unused_imports)]
+use crate::common::world::{Pos3, overmap::OvermapDimension3};
 
 use super::{
     SERVER_OVERMAP_SIZE_Z,
@@ -84,21 +86,21 @@ pub fn empty_worldchunk() -> ChunksContainer<Tile>
 fn log_worldchunks(
     label: impl Into<String>,
     world_chunks: &FlatChunksContainer<Option<WorldChunk>>,
-    mut edges: impl FnMut(LocalPos) -> Option<WorldChunkId>
+    mut edges: impl FnMut(LocalPos<Pos2<usize>>) -> Option<WorldChunkId>
 )
 {
     let world_size = world_chunks.size();
-    let entropy_size = world_size + Pos3::new(ENTROPY_EDGE * 2, ENTROPY_EDGE * 2, 0);
-    let edge_chunks: Vec<(Pos2<i32>, WorldChunkId)> = Indexer::new(entropy_size).positions().filter_map(|local_pos|
+    let entropy_size = world_size + Pos2::repeat(ENTROPY_EDGE * 2);
+    let edge_chunks: Vec<(Pos2<i32>, WorldChunkId)> = FlatIndexer::new(entropy_size).positions().filter_map(|local_pos|
     {
-        let pos = local_pos.pos.map(|x| x as i32) - Pos3::new(ENTROPY_EDGE as i32, ENTROPY_EDGE as i32, 0);
+        let pos = local_pos.pos.map(|x| x as i32) - Pos2::repeat(ENTROPY_EDGE as i32);
 
         if !(0..world_size.x as i32).contains(&pos.x) || !(0..world_size.y as i32).contains(&pos.y)
         {
             return None;
         }
 
-        edges(local_pos).map(|x| (Pos2::from(local_pos.pos).map(|x| x as i32), x))
+        edges(local_pos).map(|x| (local_pos.pos.map(|x| x as i32), x))
     }).collect();
 
     let info = (world_chunks.clone(), edge_chunks);
@@ -213,10 +215,9 @@ impl From<lisp::ErrorPos> for ParseError
     }
 }
 
-pub fn chunk_difficulty(pos: GlobalPos) -> f32
+pub fn chunk_difficulty(pos: GlobalPos<Pos2<i32>>) -> f32
 {
-    let mut p: Vector3<f32> = Vector3::from(pos.0).cast();
-    p.z = 0.0;
+    let p: Vector2<f32> = Vector2::from(pos.0).cast();
 
     p.magnitude() * 0.03
 }
@@ -404,7 +405,7 @@ impl ChunkGenerator
 
             let this_overmap = this_overmap.borrow();
 
-            let pos = Pos3::new(x, y, 0);
+            let pos = Pos2::new(x, y);
 
             let this_chunk = this_overmap.0.get(pos);
 
@@ -824,10 +825,10 @@ impl<S: SaveLoad<WorldChunksBlock>> WorldGenerator<S>
         self.generator.push_world_chunks(world_chunks)
     }
 
-    pub fn generate_surface<M: OvermapIndexing + Debug>(
+    pub fn generate_surface<M: OvermapIndexing<OvermapDimension2> + OvermapIndexing + Debug>(
         &mut self,
         mut rng: SeededRandom,
-        world_chunks: &mut FlatChunksContainer<Option<WorldChunksBlock>>,
+        world_chunks: &mut ChunksContainer<Option<WorldChunksBlock>>,
         plane: &mut WorldPlane,
         global_mapper: &M
     )
@@ -839,7 +840,7 @@ impl<S: SaveLoad<WorldChunksBlock>> WorldGenerator<S>
                 .collect();
 
             debug_assert!(
-                chunk_positions.iter().all(|pos| global_mapper.to_global(*pos).0.z == 0),
+                chunk_positions.iter().all(|pos| OvermapIndexing::<OvermapDimension3>::to_global(global_mapper, *pos).0.z == 0),
                 "z must be 0, {global_mapper:#?} {chunk_positions:#?}"
             );
         }
@@ -870,25 +871,20 @@ impl<S: SaveLoad<WorldChunksBlock>> WorldGenerator<S>
             "wfc-new",
             WaveCollapser::new(rng, &self.rules.surface, &mut plane.0, global_mapper, move |global_pos|
             {
-                debug_assert!(global_pos.0.z == 0);
-
-                saver.load(global_pos).map(|chunk| chunk[0].id())
+                saver.load(global_pos.with_z(0)).map(|chunk| chunk[0].id())
             })
         };
 
-        if let Some(local) = global_mapper.to_local(GlobalPos::new(0, 0, 0))
+        if let Some(local) = OvermapIndexing::<OvermapDimension2>::to_local(global_mapper, GlobalPos::new_2d(0, 0))
         {
-            wave_collapser.generate_single_maybe(
-                LocalPos::new(Pos3{z: 0, ..local.pos}, Pos3{z: 1, ..local.size}),
-                ||
+            wave_collapser.generate_single_maybe(local, ||
+            {
+                let random_rotation = TileRotation::random();
+                self.rules.name_mappings().world_chunk.get(&(random_rotation, "bunker".to_owned())).map(|bunker_id|
                 {
-                    let random_rotation = TileRotation::random();
-                    self.rules.name_mappings().world_chunk.get(&(random_rotation, "bunker".to_owned())).map(|bunker_id|
-                    {
-                        WorldChunk::new(*bunker_id, Vec::new())
-                    }).unwrap_or_else(|| WorldChunk::new(self.rules.surface.fallback(), Vec::new()))
-                }
-            );
+                    WorldChunk::new(*bunker_id, Vec::new())
+                }).unwrap_or_else(|| WorldChunk::new(self.rules.surface.fallback(), Vec::new()))
+            });
         }
 
         fn print_worldchunks(rules: &ChunkRulesGroup, wave_collapser: &WaveCollapser)
@@ -981,7 +977,7 @@ impl<S: SaveLoad<WorldChunksBlock>> WorldGenerator<S>
                 world_plane.0.iter().for_each(|(pos, value)|
                 {
                     let global_pos = global_mapper.to_global(
-                        LocalPos::new(pos.pos, Pos3{z: global_mapper.size().z, ..pos.size})
+                        LocalPos::new(pos.pos.with_z(0), pos.size.with_z(global_mapper.size().z))
                     );
 
                     if let Some(saved) = self.saver.load(GlobalPos(Pos3{z: 0, ..global_pos.0}))
@@ -1006,9 +1002,8 @@ impl<S: SaveLoad<WorldChunksBlock>> WorldGenerator<S>
 
             if let Some(local_z) = global_mapper.to_local_z(0)
             {
-                let s = world_chunks.map_slice_ref(local_z, |(pos, x)|
+                let s = world_chunks.map_slice_ref(local_z, |(plane_pos, x)|
                 {
-                    let plane_pos = LocalPos::new(Pos3{z: 0, ..pos.pos}, Pos3{z: 1, ..pos.size});
                     (world_plane.0[plane_pos].clone(), x.as_ref().map(|x| x[0].clone()))
                 });
 
@@ -1019,7 +1014,7 @@ impl<S: SaveLoad<WorldChunksBlock>> WorldGenerator<S>
             }
         }
 
-        let indexer = FlatIndexer::new(world_chunks.size());
+        let indexer = FlatIndexer::new(world_chunks.size().into());
         (0..indexer.size().product()).for_each(|index|
         {
             let flat_local = indexer.index_to_pos(index);
@@ -1028,7 +1023,7 @@ impl<S: SaveLoad<WorldChunksBlock>> WorldGenerator<S>
             {
                 let size = world_chunks.size();
 
-                let local_pos = LocalPos::new(Pos3{z, ..flat_local.pos}, size);
+                let local_pos = LocalPos::new(flat_local.pos.with_z(z), size);
 
                 let this_world_chunk = &mut world_chunks[local_pos];
                 if this_world_chunk.is_some()
@@ -1038,7 +1033,7 @@ impl<S: SaveLoad<WorldChunksBlock>> WorldGenerator<S>
 
                 let global_pos = global_mapper.to_global(local_pos);
 
-                let difficulty = chunk_difficulty(global_pos);
+                let difficulty = chunk_difficulty(global_pos.into());
 
                 let block: WorldChunksBlock = (0..CHUNK_RATIO.z).map(|index|
                 {
@@ -1047,9 +1042,7 @@ impl<S: SaveLoad<WorldChunksBlock>> WorldGenerator<S>
 
                     let global_z = global_pos.0.z;
 
-                    let this_surface = world_plane.world_chunk(
-                        LocalPos::new(Pos3{z: 0, ..local_pos.pos}, Pos3{z: 1, ..local_pos.size})
-                    );
+                    let this_surface = world_plane.world_chunk(flat_local);
 
                     match global_z.cmp(&0)
                     {
@@ -1059,7 +1052,7 @@ impl<S: SaveLoad<WorldChunksBlock>> WorldGenerator<S>
                             // above ground
 
                             let info = ConditionalInfo{
-                                position: local_pos,
+                                position: flat_local,
                                 height: global_z,
                                 difficulty
                             };
@@ -1071,7 +1064,7 @@ impl<S: SaveLoad<WorldChunksBlock>> WorldGenerator<S>
                             // underground
 
                             let info = ConditionalInfo{
-                                position: local_pos,
+                                position: flat_local,
                                 height: global_z,
                                 difficulty
                             };
@@ -1383,10 +1376,10 @@ impl PossibleStates
     }
 }
 
-fn edge_unmap(pos: LocalPos) -> Option<LocalPos>
+fn edge_unmap(pos: LocalPos<Pos2<usize>>) -> Option<LocalPos<Pos2<usize>>>
 {
-    let new_size = pos.size - Pos3::new(ENTROPY_EDGE * 2, ENTROPY_EDGE * 2, 0);
-    let new_pos = pos.pos.map(|x| x as i32) - Pos3::new(ENTROPY_EDGE as i32, ENTROPY_EDGE as i32, 0);
+    let new_size = pos.size - Pos2::repeat(ENTROPY_EDGE * 2);
+    let new_pos = pos.pos.map(|x| x as i32) - Pos2::repeat(ENTROPY_EDGE as i32);
 
     ((0..new_size.x as i32).contains(&new_pos.x) && (0..new_size.y as i32).contains(&new_pos.y)).then(||
     {
@@ -1394,29 +1387,29 @@ fn edge_unmap(pos: LocalPos) -> Option<LocalPos>
     })
 }
 
-pub fn edge_map_raw(pos: Pos3<i32>) -> Pos3<i32>
+pub fn edge_map_raw(pos: Pos2<i32>) -> Pos2<i32>
 {
-    pos + Pos3::new(ENTROPY_EDGE as i32, ENTROPY_EDGE as i32, 0)
+    pos + Pos2::repeat(ENTROPY_EDGE as i32)
 }
 
-fn edge_map_local(mut pos: LocalPos) -> LocalPos
+fn edge_map_local(mut pos: LocalPos<Pos2<usize>>) -> LocalPos<Pos2<usize>>
 {
-    pos.size += Pos3::new(ENTROPY_EDGE * 2, ENTROPY_EDGE * 2, 0);
-    pos.pos += Pos3::new(ENTROPY_EDGE, ENTROPY_EDGE, 0);
+    pos.size += Pos2::repeat(ENTROPY_EDGE * 2);
+    pos.pos += Pos2::repeat(ENTROPY_EDGE);
 
     pos
 }
 
 #[cfg(debug_assertions)]
-fn edge_map(pos: LocalPos) -> LocalPos
+fn edge_map(pos: LocalPos<Pos2<usize>>) -> LocalPos<Pos2<usize>>
 {
     edge_map_local(pos)
 }
 
 #[cfg(not(debug_assertions))]
-fn edge_map(pos: Pos3<usize>) -> Pos3<usize>
+fn edge_map(pos: Pos2<usize>) -> Pos2<usize>
 {
-    pos + Pos3::new(ENTROPY_EDGE, ENTROPY_EDGE, 0)
+    pos + Pos2::repeat(ENTROPY_EDGE)
 }
 
 #[derive(Clone, PartialEq)]
@@ -1434,39 +1427,39 @@ impl Debug for Entropies
 
 impl Entropies
 {
-    pub fn size(&self) -> Pos3<usize>
+    pub fn size(&self) -> Pos2<usize>
     {
         self.0.size()
     }
 
-    pub fn positions(&self) -> impl Iterator<Item=LocalPos>
+    pub fn positions(&self) -> impl Iterator<Item=LocalPos<Pos2<usize>>>
     {
         self.0.positions()
     }
 
-    pub fn get(&self, pos: CheckedPos) -> &PossibleStates
+    pub fn get(&self, pos: CheckedPos<Pos2<usize>>) -> &PossibleStates
     {
         &self.0[pos]
     }
 
-    pub fn get_mut(&mut self, pos: CheckedPos) -> &mut PossibleStates
+    pub fn get_mut(&mut self, pos: CheckedPos<Pos2<usize>>) -> &mut PossibleStates
     {
         &mut self.0[pos]
     }
 
     fn get_two_mut(
         &mut self,
-        one: CheckedPos,
-        two: CheckedPos
+        one: CheckedPos<Pos2<usize>>,
+        two: CheckedPos<Pos2<usize>>
     ) -> (&mut PossibleStates, &mut PossibleStates)
     {
         self.0.get_two_mut(one.into(), two.into())
     }
 
-    pub fn lowest_entropies(&self) -> Vec<LocalPos>
+    pub fn lowest_entropies(&self) -> Vec<LocalPos<Pos2<usize>>>
     {
         let mut lowest_entropy = f64::MAX;
-        let mut mins: Vec<LocalPos> = Vec::new();
+        let mut mins: Vec<LocalPos<Pos2<usize>>> = Vec::new();
 
         for (pos, value) in self.0.iter()
             .filter_map(|(pos, value)|
@@ -1496,7 +1489,7 @@ impl Entropies
         mins
     }
 
-    fn lowest_entropy(&mut self, rng: &mut SeededRandom) -> Option<(LocalPos, &mut PossibleStates)>
+    fn lowest_entropy(&mut self, rng: &mut SeededRandom) -> Option<(LocalPos<Pos2<usize>>, &mut PossibleStates)>
     {
         let mins = self.lowest_entropies();
 
@@ -1514,19 +1507,19 @@ impl Entropies
     }
 }
 
-impl Index<CheckedPos> for Entropies
+impl Index<CheckedPos<Pos2<usize>>> for Entropies
 {
     type Output = PossibleStates;
 
-    fn index(&self, index: CheckedPos) -> &Self::Output
+    fn index(&self, index: CheckedPos<Pos2<usize>>) -> &Self::Output
     {
         self.get(index)
     }
 }
 
-impl IndexMut<CheckedPos> for Entropies
+impl IndexMut<CheckedPos<Pos2<usize>>> for Entropies
 {
-    fn index_mut(&mut self, index: CheckedPos) -> &mut Self::Output
+    fn index_mut(&mut self, index: CheckedPos<Pos2<usize>>) -> &mut Self::Output
     {
         self.get_mut(index)
     }
@@ -1563,18 +1556,18 @@ impl Debug for WaveCollapser<'_, '_>
 
 impl<'a, 'm> WaveCollapser<'a, 'm>
 {
-    pub fn new<M: OvermapIndexing>(
+    pub fn new<M: OvermapIndexing<OvermapDimension2>>(
         rng: SeededRandom,
         rules: &'a ChunkRules,
         world_chunks: &'m mut FlatChunksContainer<Option<WorldChunk>>,
         global_mapper: &M,
-        mut edge_chunk: impl FnMut(GlobalPos) -> Option<WorldChunkId>
+        mut edge_chunk: impl FnMut(GlobalPos<Pos2<i32>>) -> Option<WorldChunkId>
     ) -> Self
     {
-        let entropies_size = world_chunks.size() + Pos3::new(ENTROPY_EDGE * 2, ENTROPY_EDGE * 2, 0);
+        let entropies_size = world_chunks.size() + Pos2::repeat(ENTROPY_EDGE * 2);
         let entropies = Entropies(FlatChunksContainer::new_with(entropies_size, |pos|
         {
-            let shifted_pos = pos.pos.map(|x| x as i32) - Pos3::new(ENTROPY_EDGE as i32, ENTROPY_EDGE as i32, 0);
+            let shifted_pos = pos.pos.map(|x| x as i32) - Pos2::repeat(ENTROPY_EDGE as i32);
 
             let global_pos = global_mapper.to_global_unconverted(GlobalPos(shifted_pos));
 
@@ -1687,11 +1680,11 @@ impl<'a, 'm> WaveCollapser<'a, 'm>
         }
     }
 
-    fn constrain(&mut self, pos: LocalPos, allow_fallback: bool) -> bool
+    fn constrain(&mut self, pos: LocalPos<Pos2<usize>>, allow_fallback: bool) -> bool
     {
-        let fmt_2d = |p: Pos3<usize>| -> String
+        let fmt_2d = |p: Pos2<usize>| -> String
         {
-            format!("{}", Pos2::from(p).map(|x| x as i32 - ENTROPY_EDGE as i32))
+            format!("{}", p.map(|x| x as i32 - ENTROPY_EDGE as i32))
         };
 
         pos.directions_group().try_map(|direction, value|
@@ -1773,14 +1766,14 @@ impl<'a, 'm> WaveCollapser<'a, 'm>
         }).is_some()
     }
 
-    pub fn lowest_entropy_with(&mut self, rng: &mut SeededRandom) -> Option<(LocalPos, &mut PossibleStates)>
+    pub fn lowest_entropy_with(&mut self, rng: &mut SeededRandom) -> Option<(LocalPos<Pos2<usize>>, &mut PossibleStates)>
     {
         self.entropies.lowest_entropy(rng)
     }
 
     pub fn generate_single_maybe<C>(
         &mut self,
-        local: LocalPos,
+        local: LocalPos<Pos2<usize>>,
         chunk: C
     )
     where
@@ -1794,13 +1787,11 @@ impl<'a, 'm> WaveCollapser<'a, 'm>
 
     pub fn generate_single(
         &mut self,
-        local: LocalPos,
+        local: LocalPos<Pos2<usize>>,
         chunk: WorldChunk,
         allow_fallback: bool
     ) -> bool
     {
-        debug_assert!(local.pos.z == 0, "{local:#?}");
-
         let entropy_local = edge_map_local(local);
 
         self.entropies[entropy_local.into()].set_collapsed_id(chunk.id());
@@ -1896,7 +1887,7 @@ mod tests
         let mut generator = ChunkGenerator::new(Rc::new(tilemap), rules, parent_path).unwrap();
 
         let info = ConditionalInfo{
-            position: LocalPos::new(Pos3::repeat(0), Pos3::repeat(0)),
+            position: LocalPos::new(Pos2::repeat(0), Pos2::repeat(0)),
             height: 0,
             difficulty: 0.0
         };

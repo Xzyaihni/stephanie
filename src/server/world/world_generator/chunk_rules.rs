@@ -28,6 +28,7 @@ use crate::{
             LocalPos,
             GlobalPos,
             TileRotation,
+            Pos2,
             Pos3,
             DirectionsGroup,
             chunk::PosDirection
@@ -842,7 +843,7 @@ impl ConditionalRule
 #[derive(Debug)]
 pub struct ConditionalInfo
 {
-    pub position: LocalPos,
+    pub position: LocalPos<Pos2<usize>>,
     pub height: i32,
     pub difficulty: f32
 }

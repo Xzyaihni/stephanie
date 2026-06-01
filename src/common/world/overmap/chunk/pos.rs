@@ -69,6 +69,18 @@ impl<T> Pos2<T>
         Self{x, y}
     }
 
+    pub fn repeat(v: T) -> Self
+    where
+        T: Copy
+    {
+        Self{x: v, y: v}
+    }
+
+    pub fn with_z(self, z: T) -> Pos3<T>
+    {
+        Pos3{x: self.x, y: self.y, z}
+    }
+
     pub fn all<F: FnMut(T) -> bool>(self, mut f: F) -> bool
     {
         f(self.x) && f(self.y)
@@ -85,6 +97,22 @@ impl<T> Pos2<T>
             x: (self.x, other.x),
             y: (self.y, other.y)
         }
+    }
+}
+
+impl Pos2<usize>
+{
+    pub fn positions(self) -> impl Iterator<Item=LocalPos<Self>>
+    {
+        self.positions_2d()
+    }
+
+    pub fn positions_2d(self) -> impl Iterator<Item=LocalPos<Self>>
+    {
+        (0..self.y).flat_map(move |y|
+        {
+            (0..self.x).map(move |x| LocalPos::new(Pos2::new(x, y), self))
+        })
     }
 }
 
@@ -114,6 +142,14 @@ impl SizeTensor for Pos2<usize>
     fn to_rectangle(self, Self{x, ..}: Self) -> usize
     {
         self.x + self.y * x
+    }
+}
+
+impl<T> From<Pos2<T>> for Vector2<T>
+{
+    fn from(value: Pos2<T>) -> Self
+    {
+        Self::new(value.x, value.y)
     }
 }
 
@@ -260,7 +296,7 @@ impl SizeTensor for Pos3<usize>
 
 impl Pos3<usize>
 {
-    pub fn positions(&self) -> impl Iterator<Item=Pos3<usize>> + '_
+    pub fn positions(self) -> impl Iterator<Item=Pos3<usize>>
     {
         (0..self.z).flat_map(move |z|
         {
@@ -270,10 +306,12 @@ impl Pos3<usize>
             })
         })
     }
-}
 
-impl Pos3<usize>
-{
+    pub fn positions_2d(self) -> impl Iterator<Item=LocalPos>
+    {
+        Pos2::from(self).positions_2d().map(|x| x.with_z(0, 1))
+    }
+
     pub fn positions_axis(&self, axis: Axis, fixed: usize) -> impl Iterator<Item=Pos3<usize>>
     {
         let (size_one, size_two) = match axis
@@ -294,14 +332,6 @@ impl Pos3<usize>
                     Axis::Z => Pos3::new(a, b, fixed)
                 }
             })
-        })
-    }
-
-    pub fn positions_2d(self) -> impl Iterator<Item=LocalPos>
-    {
-        (0..self.y).flat_map(move |y|
-        {
-            (0..self.x).map(move |x| LocalPos::new(Pos3::new(x, y, 0), self))
         })
     }
 }
@@ -338,11 +368,30 @@ impl<T> From<Pos3<T>> for Vector3<T>
     }
 }
 
+impl From<LocalPos<Pos2<usize>>> for Pos2<usize>
+{
+    fn from(value: LocalPos<Pos2<usize>>) -> Self
+    {
+        value.pos
+    }
+}
+
 impl From<LocalPos> for Pos3<usize>
 {
     fn from(value: LocalPos) -> Self
     {
         value.pos
+    }
+}
+
+impl From<GlobalPos<Pos2<i32>>> for Pos2<f32>
+{
+    fn from(value: GlobalPos<Pos2<i32>>) -> Self
+    {
+        value.0.map(|value|
+        {
+            value as f32 * CHUNK_VISUAL_SIZE
+        })
     }
 }
 
@@ -557,6 +606,11 @@ impl GlobalPos<Pos2<i32>>
     {
         Self(Pos2::new(x, y))
     }
+
+    pub fn with_z(self, z: i32) -> GlobalPos
+    {
+        GlobalPos(self.0.with_z(z))
+    }
 }
 
 impl GlobalPos
@@ -571,23 +625,23 @@ macro_rules! globalpos_op_impl
 {
     ($op_trait:ident, $op_assign:ident, $op_func:ident, $op_assign_func:ident) =>
     {
-        impl $op_trait<Pos3<i32>> for GlobalPos
-        {
-            type Output = Self;
-
-            fn $op_func(self, rhs: Pos3<i32>) -> Self::Output
-            {
-                Self(self.0.$op_func(rhs))
-            }
-        }
-
-        impl $op_trait for GlobalPos
+        impl<T: $op_trait<T, Output=T>> $op_trait for GlobalPos<T>
         {
             type Output = Self;
 
             fn $op_func(self, rhs: Self) -> Self::Output
             {
-                self.$op_func(rhs.0)
+                Self(self.0.$op_func(rhs.0))
+            }
+        }
+
+        impl $op_trait<i32> for GlobalPos<Pos2<i32>>
+        {
+            type Output = Self;
+
+            fn $op_func(self, rhs: i32) -> Self::Output
+            {
+                Self(self.0.$op_func(rhs))
             }
         }
 
@@ -601,23 +655,7 @@ macro_rules! globalpos_op_impl
             }
         }
 
-        impl $op_assign<i32> for GlobalPos
-        {
-            fn $op_assign_func(&mut self, rhs: i32)
-            {
-                self.0.$op_assign_func(rhs)
-            }
-        }
-
-        impl $op_assign<Pos3<i32>> for GlobalPos
-        {
-            fn $op_assign_func(&mut self, rhs: Pos3<i32>)
-            {
-                self.0.$op_assign_func(rhs)
-            }
-        }
-
-        impl $op_assign for GlobalPos
+        impl<T: $op_assign<T>> $op_assign for GlobalPos<T>
         {
             fn $op_assign_func(&mut self, rhs: Self)
             {
@@ -666,6 +704,22 @@ impl From<LocalPos> for GlobalPos
             pos.y as i32,
             pos.z as i32
         )
+    }
+}
+
+impl From<LocalPos> for LocalPos<Pos2<usize>>
+{
+    fn from(value: LocalPos) -> Self
+    {
+        Self{pos: value.pos.into(), size: value.size.into()}
+    }
+}
+
+impl From<GlobalPos> for GlobalPos<Pos2<i32>>
+{
+    fn from(value: GlobalPos) -> Self
+    {
+        Self(value.0.into())
     }
 }
 
@@ -1149,9 +1203,9 @@ macro_rules! impl_group
 }
 
 #[macro_export]
-macro_rules! impl_directionals
+macro_rules! impl_directionals_2d
 {
-    ($name:ident) =>
+    ($name:ty) =>
     {
         impl $name
         {
@@ -1162,6 +1216,97 @@ macro_rules! impl_directionals
                 (right, left, up, down)
             }
 
+            pub fn right(&self) -> Option<Self>
+            {
+                (!self.right_edge()).then(||
+                {
+                    let mut value = *self;
+
+                    value.pos_mut().x += 1;
+                    debug_assert!(value.in_bounds());
+
+                    value
+                })
+            }
+
+            pub fn left(&self) -> Option<Self>
+            {
+                (!self.left_edge()).then(||
+                {
+                    let mut value = *self;
+
+                    value.pos_mut().x -= 1;
+                    debug_assert!(value.in_bounds());
+
+                    value
+                })
+            }
+
+            pub fn up(&self) -> Option<Self>
+            {
+                (!self.top_edge()).then(||
+                {
+                    let mut value = *self;
+
+                    value.pos_mut().y += 1;
+                    debug_assert!(value.in_bounds());
+
+                    value
+                })
+            }
+
+            pub fn down(&self) -> Option<Self>
+            {
+                (!self.bottom_edge()).then(||
+                {
+                    let mut value = *self;
+
+                    value.pos_mut().y -= 1;
+                    debug_assert!(value.in_bounds());
+
+                    value
+                })
+            }
+
+            #[allow(dead_code)]
+            pub fn top_edge(&self) -> bool
+            {
+                self.pos().y == (self.size().y - 1)
+            }
+
+            #[allow(dead_code)]
+            pub fn bottom_edge(&self) -> bool
+            {
+                self.pos().y == 0
+            }
+
+            #[allow(dead_code)]
+            pub fn right_edge(&self) -> bool
+            {
+                self.pos().x == (self.size().x - 1)
+            }
+
+            #[allow(dead_code)]
+            pub fn left_edge(&self) -> bool
+            {
+                self.pos().x == 0
+            }
+
+            pub fn in_bounds(&self) -> bool
+            {
+                self.pos().zip(self.size()).all(|(pos, size)| pos < size)
+            }
+        }
+    }
+}
+
+#[macro_export]
+macro_rules! impl_directionals
+{
+    ($name:ty) =>
+    {
+        impl $name
+        {
             $crate::impl_group!{
                 directions_3d_group,
                 directions_3d_always_group,
@@ -1230,32 +1375,6 @@ macro_rules! impl_directionals
                 })
             }
 
-            pub fn right(&self) -> Option<Self>
-            {
-                (!self.right_edge()).then(||
-                {
-                    let mut value = *self;
-
-                    value.pos_mut().x += 1;
-                    debug_assert!(value.in_bounds());
-
-                    value
-                })
-            }
-
-            pub fn left(&self) -> Option<Self>
-            {
-                (!self.left_edge()).then(||
-                {
-                    let mut value = *self;
-
-                    value.pos_mut().x -= 1;
-                    debug_assert!(value.in_bounds());
-
-                    value
-                })
-            }
-
             pub fn forward(&self) -> Option<Self>
             {
                 (!self.forward_edge()).then(||
@@ -1282,44 +1401,6 @@ macro_rules! impl_directionals
                 })
             }
 
-            pub fn up(&self) -> Option<Self>
-            {
-                (!self.top_edge()).then(||
-                {
-                    let mut value = *self;
-
-                    value.pos_mut().y += 1;
-                    debug_assert!(value.in_bounds());
-
-                    value
-                })
-            }
-
-            pub fn down(&self) -> Option<Self>
-            {
-                (!self.bottom_edge()).then(||
-                {
-                    let mut value = *self;
-
-                    value.pos_mut().y -= 1;
-                    debug_assert!(value.in_bounds());
-
-                    value
-                })
-            }
-
-            #[allow(dead_code)]
-            pub fn top_edge(&self) -> bool
-            {
-                self.pos().y == (self.size().y - 1)
-            }
-
-            #[allow(dead_code)]
-            pub fn bottom_edge(&self) -> bool
-            {
-                self.pos().y == 0
-            }
-
             #[allow(dead_code)]
             pub fn forward_edge(&self) -> bool
             {
@@ -1331,32 +1412,17 @@ macro_rules! impl_directionals
             {
                 self.pos().z == 0
             }
-
-            #[allow(dead_code)]
-            pub fn right_edge(&self) -> bool
-            {
-                self.pos().x == (self.size().x - 1)
-            }
-
-            #[allow(dead_code)]
-            pub fn left_edge(&self) -> bool
-            {
-                self.pos().x == 0
-            }
-
-            pub fn in_bounds(&self) -> bool
-            {
-                self.pos().zip(self.size()).all(|(pos, size)| pos < size)
-            }
         }
+
+        $crate::impl_directionals_2d!{$name}
     }
 }
 
 #[cfg(debug_assertions)]
-pub type CheckedPos = LocalPos;
+pub type CheckedPos<T> = LocalPos<T>;
 
 #[cfg(not(debug_assertions))]
-pub type CheckedPos = Pos3<usize>;
+pub type CheckedPos<T> = T;
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
 pub struct LocalPos<T=Pos3<usize>>
@@ -1374,7 +1440,7 @@ impl BoundsCheckable for LocalPos<Pos2<usize>>
 {
     fn in_bounds(&self) -> bool
     {
-        self.pos.zip(self.size).all(|(pos, size)| pos < size)
+        Self::in_bounds(self)
     }
 }
 
@@ -1386,9 +1452,10 @@ impl BoundsCheckable for LocalPos
     }
 }
 
+impl_directionals_2d!{LocalPos<Pos2<usize>>}
 impl_directionals!{LocalPos}
 
-impl<T> LocalPos<T>
+impl<T: Copy> LocalPos<T>
 {
     pub fn new(pos: T, size: T) -> Self
     {
@@ -1403,6 +1470,29 @@ impl<T> LocalPos<T>
         let this = Self::new(T::from(other.0), size);
 
         this.in_bounds().then_some(this)
+    }
+
+    fn size(&self) -> T
+    {
+        self.size
+    }
+
+    fn pos_mut(&mut self) -> &mut T
+    {
+        &mut self.pos
+    }
+
+    fn pos(&self) -> &T
+    {
+        &self.pos
+    }
+}
+
+impl LocalPos<Pos2<usize>>
+{
+    pub fn with_z(self, z: usize, z_size: usize) -> LocalPos
+    {
+        LocalPos{pos: self.pos.with_z(z), size: self.size.with_z(z_size)}
     }
 }
 
@@ -1435,21 +1525,6 @@ impl LocalPos
     pub fn directions_inclusive(self) -> impl Iterator<Item=Option<Self>>
     {
         [Some(self), self.right(), self.left(), self.up(), self.down()].into_iter()
-    }
-
-    fn size(&self) -> Pos3<usize>
-    {
-        self.size
-    }
-
-    fn pos_mut(&mut self) -> &mut Pos3<usize>
-    {
-        &mut self.pos
-    }
-
-    fn pos(&self) -> &Pos3<usize>
-    {
-        &self.pos
     }
 
     #[allow(dead_code)]
