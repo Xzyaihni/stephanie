@@ -175,6 +175,7 @@
                         {"rotation": "Down", "value": "road_t"},
                         "road_corner",
                         {"rotation": "Left", "value": "road_corner"},
+                        "road_end",
                         {"rotation": "Right", "value": "road_end"}
                     ],
                     "right": ["building_b"]

@@ -358,29 +358,31 @@ impl<S: SaveLoad<WorldChunksBlock>> ServerOvermap<S>
         }
     }
 
-    fn to_grid_pos(size: Pos3<usize>, world_pos: GlobalPos) -> GlobalPos
+    fn to_grid_pos(size: Pos2<usize>, world_pos: GlobalPos) -> GlobalPos
     {
         const MAX_RATIO: usize = if CHUNK_RATIO.x > CHUNK_RATIO.y { CHUNK_RATIO.x } else { CHUNK_RATIO.y };
 
-        let non_z_grid = world_pos.0.zip(size).map(|(pos, original_size)|
+        let non_z_grid = Pos2::from(world_pos.0).zip(size).map(|(pos, original_size)|
         {
-            let grid_size = original_size as i32 - (MAX_RATIO as i32 * 2);
+            let grid_size = original_size as i32 - 2 - (MAX_RATIO as i32 / 2);
 
-            let grid = pos - (pos % grid_size);
+            let shifted_pos = if pos < 0 { pos + 1 } else { pos };
+
+            let grid = shifted_pos - (shifted_pos % grid_size);
 
             let top_left = if pos < 0 { grid - grid_size } else { grid };
 
             top_left + grid_size / 2
-        }) + CHUNK_RATIO.map(|x| x as i32) / 2;
+        });
 
-        let grid_pos = Pos3{z: world_pos.0.z, ..non_z_grid};
+        let grid_pos = non_z_grid.with_z(world_pos.0.z);
 
         GlobalPos::from(grid_pos)
     }
 
     fn move_to_grid(&mut self, world_pos: GlobalPos)
     {
-        self.move_to(Self::to_grid_pos(self.indexer.size, world_pos));
+        self.move_to(Self::to_grid_pos(Pos2::from(self.indexer.size), world_pos));
     }
 
     pub fn generate_chunk(&mut self, pos: GlobalPos, marker: impl FnMut(MarkerTile)) -> Chunk
@@ -651,7 +653,7 @@ mod tests
 
     use crate::{
         common::{get_env_value, TileMap, tilemap::TileLoot, world::TileRotation},
-        server::world::SERVER_OVERMAP_SIZE_Z
+        server::world::{SERVER_OVERMAP_SIZE, SERVER_OVERMAP_SIZE_Z}
     };
 
 
@@ -720,8 +722,8 @@ mod tests
             WorldGenerator::new(saver, rand_seed, Rc::new(tilemap), "world_generation/").unwrap()
         ));
 
-        let overmap_size = Pos3::new(9, 11, SERVER_OVERMAP_SIZE_Z);
-        let size = Pos3::new(overmap_size.x * CHUNK_RATIO.x, overmap_size.y * CHUNK_RATIO.y, SERVER_OVERMAP_SIZE_Z);
+        let overmap_size = Pos3::new(SERVER_OVERMAP_SIZE, SERVER_OVERMAP_SIZE, SERVER_OVERMAP_SIZE_Z);
+        let size = Pos3::new(overmap_size.x * CHUNK_RATIO.x + 1, overmap_size.y * CHUNK_RATIO.y + 1, SERVER_OVERMAP_SIZE_Z);
 
         let random_chunk = ||
         {
@@ -775,7 +777,7 @@ mod tests
             WorldGenerator::new(saver, rand_seed, Rc::new(tilemap), "world_generation_test/").unwrap()
         ));
 
-        let overmap_size = Pos3::new(9, 11, SERVER_OVERMAP_SIZE_Z);
+        let overmap_size = Pos3::new(SERVER_OVERMAP_SIZE, SERVER_OVERMAP_SIZE, SERVER_OVERMAP_SIZE_Z);
         let size = Pos3::new(overmap_size.x * CHUNK_RATIO.x + 1, overmap_size.y * CHUNK_RATIO.y + 1, SERVER_OVERMAP_SIZE_Z);
 
         let random_chunk = ||

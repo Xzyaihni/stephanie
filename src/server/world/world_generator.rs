@@ -887,15 +887,12 @@ impl<S: SaveLoad<WorldChunksBlock>> WorldGenerator<S>
             });
         }
 
-        fn print_worldchunks(rules: &ChunkRulesGroup, wave_collapser: &WaveCollapser)
+        fn print_worldchunks(wave_collapser: &WaveCollapser)
         {
-            wave_collapser.with_cloned(|x|
+            eprintln!("{}", wave_collapser.world_chunks.pretty_print_with(|maybe_world_chunk|
             {
-                eprintln!("{}", x.world_chunks.pretty_print_with(|maybe_world_chunk|
-                {
-                    maybe_world_chunk.as_ref().map(|x| rules.surface.format_id(x.id())).unwrap_or_else(|| "_".to_owned())
-                }));
-            });
+                maybe_world_chunk.as_ref().map(|x| wave_collapser.rules.format_id(x.id())).unwrap_or_else(|| "_".to_owned())
+            }));
         }
 
         if DebugConfig::is_enabled(DebugTool::PrintWfcStability)
@@ -916,7 +913,7 @@ impl<S: SaveLoad<WorldChunksBlock>> WorldGenerator<S>
 
             let success_percent = success_times as f32 / times as f32 * 100.0;
 
-            print_worldchunks(&self.rules, &wave_collapser);
+            print_worldchunks(&wave_collapser);
             log_worldchunks(format!("this has {success_percent:.1}% success rate"), wave_collapser.world_chunks, |_| None);
 
             eprintln!("wfc generation success rate: {success_percent:.1}% ({success_times}/{times})");
@@ -930,7 +927,7 @@ impl<S: SaveLoad<WorldChunksBlock>> WorldGenerator<S>
 
             if cfg!(debug_assertions) && is_last_attempt
             {
-                print_worldchunks(&self.rules, &wave_collapser);
+                print_worldchunks(&wave_collapser);
 
                 log_worldchunks("this forced fallbacks", wave_collapser.world_chunks, |_| None);
             }
@@ -1243,15 +1240,13 @@ impl PossibleStates
 
         debug_assert!(!other.states.is_empty());
 
+        let opposite_direction = direction.opposite();
+
         self.states.retain(|state|
         {
-            let keep = other.states.iter().any(|other_state|
-            {
-                let other_rule = rules.get(other_state.id);
-                let possible = &other_rule.neighbors(direction);
+            let this_neighbors = rules.get(state.id).neighbors(opposite_direction);
 
-                possible.contains(&state.id)
-            });
+            let keep = other.states.iter().any(|other_state| this_neighbors.contains(&other_state.id));
 
             if !keep
             {
@@ -1379,7 +1374,7 @@ impl PossibleStates
 fn edge_unmap(pos: LocalPos<Pos2<usize>>) -> Option<LocalPos<Pos2<usize>>>
 {
     let new_size = pos.size - Pos2::repeat(ENTROPY_EDGE * 2);
-    let new_pos = pos.pos.map(|x| x as i32) - Pos2::repeat(ENTROPY_EDGE as i32);
+    let new_pos = pos.pos.map(|x| x as i32 - ENTROPY_EDGE as i32);
 
     ((0..new_size.x as i32).contains(&new_pos.x) && (0..new_size.y as i32).contains(&new_pos.y)).then(||
     {
@@ -1410,6 +1405,19 @@ fn edge_map(pos: LocalPos<Pos2<usize>>) -> LocalPos<Pos2<usize>>
 fn edge_map(pos: Pos2<usize>) -> Pos2<usize>
 {
     pos + Pos2::repeat(ENTROPY_EDGE)
+}
+
+fn chunks_edge_logger(entropies: &Entropies) -> impl Fn(LocalPos<Pos2<usize>>) -> Option<WorldChunkId> + use<'_>
+{
+    |local_pos|
+    {
+        let possible_states = &entropies.get(local_pos.into()).states;
+
+        (possible_states.len() == 1).then(||
+        {
+            possible_states[0].id
+        })
+    }
 }
 
 #[derive(Clone, PartialEq)]
@@ -1567,7 +1575,7 @@ impl<'a, 'm> WaveCollapser<'a, 'm>
         let entropies_size = world_chunks.size() + Pos2::repeat(ENTROPY_EDGE * 2);
         let entropies = Entropies(FlatChunksContainer::new_with(entropies_size, |pos|
         {
-            let shifted_pos = pos.pos.map(|x| x as i32) - Pos2::repeat(ENTROPY_EDGE as i32);
+            let shifted_pos = pos.pos.map(|x| x as i32 - ENTROPY_EDGE as i32);
 
             let global_pos = global_mapper.to_global_unconverted(GlobalPos(shifted_pos));
 
@@ -1593,6 +1601,14 @@ impl<'a, 'm> WaveCollapser<'a, 'm>
 
             if let Some(chunk) = world_chunks.get(shifted_pos.map(|x| x as usize)).unwrap()
             {
+                if DebugConfig::is_enabled(DebugTool::RedundantWorldChecks)
+                {
+                    if let Some(known_chunk) = edge_chunk(global_pos)
+                    {
+                        debug_assert!(chunk.id() == known_chunk);
+                    }
+                }
+
                 PossibleStates::new_collapsed(chunk.id())
             } else
             {
@@ -1609,7 +1625,17 @@ impl<'a, 'm> WaveCollapser<'a, 'm>
             verbose_constrain: DebugConfig::is_enabled(DebugTool::VerboseConstrain)
         };
 
+        if DebugConfig::is_enabled(DebugTool::RedundantWorldChecks)
+        {
+            this.verify_states(global_mapper, &mut edge_chunk, false);
+        }
+
         this.constrain_all();
+
+        if DebugConfig::is_enabled(DebugTool::RedundantWorldChecks)
+        {
+            this.verify_states(global_mapper, &mut edge_chunk, true);
+        }
 
         this
     }
@@ -1672,6 +1698,90 @@ impl<'a, 'm> WaveCollapser<'a, 'm>
         &self.entropies
     }
 
+    fn verify_states(
+        &self,
+        global_mapper: &impl OvermapIndexing<OvermapDimension2>,
+        mut edge_chunk: impl FnMut(GlobalPos<Pos2<i32>>) -> Option<WorldChunkId>,
+        past_constrain: bool
+    )
+    {
+        let edge_to_global_pos = |edge_pos: LocalPos<Pos2<usize>>| -> GlobalPos<Pos2<i32>>
+        {
+            global_mapper.to_global_unconverted(GlobalPos(edge_pos.pos.map(|x| x as i32 - ENTROPY_EDGE as i32)))
+        };
+
+        let mut verify_position_match = |edge_pos: LocalPos<Pos2<usize>>|
+        {
+            if let Some(loaded_id) = edge_chunk(edge_to_global_pos(edge_pos))
+            {
+                let current_states = &self.entropies[edge_pos.into()];
+
+                assert!(current_states.collapsed());
+                assert!(current_states.states().len() == 1);
+
+                let first_state = current_states.states().first().unwrap();
+
+                assert_eq!(loaded_id, first_state.id);
+            }
+        };
+
+        for pos in self.entropies.positions()
+        {
+            verify_position_match(pos);
+
+            pos.directions_group().map(|direction, value|
+            {
+                if let Some(direction_pos) = value
+                {
+                    verify_position_match(pos);
+                    verify_position_match(direction_pos);
+
+                    let first = &self.entropies[pos.into()];
+                    let other = &self.entropies[direction_pos.into()];
+
+                    if first.states().len() != 1
+                    {
+                        return;
+                    }
+
+                    let first = first.states().first().unwrap();
+
+                    let direction = direction.flip_y();
+
+                    let first_neighbors = self.rules.get(first.id).neighbors(direction);
+
+                    assert!(other.states().len() > 0);
+
+                    if !past_constrain && !other.collapsed()
+                    {
+                        return;
+                    }
+
+                    other.states().iter().for_each(|other_state|
+                    {
+                        if !first_neighbors.contains(&other_state.id)
+                        {
+                            eprintln!(
+                                "{:?} ({:?}) {} doesnt have {:?} ({:?}) {} as valid a neighbor at {direction} (valid [{}])",
+                                pos,
+                                edge_to_global_pos(pos),
+                                self.rules.format_id(first.id),
+                                direction_pos,
+                                edge_to_global_pos(direction_pos),
+                                self.rules.format_id(other_state.id),
+                                first_neighbors.iter().map(|x| self.rules.format_id(*x)).reduce(|acc, x| acc + ", " + &x).unwrap()
+                            );
+
+                            log_worldchunks("validity check failed:", self.world_chunks, chunks_edge_logger(&self.entropies));
+
+                            panic!();
+                        }
+                    });
+                }
+            });
+        }
+    }
+
     fn constrain_all(&mut self)
     {
         for pos in self.entropies.positions()
@@ -1693,13 +1803,15 @@ impl<'a, 'm> WaveCollapser<'a, 'm>
             {
                 let (this, other) = self.entropies.get_two_mut(pos.into(), direction_pos.into());
 
+                let direction = direction.flip_y();
+
                 #[cfg(debug_assertions)]
                 {
                     if self.verbose_constrain
                     {
                         eprintln!(
                             "{} constraining {} against {} ({} x {})",
-                            direction.opposite().flip_y(),
+                            direction.opposite(),
                             fmt_2d(direction_pos.pos),
                             fmt_2d(pos.pos),
                             other.format_states(self.rules),
@@ -1708,7 +1820,7 @@ impl<'a, 'm> WaveCollapser<'a, 'm>
                     }
                 }
 
-                let changed = other.constrain(self.rules, this, direction.flip_y());
+                let changed = other.constrain(self.rules, this, direction);
 
                 #[cfg(debug_assertions)]
                 {
@@ -1740,15 +1852,7 @@ impl<'a, 'm> WaveCollapser<'a, 'm>
 
                     eprintln!("couldnt find a valid worldchunk at {} with {neighbors}, using fallback", fmt_2d(direction_pos.pos));
 
-                    log_worldchunks("invalid stage", self.world_chunks, |local_pos|
-                    {
-                        let possible_states = &self.entropies.get(local_pos.into()).states;
-
-                        (possible_states.len() == 1).then(||
-                        {
-                            possible_states[0].id
-                        })
-                    });
+                    log_worldchunks("invalid stage", self.world_chunks, chunks_edge_logger(&self.entropies));
 
                     #[cfg(test)]
                     {
