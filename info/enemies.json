@@ -60,7 +60,7 @@
         },
         "hand": "bigy hand",
         "face": "zob",
-        "on_contents": "(and-maybe (standard-drops '(boulder pipe sledgehammer)) (drop-rate 1 2) 'heal_pills)"
+        "on_contents": "(and-maybe (and-always (standard-drops '(boulder pipe sledgehammer)) 'rock) (drop-rate 1 2) 'heal_pills)"
     },
     {
         "name": "office zob",
