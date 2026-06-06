@@ -33,7 +33,9 @@
 
 (load "multichunk_common.scm")
 
-(define (light-intensity x) (if (stop-between-difficulty 0.5 2.0) x 0.0))
+(define building-difficulty (difficulty-at middle-position))
+
+(define (light-intensity x) (if (stop-between-difficulty-with building-difficulty 0.5 2.0) x 0.0))
 
 (define wall-tile (tile 'concrete))
 
@@ -217,7 +219,7 @@
                                     (decide-enemy
                                         (gradient-pick
                                             '(normal strong)
-                                            difficulty
+                                            building-difficulty
                                             0.2
                                             2.0))))
                             #t)
@@ -266,7 +268,7 @@
                     (seed-with room-seed 387)
                     (list (cons side-up middle-area))
                     (list
-                        (if (difficulty-chance 0.5 0.25)
+                        (if (difficulty-chance-with building-difficulty 0.5 0.25)
                             (lambda (inside-index outer-side current-area)
                                 (try-put-furniture
                                     (area-index current-area inside-index)
@@ -275,7 +277,7 @@
                                         (decide-enemy
                                             (gradient-pick
                                                 '(normal strong)
-                                                difficulty
+                                                building-difficulty
                                                 0.2
                                                 2.0))))
                                 #t)

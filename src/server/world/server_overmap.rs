@@ -46,7 +46,7 @@ use super::world_generator::WorldChunkTag;
 
 
 #[derive(Debug, Clone)]
-struct Indexer
+pub struct Indexer
 {
     pub size: Pos3<usize>,
     pub player_position: GlobalPos
@@ -220,7 +220,7 @@ pub struct ServerOvermap<S>
     world_chunks: Rc<RefCell<ChunksContainer<Option<WorldChunksBlock>>>>,
     world_plane: Rc<RefCell<WorldPlane>>,
     overmap_index: i32,
-    indexer: Indexer
+    indexer: Rc<RefCell<Indexer>>
 }
 
 impl<S: fmt::Debug> fmt::Debug for ServerOvermap<S>
@@ -266,13 +266,13 @@ impl<S: SaveLoad<WorldChunksBlock>> ServerOvermap<S>
 
         let size = (Pos3::new(CHUNK_RATIO.x, CHUNK_RATIO.y, 1) * size).map(|x| if x % 2 == 0 { x + 1 } else { x });
 
-        let indexer = Indexer::new(size, player_position.rounded());
+        let indexer = Rc::new(RefCell::new(Indexer::new(size, player_position.rounded())));
 
         let world_chunks = Rc::new(RefCell::new(ChunksContainer::new(size)));
 
         let world_plane = Rc::new(RefCell::new(WorldPlane(FlatChunksContainer::new(size.into()))));
 
-        world_generator.borrow().push_world_chunks(world_plane.clone());
+        world_generator.borrow().push_world_chunks(indexer.clone(), world_plane.clone());
 
         let mut this = Self{
             world_generator,
@@ -293,7 +293,7 @@ impl<S: SaveLoad<WorldChunksBlock>> ServerOvermap<S>
             world_generator: &mut self.world_generator.borrow_mut(),
             world_chunks: &mut self.world_chunks.borrow_mut(),
             world_plane: &mut self.world_plane.borrow_mut(),
-            indexer: self.indexer.clone()
+            indexer: self.indexer.borrow().clone()
         })
     }
 
@@ -382,7 +382,9 @@ impl<S: SaveLoad<WorldChunksBlock>> ServerOvermap<S>
 
     fn move_to_grid(&mut self, world_pos: GlobalPos)
     {
-        self.move_to(Self::to_grid_pos(Pos2::from(self.indexer.size), world_pos));
+        let size = Pos2::from(self.indexer.borrow().size);
+
+        self.move_to(Self::to_grid_pos(size, world_pos));
     }
 
     pub fn generate_chunk(&mut self, pos: GlobalPos, marker: impl FnMut(MarkerTile)) -> Chunk
@@ -418,7 +420,7 @@ impl<S: SaveLoad<WorldChunksBlock>> ServerOvermap<S>
 
     fn shift_overmap_by(&mut self, shift_offset: Pos3<i32>)
     {
-        self.indexer.player_position += GlobalPos(shift_offset);
+        self.indexer.borrow_mut().player_position += GlobalPos(shift_offset);
 
         self.with_ref(|mut overmap| overmap.position_offset(shift_offset))
     }
@@ -428,6 +430,9 @@ impl<S: SaveLoad<WorldChunksBlock>> ServerOvermap<S>
         let world_chunks = self.world_chunks.borrow();
         let mut world_generator = self.world_generator.borrow_mut();
         let world_generator = &mut *world_generator;
+
+        let indexer = self.indexer.borrow();
+        let indexer = &*indexer;
 
         let mut chunk = Chunk::new();
 
@@ -452,7 +457,7 @@ impl<S: SaveLoad<WorldChunksBlock>> ServerOvermap<S>
                     }
 
                     let info = {
-                        let global_pos = self.to_global(local_pos);
+                        let global_pos = OvermapIndexing::<OvermapDimension3>::to_global(indexer, local_pos);
 
                         ConditionalInfo{
                             position: local_pos.into(),
@@ -511,7 +516,7 @@ impl<S> CommonIndexing for ServerOvermap<S>
 {
     fn size(&self) -> Pos3<usize>
     {
-        self.indexer.size
+        self.indexer.borrow().size
     }
 }
 
@@ -519,7 +524,7 @@ impl<S> OvermapIndexing for ServerOvermap<S>
 {
     fn player_position(&self) -> GlobalPos
     {
-        self.indexer.player_position
+        self.indexer.borrow().player_position
     }
 }
 

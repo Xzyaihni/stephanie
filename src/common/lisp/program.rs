@@ -771,6 +771,16 @@ impl Primitives
         self.indices.insert(name, id as u32);
     }
 
+    pub fn replace(&mut self, name: &str, procedure: PrimitiveProcedureInfo)
+    {
+        let id = self.indices.get(name).unwrap_or_else(||
+        {
+            panic!("tried to replace primitive procedure `{name}`, but it didnt exist");
+        });
+
+        self.primitives[*id as usize] = procedure;
+    }
+
     pub fn iter_infos(&self) -> impl Iterator<Item=(&String, ArgsCount)>
     {
         self.indices.iter().map(|(name, index)|

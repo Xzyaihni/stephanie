@@ -60,7 +60,7 @@ use super::{
     MarkerKind
 };
 
-pub use super::server_overmap::WorldPlane;
+pub use super::server_overmap::{Indexer, WorldPlane};
 
 pub use chunk_rules::{
     WORLD_CHUNK_SIZE,
@@ -251,7 +251,7 @@ pub struct ChunkGenerator
     chunks: HashMap<String, Lisp>,
     rules: Rc<ChunkRulesGroup>,
     tilemap: Rc<TileMap>,
-    overmaps_world_chunks: Rc<RefCell<Vec<Rc<RefCell<WorldPlane>>>>>
+    overmaps_world_chunks: Rc<RefCell<Vec<(Rc<RefCell<Indexer>>, Rc<RefCell<WorldPlane>>)>>>
 }
 
 impl ChunkGenerator
@@ -300,7 +300,7 @@ impl ChunkGenerator
     pub fn default_primitives(
         tilemap: &TileMap,
         rules: Rc<ChunkRulesGroup>,
-        overmaps_world_chunks: Rc<RefCell<Vec<Rc<RefCell<WorldPlane>>>>>,
+        overmaps_world_chunks: Rc<RefCell<Vec<(Rc<RefCell<Indexer>>, Rc<RefCell<WorldPlane>>)>>>,
         allow_out_of_range: bool
     ) -> Primitives
     {
@@ -378,12 +378,9 @@ impl ChunkGenerator
                     lisp_value
                 }));
 
-        fn read_chunk_info<T>(
-            overmaps_world_chunks: &[Rc<RefCell<WorldPlane>>],
+        fn read_chunk_position(
             args: &mut PrimitiveArgs,
-            allow_out_of_range: bool,
-            f: impl FnOnce(&mut PrimitiveArgs, &WorldChunk) -> T
-        ) -> Result<T, lisp::Error>
+        ) -> Result<(Pos2<usize>, usize), lisp::Error>
         {
             let values = args.next().unwrap().as_pairs_list(args.memory)?;
 
@@ -398,7 +395,47 @@ impl ChunkGenerator
             let x = values.next().unwrap().as_integer()? as usize;
             let y = values.next().unwrap().as_integer()? as usize;
 
-            let this_overmap = overmaps_world_chunks.get(overmap_index).ok_or_else(||
+            Ok((Pos2{x, y}, overmap_index))
+        }
+
+        {
+            let overmaps_world_chunks = overmaps_world_chunks.clone();
+
+            primitives.add(
+                "difficulty-at",
+                PrimitiveProcedureInfo::new_simple(1, Effect::Pure, move |mut args|
+                {
+                    let global_pos = {
+                        let (position, overmap_index) = read_chunk_position(&mut args)?;
+
+                        let local_pos_unconverted = GlobalPos(position.map(|x| x as i32));
+
+                        let overmaps = overmaps_world_chunks.borrow();
+
+                        let (indexer, _) = overmaps.get(overmap_index).ok_or_else(||
+                        {
+                            lisp::Error::Custom(format!("overmap index {overmap_index} doesnt exist"))
+                        })?;
+
+                        let indexer = indexer.borrow();
+
+                        OvermapIndexing::<OvermapDimension2>::to_global_unconverted(&*indexer, local_pos_unconverted)
+                    };
+
+                    Ok(chunk_difficulty(global_pos).into())
+                }));
+        }
+
+        fn read_chunk_info<T>(
+            overmaps_world_chunks: &[(Rc<RefCell<Indexer>>, Rc<RefCell<WorldPlane>>)],
+            args: &mut PrimitiveArgs,
+            allow_out_of_range: bool,
+            f: impl FnOnce(&mut PrimitiveArgs, &WorldChunk) -> T
+        ) -> Result<T, lisp::Error>
+        {
+            let (Pos2{x, y}, overmap_index) = read_chunk_position(args)?;
+
+            let (_, this_overmap) = overmaps_world_chunks.get(overmap_index).ok_or_else(||
             {
                 lisp::Error::Custom(format!("overmap index {overmap_index} doesnt exist"))
             })?;
@@ -495,9 +532,9 @@ impl ChunkGenerator
         primitives
     }
 
-    fn push_world_chunks(&self, world_chunks: Rc<RefCell<WorldPlane>>)
+    fn push_world_chunks(&self, indexer: Rc<RefCell<Indexer>>, world_chunks: Rc<RefCell<WorldPlane>>)
     {
-        self.overmaps_world_chunks.borrow_mut().push(world_chunks);
+        self.overmaps_world_chunks.borrow_mut().push((indexer, world_chunks));
     }
 
     fn parse_function(
@@ -764,7 +801,7 @@ impl ChunkGenerator
                 #[cfg(test)]
                 {
                     let planes = self.overmaps_world_chunks.borrow();
-                    let this_plane = planes[overmap_index as usize].borrow();
+                    let this_plane = planes[overmap_index as usize].1.borrow();
 
                     log_worldchunks("chunk error", &this_plane.0, |_| None);
 
@@ -820,9 +857,9 @@ impl<S: SaveLoad<WorldChunksBlock>> WorldGenerator<S>
         self.saver.load(pos)
     }
 
-    pub fn push_world_chunks(&self, world_chunks: Rc<RefCell<WorldPlane>>)
+    pub fn push_world_chunks(&self, indexer: Rc<RefCell<Indexer>>, world_chunks: Rc<RefCell<WorldPlane>>)
     {
-        self.generator.push_world_chunks(world_chunks)
+        self.generator.push_world_chunks(indexer, world_chunks)
     }
 
     pub fn generate_surface<M: OvermapIndexing<OvermapDimension2> + OvermapIndexing + Debug>(

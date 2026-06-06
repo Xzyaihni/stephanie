@@ -28,7 +28,9 @@
 
 (load "multichunk_common.scm")
 
-(define (light-intensity x) (if (stop-between-difficulty 2.0 4.0) x 0.0))
+(define building-difficulty (difficulty-at middle-position))
+
+(define (light-intensity x) (if (stop-between-difficulty-with building-difficulty 2.0 4.0) x 0.0))
 
 (define wall-tile (tile 'concrete))
 
@@ -174,9 +176,9 @@
                 (try-put-furniture (make-point (if (random-bool) 5 6) 12) (chair-list side-up))
                 (try-put-furniture (make-point 3 (if (random-bool-seeded (seed-with furnitures-seed 23123)) 7 8)) (chair-list side-right)))
             (begin
-                (if (difficulty-chance 0.1 0.0) (try-put-furniture (make-point 3 4) (list 'enemy 'office_zob)))
-                (if (difficulty-chance 0.1 0.0) (try-put-furniture (make-point 5 10) (list 'enemy 'office_zob)))
-                (if (difficulty-chance 0.1 0.0) (try-put-furniture (make-point 3 7) (list 'enemy 'office_zob)))
+                (if (difficulty-chance-with building-difficulty 0.1 0.0) (try-put-furniture (make-point 3 4) (list 'enemy 'office_zob)))
+                (if (difficulty-chance-with building-difficulty 0.1 0.0) (try-put-furniture (make-point 5 10) (list 'enemy 'office_zob)))
+                (if (difficulty-chance-with building-difficulty 0.1 0.0) (try-put-furniture (make-point 3 7) (list 'enemy 'office_zob)))
                 (try-put-furniture (make-point 4 2) (potted-plant-list side-right))
                 (try-put-furniture (make-point 4 5) (potted-plant-list side-right))
                 (try-put-furniture (make-point 5 9) (potted-plant-list side-up))
@@ -192,12 +194,12 @@
                 (try-put-furniture (make-point 3 (if (random-bool) 12 13)) (chair-list side-right))
                 (try-put-furniture (make-point 3 (if (random-bool) 2 3)) (chair-list side-right))
                 (try-put-furniture (make-point 3 (if (random-bool) 5 6)) (chair-list side-right))))
-        (if (difficulty-chance 0.1 0.0) (try-put-furniture (make-point 4 10) (list 'enemy 'office_zob)))
-        (if (difficulty-chance 0.1 0.0) (try-put-furniture (make-point 5 11) (list 'enemy 'office_zob)))
-        (if (difficulty-chance 0.1 0.0) (try-put-furniture (make-point 4 4) (list 'enemy 'office_zob)))
+        (if (difficulty-chance-with building-difficulty 0.1 0.0) (try-put-furniture (make-point 4 10) (list 'enemy 'office_zob)))
+        (if (difficulty-chance-with building-difficulty 0.1 0.0) (try-put-furniture (make-point 5 11) (list 'enemy 'office_zob)))
+        (if (difficulty-chance-with building-difficulty 0.1 0.0) (try-put-furniture (make-point 4 4) (list 'enemy 'office_zob)))
         (try-put-furniture (make-point 4 11) (list 'enemy 'office_zob))
         (try-put-furniture (make-point 9 7) (list 'enemy 'office_zob))
-        (if (difficulty-chance 0.1 0.0)
+        (if (difficulty-chance-with building-difficulty 0.1 0.0)
             (begin
                 (try-put-furniture (make-point 9 9) (list 'enemy 'office_zob))
                 (try-put-furniture (make-point 10 13) (list 'enemy 'office_zob))

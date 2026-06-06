@@ -50,6 +50,7 @@ use stephanie::{
         world_generator::{
             WORLD_CHUNK_SIZE,
             WorldPlane,
+            Indexer,
             WorldChunk,
             WorldChunkId,
             WorldChunkTag,
@@ -96,6 +97,7 @@ use stephanie::{
             CHUNK_VISUAL_SIZE,
             MaybeGroup,
             DirectionsGroup,
+            GlobalPos,
             LocalPos,
             TileRotation
         }
@@ -342,6 +344,7 @@ struct AssetsDependent
     furniture: FurnituresInfo,
     enemies: (CharactersInfo, EnemiesInfo),
     rules: Rc<ChunkRulesGroup>,
+    difficulty: Rc<RefCell<f32>>,
     world_chunks: Rc<RefCell<WorldPlane>>
 }
 
@@ -350,6 +353,7 @@ impl AssetsDependent
     fn new(
         info: &mut ObjectCreatePartialInfo,
         rules: Rc<ChunkRulesGroup>,
+        difficulty: Rc<RefCell<f32>>,
         world_chunks: Rc<RefCell<WorldPlane>>
     ) -> Self
     {
@@ -364,9 +368,20 @@ impl AssetsDependent
 
             tilemap.and_then(|tilemap|
             {
-                let overmaps = Rc::new(RefCell::new(vec![world_chunks.clone()]));
+                let indexer = Rc::new(RefCell::new(Indexer::new(Pos3::repeat(0), GlobalPos(Pos3::repeat(0)))));
+                let overmaps = Rc::new(RefCell::new(vec![(indexer, world_chunks.clone())]));
 
-                let primitives = Rc::new(ChunkGenerator::default_primitives(&tilemap.tilemap, rules.clone(), overmaps, false));
+                let mut primitives = ChunkGenerator::default_primitives(&tilemap.tilemap, rules.clone(), overmaps, false);
+
+                {
+                    let difficulty = difficulty.clone();
+                    primitives.replace("difficulty-at", PrimitiveProcedureInfo::new_simple(1, Effect::Pure, move |_args|
+                    {
+                        Ok((*difficulty.borrow()).into())
+                    }));
+                }
+
+                let primitives = Rc::new(primitives);
 
                 let memory = LispMemory::new(primitives, 256, 1 << 13);
 
@@ -419,6 +434,7 @@ impl AssetsDependent
             furniture,
             enemies,
             rules,
+            difficulty,
             world_chunks
         }
     }
@@ -428,7 +444,7 @@ impl AssetsDependent
         let assets = info.partial.assets.clone();
         assets.lock().reload(info);
 
-        *self = Self::new(&mut info.partial, self.rules.clone(), self.world_chunks.clone());
+        *self = Self::new(&mut info.partial, self.rules.clone(), self.difficulty.clone(), self.world_chunks.clone());
     }
 }
 
@@ -436,6 +452,7 @@ struct ChunkPreviewer
 {
     shaders: DrawShaders,
     fonts: Rc<FontsContainer>,
+    difficulty: Rc<RefCell<f32>>,
     world_chunks: Rc<RefCell<WorldPlane>>,
     assets_dependent: ModifiedWatcher<AssetsDependent>,
     rules: Rc<ChunkRulesGroup>,
@@ -574,6 +591,8 @@ impl YanyaApp for ChunkPreviewer
 
         let controller = Controller::new(&info.object_info);
 
+        let difficulty = Rc::new(RefCell::new(0.0));
+
         let tags = ModifiedWatcher::new(PARENT_DIRECTORY, Tags{
             name: String::new().into(),
             chunks: (0..9).map(|i| (Pos2::new((i % 3) + 1, (i / 3) + 1), String::new().into())).collect(),
@@ -590,12 +609,13 @@ impl YanyaApp for ChunkPreviewer
 
         let assets_dependent = ModifiedWatcher::new_many(
             vec!["textures".into(), "info".into(), "lisp".into()],
-            AssetsDependent::new(&mut info.object_info, rules.clone(), world_chunks.clone())
+            AssetsDependent::new(&mut info.object_info, rules.clone(), difficulty.clone(), world_chunks.clone())
         );
 
         Self{
             shaders: app_info.unwrap(),
             fonts: info.object_info.builder_wrapper.fonts().clone(),
+            difficulty,
             world_chunks,
             assets_dependent,
             rules,
@@ -912,6 +932,7 @@ impl YanyaApp for ChunkPreviewer
             self.regenerate = false;
 
             self.preview_tags = self.current_tags.clone();
+            *self.difficulty.borrow_mut() = self.preview_tags.difficulty;
 
             if !self.preview_tags.seed.0.text.is_empty()
             {

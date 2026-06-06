@@ -272,12 +272,14 @@
 (define (seed-with seed number)
     (random-integer-seeded (wrapping-add seed number)))
 
-(define (difficulty-chance scale start) (< (random-float) (+ (* difficulty scale) start)))
+(define (difficulty-chance scale start) (difficulty-chance-with difficulty scale start))
+(define (difficulty-chance-with this-difficulty scale start) (< (random-float) (+ (* this-difficulty scale) start)))
 
-(define (stop-between-difficulty start end)
-    (if (< difficulty start)
+(define (stop-between-difficulty start end) (stop-between-difficulty-with difficulty start end))
+(define (stop-between-difficulty-with this-difficulty start end)
+    (if (< this-difficulty start)
         #t
-        (if (> difficulty end)
+        (if (> this-difficulty end)
             #f
-            (let ((fraction (/ (- difficulty start) (- end start))))
+            (let ((fraction (/ (- this-difficulty start) (- end start))))
                 (> (random-float) fraction)))))

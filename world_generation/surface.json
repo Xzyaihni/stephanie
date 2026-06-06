@@ -218,7 +218,9 @@
                         {"rotation": "Right", "value": "road_t"},
                         {"rotation": "Down", "value": "road_corner"},
                         {"rotation": "Left", "value": "road_corner"},
-                        "road_end"
+                        "road_end",
+                        {"rotation": "Left", "value": "road_end"},
+                        {"rotation": "Down", "value": "road_end"}
                     ],
                     "left": ["building_b"],
                     "right": [
@@ -268,6 +270,8 @@
                         {"rotation": "Left", "value": "road_corner"},
                         {"rotation": "Down", "value": "road_t"},
                         "park",
+                        "road_end",
+                        {"rotation": "Right", "value": "road_end"},
                         {"rotation": "Left", "value": "road_end"}
                     ],
                     "right": ["office_tr"]
@@ -299,6 +303,8 @@
                         "road_t",
                         {"rotation": "Right", "value": "road_corner"},
                         {"rotation": "Down", "value": "road_corner"},
+                        {"rotation": "Right", "value": "road_end"},
+                        {"rotation": "Down", "value": "road_end"},
                         {"rotation": "Left", "value": "road_end"}
                     ]
                 }
@@ -448,7 +454,7 @@
                     "up": ["road_t", {"rotation": "Left", "value": "road_straight"}],
                     "down": ["park", "bunker"],
                     "right": ["park", "bunker"],
-                    "left": ["road_straight"]
+                    "left": ["road_straight", {"rotation": "Down", "value": "road_corner"}]
                 }
             }
         },

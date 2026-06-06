@@ -64,7 +64,7 @@ pub struct Pos2<T>
 
 impl<T> Pos2<T>
 {
-    pub fn new(x: T, y: T) -> Self
+    pub const fn new(x: T, y: T) -> Self
     {
         Self{x, y}
     }
@@ -211,7 +211,7 @@ impl Pos3<Axis>
 
 impl<T> Pos3<T>
 {
-    pub fn new(x: T, y: T, z: T) -> Self
+    pub const fn new(x: T, y: T, z: T) -> Self
     {
         Self{x, y, z}
     }
@@ -602,7 +602,7 @@ pub struct GlobalPos<T=Pos3<i32>>(pub T);
 
 impl GlobalPos<Pos2<i32>>
 {
-    pub fn new_2d(x: i32, y: i32) -> Self
+    pub const fn new_2d(x: i32, y: i32) -> Self
     {
         Self(Pos2::new(x, y))
     }
@@ -615,7 +615,7 @@ impl GlobalPos<Pos2<i32>>
 
 impl GlobalPos
 {
-    pub fn new(x: i32, y: i32, z: i32) -> Self
+    pub const fn new(x: i32, y: i32, z: i32) -> Self
     {
         Self(Pos3::new(x, y, z))
     }
@@ -1457,7 +1457,7 @@ impl_directionals!{LocalPos}
 
 impl<T: Copy> LocalPos<T>
 {
-    pub fn new(pos: T, size: T) -> Self
+    pub const fn new(pos: T, size: T) -> Self
     {
         Self{pos, size}
     }
@@ -1498,12 +1498,12 @@ impl LocalPos<Pos2<usize>>
 
 impl LocalPos
 {
-    pub fn moved(&self, x: usize, y: usize, z: usize) -> Self
+    pub const fn moved(&self, x: usize, y: usize, z: usize) -> Self
     {
         Self{pos: Pos3::new(x, y, z), size: self.size}
     }
 
-    pub fn with_z(self, z: usize) -> Self
+    pub const fn with_z(self, z: usize) -> Self
     {
         Self{pos: Pos3{z, ..self.pos}, ..self}
     }

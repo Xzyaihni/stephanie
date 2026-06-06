@@ -48,6 +48,7 @@ use stephanie::{
             Entropies,
             WaveCollapser,
             WorldPlane,
+            Indexer,
             ChunkRulesGroup,
             ChunkGenerator,
             ConditionalInfo
@@ -86,6 +87,7 @@ use stephanie::{
             TileRotation,
             MaybeGroup,
             DirectionsGroup,
+            GlobalPos,
             LocalPos
         }
     }
@@ -311,7 +313,8 @@ impl AssetsDependent
 
             tilemap.zip(rules.as_ref().map(|x| x.clone())).and_then(|(tilemap, rules)|
             {
-                let overmaps = Rc::new(RefCell::new(vec![world_chunks.clone()]));
+                let indexer = Rc::new(RefCell::new(Indexer::new(Pos3::repeat(0), GlobalPos(Pos3::repeat(0)))));
+                let overmaps = Rc::new(RefCell::new(vec![(indexer, world_chunks.clone())]));
 
                 let primitives = Rc::new(ChunkGenerator::default_primitives(&tilemap.tilemap, rules, overmaps, true));
 
