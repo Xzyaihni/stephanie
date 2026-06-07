@@ -1220,13 +1220,13 @@ impl Character
 
         damage_durability_with(entities, info.this, held, amount, ||
         {
-            let disappear_action = item_disappear_watcher(textures).action;
+            let explode_info = item_disappear_explode_info(textures);
 
             if let Some(holding) = holding
             {
                 entities.add_watcher(holding.entity, Watcher{
                     kind: WatcherType::Instant,
-                    action: disappear_action,
+                    action: Watcher::explode_action(ExplodeInfo{keep: true, ..explode_info}),
                     ..Default::default()
                 });
             }

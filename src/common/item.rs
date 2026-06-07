@@ -34,19 +34,24 @@ use crate::{
 pub use crate::common::items_info::ItemId;
 
 
-pub fn item_disappear_watcher(textures: &CommonTextures) -> Watcher
+pub fn item_disappear_explode_info(textures: &CommonTextures) -> ExplodeInfo
 {
     let explode_info = ParticlesKind::Dust{direction: None}.create(textures);
 
+    ExplodeInfo{
+        info: ParticlesInfo{
+            position: ParticlePosition::Spread(1.0),
+            ..explode_info.info
+        },
+        ..explode_info
+    }
+}
+
+pub fn item_disappear_watcher(textures: &CommonTextures) -> Watcher
+{
     Watcher{
         kind: WatcherType::Lifetime(60.0.into()),
-        action: Watcher::explode_action(ExplodeInfo{
-            info: ParticlesInfo{
-                position: ParticlePosition::Spread(1.0),
-                ..explode_info.info
-            },
-            ..explode_info
-        }),
+        action: Watcher::explode_action(item_disappear_explode_info(textures)),
         ..Default::default()
     }
 }
