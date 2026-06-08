@@ -46,18 +46,20 @@ pub const CHUNK_RATIO: Pos3<usize> = Pos3{
 
 const ROTATEABLE_DEFAULT: bool = true;
 
-fn union<T: PartialEq>(values: &mut Vec<T>, value: T) -> bool
+fn union<T: Debug + PartialEq + PartialOrd + Ord>(values: &mut Vec<T>, value: T) -> bool
 {
-    let has_value = values.contains(&value);
-    if !has_value
+    debug_assert!(values.is_sorted(), "must be sorted: {values:?}");
+
+    let found_index = values.binary_search(&value);
+    if let Err(sorted_index) = found_index
     {
-        values.push(value);
+        values.insert(sorted_index, value);
     }
 
-    !has_value
+    found_index.is_err()
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct WorldChunkId(usize);
 
@@ -493,7 +495,7 @@ impl ChunkRule
         let neighbors = {
             let n = |neighbors: ChunkNeighborType|
             {
-                neighbors.into_iter().filter_map(|name|
+                let mut neighbors = neighbors.into_iter().filter_map(|name|
                 {
                     let neighbor = name_mappings.world_chunk.get(&name.clone().into()).cloned();
 
@@ -503,7 +505,11 @@ impl ChunkRule
                     }
 
                     neighbor
-                }).collect::<Vec<_>>()
+                }).collect::<Vec<_>>();
+
+                neighbors.sort_unstable();
+
+                neighbors
             };
 
             match neighbors
@@ -626,7 +632,11 @@ impl ChunkRule
                 *name_mappings.world_chunk.get(&(this_rotation.combine(rotation), name.clone())).unwrap()
             };
 
-            neighbors.into_iter().map(rotate).collect::<Vec<_>>()
+            let mut neighbors = neighbors.into_iter().map(rotate).collect::<Vec<_>>();
+
+            neighbors.sort_unstable();
+
+            neighbors
         });
 
         Self{

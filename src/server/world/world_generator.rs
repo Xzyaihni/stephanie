@@ -1307,11 +1307,18 @@ impl PossibleStates
 
         let opposite_direction = direction.opposite();
 
-        self.states.retain(|state|
+        let mut states_len = self.states.len();
+        let mut state_index = 0;
+
+        while state_index < states_len
         {
+            let state = &self.states[state_index];
+
             let this_neighbors = rules.get(state.id).neighbors(opposite_direction);
 
-            let keep = other.states.iter().any(|other_state| this_neighbors.contains(&other_state.id));
+            debug_assert!(this_neighbors.is_sorted(), "the neighbors must be sorted: {this_neighbors:?}");
+
+            let keep = other.states.iter().any(|other_state| this_neighbors.binary_search(&other_state.id).is_ok());
 
             if !keep
             {
@@ -1326,10 +1333,15 @@ impl PossibleStates
                 }
 
                 any_constrained = true;
-            }
 
-            keep
-        });
+                self.states.remove(state_index);
+
+                states_len -= 1;
+            } else
+            {
+                state_index += 1;
+            }
+        }
 
         if any_constrained
         {
@@ -1912,11 +1924,9 @@ impl<'a, 'm> WaveCollapser<'a, 'm>
                     visited_index
                 };
 
-                let _verbose_constrain = self.verbose_constrain;
-
                 #[cfg(debug_assertions)]
                 {
-                    if _verbose_constrain
+                    if self.verbose_constrain
                     {
                         eprintln!(
                             "{} constraining {} against {} ({} x {})",
@@ -1952,7 +1962,7 @@ impl<'a, 'm> WaveCollapser<'a, 'm>
 
                 #[cfg(debug_assertions)]
                 {
-                    if _verbose_constrain
+                    if self.verbose_constrain
                     {
                         eprintln!("after: {} x {}", other.format_states(self.rules), this.format_states(self.rules));
                     }
