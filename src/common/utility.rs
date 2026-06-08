@@ -193,7 +193,7 @@ impl<T> Stateful<T>
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct SimpleF32(f32);
 
 impl From<f32> for SimpleF32
@@ -237,9 +237,16 @@ impl Hash for SimpleF32
 
 impl Eq for SimpleF32 {}
 
+impl PartialOrd for SimpleF32
+{
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering>
+    {
+        Some(self.cmp(&other))
+    }
+}
+
 // this is okay because in the constructor im making sure it cant be a nan
 // and afaik nans are the only reason floats dont have full ord
-#[allow(clippy::derive_ord_xor_partial_ord)]
 impl Ord for SimpleF32
 {
     fn cmp(&self, other: &Self) -> Ordering

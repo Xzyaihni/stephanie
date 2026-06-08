@@ -1316,9 +1316,23 @@ impl PossibleStates
 
             let this_neighbors = rules.get(state.id).neighbors(opposite_direction);
 
-            debug_assert!(this_neighbors.is_sorted(), "the neighbors must be sorted: {this_neighbors:?}");
+            if DebugConfig::is_enabled(DebugTool::RedundantWorldChecks)
+            {
+                debug_assert!(this_neighbors.is_sorted(), "the neighbors must be sorted: {this_neighbors:?}");
+            }
 
-            let keep = other.states.iter().any(|other_state| this_neighbors.binary_search(&other_state.id).is_ok());
+            let keep = if this_neighbors.len() == 1
+            {
+                if DebugConfig::is_enabled(DebugTool::RedundantWorldChecks)
+                {
+                    debug_assert!(other.states.is_sorted_by_key(|x| x.id), "the states must be sorted: {:?}", &other.states);
+                }
+
+                other.states.binary_search_by_key(&this_neighbors[0], |x| x.id).is_ok()
+            } else
+            {
+                other.states.iter().any(|other_state| this_neighbors.binary_search(&other_state.id).is_ok())
+            };
 
             if !keep
             {
