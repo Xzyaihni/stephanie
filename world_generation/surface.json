@@ -191,6 +191,9 @@
                     "down": [
                         "park",
                         "road_straight",
+                        "road_end",
+                        {"rotation": "Left", "value": "road_end"},
+                        {"rotation": "Down", "value": "road_end"},
                         {"rotation": "Down", "value": "road_corner"},
                         {"rotation": "Left", "value": "road_corner"},
                         {"rotation": "Right", "value": "road_t"},

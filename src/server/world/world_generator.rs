@@ -1261,6 +1261,34 @@ impl PossibleStates
         }
     }
 
+    fn constrain_both(
+        &mut self,
+        rules: &ChunkRules,
+        other: &mut PossibleStates,
+        direction: PosDirection
+    ) -> Result<(bool, bool), bool>
+    {
+        let mut first_changed = false;
+        let mut second_changed = false;
+
+        loop
+        {
+            let changed = self.constrain(rules, other, direction).ok_or(false);
+
+            let this_second_changed = other.constrain(rules, self, direction.opposite()).ok_or(true)?;
+
+            first_changed |= changed?;
+            second_changed |= this_second_changed;
+
+            if !this_second_changed
+            {
+                break;
+            }
+        }
+
+        Ok((first_changed, second_changed))
+    }
+
     fn constrain(
         &mut self,
         rules: &ChunkRules,
@@ -1570,6 +1598,22 @@ impl IndexMut<CheckedPos<Pos2<usize>>> for Entropies
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+struct VisitInfo
+{
+    pos: Pos2<usize>,
+    states: usize
+}
+
+#[derive(Debug)]
+struct VisitedCell
+{
+    a: VisitInfo,
+    b: VisitInfo
+}
+
+type VisitedTracker = Vec<VisitedCell>;
+
 struct WaveCollapserState
 {
     rng: SeededRandom,
@@ -1823,11 +1867,13 @@ impl<'a, 'm> WaveCollapser<'a, 'm>
     {
         for pos in self.entropies.positions()
         {
-            self.constrain(pos, true);
+            let mut visited = Vec::new();
+
+            self.constrain(&mut visited, pos, true);
         }
     }
 
-    fn constrain(&mut self, pos: LocalPos<Pos2<usize>>, allow_fallback: bool) -> bool
+    fn constrain(&mut self, visited: &mut VisitedTracker, pos: LocalPos<Pos2<usize>>, allow_fallback: bool) -> bool
     {
         let fmt_2d = |p: Pos2<usize>| -> String
         {
@@ -1842,9 +1888,35 @@ impl<'a, 'm> WaveCollapser<'a, 'm>
 
                 let direction = direction.flip_y();
 
+                let visited_index = {
+                    let visited_index = visited.iter().position(|VisitedCell{a, b}|
+                    {
+                        (a.pos == pos.pos && b.pos == direction_pos.pos) || (b.pos == pos.pos && a.pos == direction_pos.pos)
+                    });
+
+                    if let Some(visited_index) = visited_index
+                    {
+                        let VisitedCell{a, b} = &mut visited[visited_index];
+
+                        if a.pos == direction_pos.pos
+                        {
+                            std::mem::swap(a, b);
+                        }
+
+                        if a.states == this.states().len() && b.states == other.states().len()
+                        {
+                            return Some(());
+                        }
+                    }
+
+                    visited_index
+                };
+
+                let _verbose_constrain = self.verbose_constrain;
+
                 #[cfg(debug_assertions)]
                 {
-                    if self.verbose_constrain
+                    if _verbose_constrain
                     {
                         eprintln!(
                             "{} constraining {} against {} ({} x {})",
@@ -1857,37 +1929,61 @@ impl<'a, 'm> WaveCollapser<'a, 'm>
                     }
                 }
 
-                let changed = other.constrain(self.rules, this, direction);
+                let changed = other.constrain_both(self.rules, this, direction);
 
-                #[cfg(debug_assertions)]
                 {
-                    if self.verbose_constrain
+                    let a_states = this.states().len();
+                    let b_states = other.states().len();
+
+                    if let Some(visited_index) = visited_index
                     {
-                        eprintln!("after: {}", other.format_states(self.rules));
+                        let cell = &mut visited[visited_index];
+
+                        cell.a.states = a_states;
+                        cell.b.states = b_states;
+                    } else
+                    {
+                        visited.push(VisitedCell{
+                            a: VisitInfo{pos: pos.pos, states: a_states},
+                            b: VisitInfo{pos: direction_pos.pos, states: b_states}
+                        });
                     }
                 }
 
-                if changed.is_none()
+                #[cfg(debug_assertions)]
+                {
+                    if _verbose_constrain
+                    {
+                        eprintln!("after: {} x {}", other.format_states(self.rules), this.format_states(self.rules));
+                    }
+                }
+
+                if let Err(is_second) = changed
                 {
                     if !allow_fallback
                     {
                         return None;
                     }
 
-                    let neighbors = direction_pos.directions_group().map(|direction, x|
+                    let fallback_complain = |this_pos: LocalPos<Pos2<usize>>|
                     {
-                        x.map(|x|
+                        let neighbors = this_pos.directions_group().map(|direction, x|
                         {
-                            let states = self.entropies.get(x.into()).format_states(self.rules);
+                            x.map(|x|
+                            {
+                                let states = self.entropies.get(x.into()).format_states(self.rules);
 
-                            format!("{}: {states}", direction.flip_y())
-                        })
-                    }).filter_map(convert::identity).into_iter().reduce(|acc, x|
-                    {
-                        acc + ", " + &x
-                    }).unwrap_or_default();
+                                format!("{}: {states}", direction.flip_y())
+                            })
+                        }).filter_map(convert::identity).into_iter().reduce(|acc, x|
+                        {
+                            acc + ", " + &x
+                        }).unwrap_or_default();
 
-                    eprintln!("couldnt find a valid worldchunk at {} with {neighbors}, using fallback", fmt_2d(direction_pos.pos));
+                        eprintln!("couldnt find a valid worldchunk at {} with {neighbors}, using fallback", fmt_2d(this_pos.pos));
+                    };
+
+                    fallback_complain(if is_second { pos } else { direction_pos });
 
                     log_worldchunks("invalid stage", self.world_chunks, chunks_edge_logger(&self.entropies));
 
@@ -1897,9 +1993,16 @@ impl<'a, 'm> WaveCollapser<'a, 'm>
                     }
                 }
 
-                if changed.unwrap_or(true)
+                let (other_changed, this_changed) = changed.unwrap_or((true, true));
+
+                if this_changed
                 {
-                    self.constrain(direction_pos, allow_fallback);
+                    self.constrain(visited, pos, allow_fallback);
+                }
+
+                if other_changed
+                {
+                    self.constrain(visited, direction_pos, allow_fallback);
                 }
             }
 
@@ -1939,7 +2042,8 @@ impl<'a, 'm> WaveCollapser<'a, 'm>
 
         self.world_chunks[local] = Some(chunk);
 
-        self.constrain(entropy_local, allow_fallback)
+        let mut visited = Vec::new();
+        self.constrain(&mut visited, entropy_local, allow_fallback)
     }
 
     pub fn generate_once(&mut self, rng: &mut SeededRandom, allow_fallback: bool) -> Option<bool>

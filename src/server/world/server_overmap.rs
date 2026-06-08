@@ -366,13 +366,17 @@ impl<S: SaveLoad<WorldChunksBlock>> ServerOvermap<S>
         {
             let grid_size = original_size as i32 - 2 - (MAX_RATIO as i32 / 2);
 
+            let middle_shift = grid_size / 2;
+
+            let pos = pos - middle_shift;
+
             let shifted_pos = if pos < 0 { pos + 1 } else { pos };
 
             let grid = shifted_pos - (shifted_pos % grid_size);
 
             let top_left = if pos < 0 { grid - grid_size } else { grid };
 
-            top_left + grid_size / 2
+            top_left + grid_size / 2 + middle_shift
         });
 
         let grid_pos = non_z_grid.with_z(world_pos.0.z);
@@ -696,9 +700,9 @@ mod tests
         }
     }
 
-    fn with_seed() -> u64
+    fn with_seed(offset: u64) -> u64
     {
-        let rand_seed = get_env_value("STEPHANIE_WORLDSEED").unwrap_or_else(|| fastrand::u64(..));
+        let rand_seed = get_env_value("STEPHANIE_WORLDSEED").unwrap_or_else(|| fastrand::u64(..)).wrapping_add(offset);
         eprintln!("moving_around seed: {rand_seed}");
 
         fastrand::seed(rand_seed);
@@ -709,54 +713,57 @@ mod tests
     #[test]
     fn moving_around()
     {
-        let saver = TestSaver::new();
-
-        let tiles = "info/tiles.json";
-
-        let tilemap = TileMap::parse(
-            TileLoot{
-                client: &mut Vec::new()
-            },
-            tiles,
-            "textures/tiles/"
-        ).unwrap().tilemap;
-
-        let rand_seed = with_seed();
-
-        let world_generator = Rc::new(RefCell::new(
-            WorldGenerator::new(saver, rand_seed, Rc::new(tilemap), "world_generation/").unwrap()
-        ));
-
-        let overmap_size = Pos3::new(SERVER_OVERMAP_SIZE, SERVER_OVERMAP_SIZE, SERVER_OVERMAP_SIZE_Z);
-        let size = Pos3::new(overmap_size.x * CHUNK_RATIO.x + 1, overmap_size.y * CHUNK_RATIO.y + 1, SERVER_OVERMAP_SIZE_Z);
-
-        let random_chunk = ||
+        for o in 0..10
         {
-            let r = |s: usize|
-            {
-                let ps = s as i32 * 4;
+            let saver = TestSaver::new();
 
-                fastrand::i32(0..(ps * 2)) - ps
+            let tiles = "info/tiles.json";
+
+            let tilemap = TileMap::parse(
+                TileLoot{
+                    client: &mut Vec::new()
+                },
+                tiles,
+                "textures/tiles/"
+            ).unwrap().tilemap;
+
+            let rand_seed = with_seed(o);
+
+            let world_generator = Rc::new(RefCell::new(
+                WorldGenerator::new(saver, rand_seed, Rc::new(tilemap), "world_generation/").unwrap()
+            ));
+
+            let overmap_size = Pos3::new(SERVER_OVERMAP_SIZE, SERVER_OVERMAP_SIZE, SERVER_OVERMAP_SIZE_Z);
+            let size = Pos3::new(overmap_size.x * CHUNK_RATIO.x + 1, overmap_size.y * CHUNK_RATIO.y + 1, SERVER_OVERMAP_SIZE_Z);
+
+            let random_chunk = ||
+            {
+                let r = |s: usize|
+                {
+                    let ps = s as i32 * 4;
+
+                    fastrand::i32(0..(ps * 2)) - ps
+                };
+
+                GlobalPos::new(
+                    r(size.x),
+                    r(size.y),
+                    r(size.z)
+                )
             };
 
-            GlobalPos::new(
-                r(size.x),
-                r(size.y),
-                r(size.z)
-            )
-        };
+            let mut overmap = ServerOvermap::new(
+                world_generator,
+                0,
+                overmap_size,
+                Pos3::repeat(0.0)
+            );
 
-        let mut overmap = ServerOvermap::new(
-            world_generator,
-            0,
-            overmap_size,
-            Pos3::repeat(0.0)
-        );
-
-        for i in 0..300
-        {
-            eprintln!("running generation {i}");
-            let _chunk = overmap.generate_chunk(random_chunk(), |_| {});
+            for i in 0..300
+            {
+                eprintln!("running generation {i}");
+                let _chunk = overmap.generate_chunk(random_chunk(), |_| {});
+            }
         }
     }
 
@@ -776,7 +783,7 @@ mod tests
             "textures/tiles/"
         ).unwrap().tilemap;
 
-        let rand_seed = with_seed();
+        let rand_seed = with_seed(0);
 
         let world_generator = Rc::new(RefCell::new(
             WorldGenerator::new(saver, rand_seed, Rc::new(tilemap), "world_generation_test/").unwrap()
