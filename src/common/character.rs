@@ -1593,9 +1593,9 @@ impl Character
             }
         }
 
-        let info = some_or_unexpected_return!(self.info.as_ref());
-
         let entities = &combined_info.entities;
+
+        let info = some_or_unexpected_return!(self.info.as_ref());
 
         let holding_entity = info.holding;
         let hand_left = info.hand_left;
@@ -1607,26 +1607,7 @@ impl Character
             combined_info.assets.lock().texture(texture).clone()
         };
 
-        let holding_item = self.held_item_info(combined_info.entities);
-
-        if let Some(holding_entity) = holding_entity
-        {
-            let set_visible = |entity, value|
-            {
-                some_or_return!(entities.render_mut_no_change(entity)).visible = value;
-            };
-
-            let visible = self.held_visible(combined_info);
-
-            set_visible(holding_entity.entity, visible);
-
-            if let Some(special) = holding_entity.special
-            {
-                set_visible(special.entity, visible && holding_item.map(|item| item.special_part.is_some()).unwrap_or(false));
-            }
-        }
-
-        if let Some(item) = holding_item
+        if let Some(item) = self.held_item_info(entities)
         {
             let holding_entity = some_or_unexpected_return!(holding_entity);
 
@@ -1691,6 +1672,18 @@ impl Character
                 }
             }
         }
+
+        self.update_holding_visible(entities, |_, entity, visible|
+        {
+            if let Some(in_flight_render) = entities.in_flight_mut().render_mut(entity)
+            {
+                in_flight_render.visible = visible;
+
+                return;
+            }
+
+            some_or_return!(entities.render_mut_no_change(entity)).visible = visible;
+        });
 
         self.reset_held_lighting(entities);
 
@@ -2924,9 +2917,32 @@ impl Character
         entities.inventory(info.this).and_then(|x| x.get(held).cloned())
     }
 
-    fn held_visible(&self, combined_info: CombinedInfo) -> bool
+    fn held_visible(&self, entities: &ClientEntities) -> bool
     {
-        *self.sprite_state.value() != SpriteState::Lying && self.held_item_id(combined_info.entities).is_some()
+        *self.sprite_state.value() != SpriteState::Lying && self.held_item_id(entities).is_some()
+    }
+
+    fn update_holding_visible(
+        &mut self,
+        entities: &ClientEntities,
+        mut set_visible: impl FnMut(&mut Self, Entity, bool)
+    )
+    {
+        let info = some_or_return!(self.info.as_ref());
+
+        if let Some(holding_entity) = info.holding
+        {
+            let visible = self.held_visible(entities);
+
+            set_visible(self, holding_entity.entity, visible);
+
+            if let Some(special) = holding_entity.special
+            {
+                let item_has_special = self.held_item_info(entities).map(|item| item.special_part.is_some()).unwrap_or(false);
+
+                set_visible(self, special.entity, visible && item_has_special);
+            }
+        }
     }
 
     fn held_distance(&self) -> f32
@@ -3244,21 +3260,10 @@ impl Character
 
         entities.set_z_level(entity, z_level);
 
+        self.update_holding_visible(entities, |this, entity, visible|
         {
-            let info = self.info.as_ref().unwrap();
-
-            if let Some(holding) = info.holding
-            {
-                let visible = self.held_visible(combined_info);
-
-                set_visible(&mut self.sprite_state, holding.entity, visible);
-
-                if let Some(special) = holding.special
-                {
-                    set_visible(&mut self.sprite_state, special.entity, visible);
-                }
-            }
-        }
+            set_visible(&mut this.sprite_state, entity, visible);
+        });
 
         self.update_held(combined_info);
         self.update_clothing_inner(combined_info);
