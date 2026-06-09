@@ -1857,12 +1857,16 @@ impl<'a, 'm> WaveCollapser<'a, 'm>
 
                     let first_neighbors = self.rules.get(first.id).neighbors(direction);
 
+                    assert!(first_neighbors.is_sorted());
+
                     assert!(other.states().len() > 0);
 
                     if !past_constrain && !other.collapsed()
                     {
                         return;
                     }
+
+                    assert!(other.states().is_sorted_by_key(|x| x.id));
 
                     other.states().iter().for_each(|other_state|
                     {

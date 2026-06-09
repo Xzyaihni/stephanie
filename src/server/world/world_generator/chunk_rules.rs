@@ -1536,25 +1536,15 @@ impl ChunkRules
         loop
         {
             let symmetrical_changed = self.symmetrical_replicate(name_mappings, &rules);
-
             let self_symmetry_changed = self.self_symmetry_union(name_mappings, &rules);
-
-            if self_symmetry_changed
-            {
-                unify_neighbors(self);
-            }
-
             let rotation_symmetry_changed = self.rotation_symmetry_union(name_mappings, &rules);
-
-            if rotation_symmetry_changed
-            {
-                unify_neighbors(self);
-            }
 
             if !symmetrical_changed && !rotation_symmetry_changed && !self_symmetry_changed
             {
                 break;
             }
+
+            unify_neighbors(self);
         }
     }
 
@@ -1566,6 +1556,8 @@ impl ChunkRules
 
             rule.neighbors.as_ref().for_each(|direction, ids|
             {
+                debug_assert!(ids.is_sorted());
+
                 let rules = ids.iter()
                     .map(|id|
                     {
