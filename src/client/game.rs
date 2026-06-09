@@ -1254,6 +1254,34 @@ impl<'a> PlayerContainer<'a>
 
     pub fn on_control(&mut self, state: ControlState, control: Control)
     {
+        enum MainAction
+        {
+            Bash,
+            Poke,
+            Shoot
+        }
+
+        let select_main_action = |this: &Self| -> MainAction
+        {
+            let entities = this.game_state.entities();
+
+            let character = some_or_value!(entities.character(this.info.entity), MainAction::Bash);
+
+            let item = some_or_value!(character.held_item_info(entities), MainAction::Bash);
+
+            if item.ranged.is_some()
+            {
+                return MainAction::Shoot;
+            }
+
+            if item.prefer_poke
+            {
+                return MainAction::Poke;
+            }
+
+            MainAction::Bash
+        };
+
         if control == Control::Pause && state.is_down()
         {
             self.game_state.pause();
@@ -1276,6 +1304,25 @@ impl<'a> PlayerContainer<'a>
             match control
             {
                 Control::MainAction =>
+                {
+                    if self.info.queued_action
+                    {
+                        self.info.queued_action = false;
+
+                        match select_main_action(self)
+                        {
+                            MainAction::Bash => self.character_action(CharacterAction::Bash{state: true}),
+                            MainAction::Poke => self.character_action(CharacterAction::Poke{state: true}),
+                            MainAction::Shoot =>
+                            {
+                                let target = some_or_return!(self.ranged_target());
+
+                                self.character_action(CharacterAction::Ranged{state: true, target})
+                            }
+                        }
+                    }
+                },
+                Control::Bash =>
                 {
                     if self.info.queued_action
                     {
@@ -1391,6 +1438,30 @@ impl<'a> PlayerContainer<'a>
                         }));
                     }
 
+                    return;
+                }
+
+                if is_animating
+                {
+                    return;
+                }
+
+                match select_main_action(self)
+                {
+                    MainAction::Bash => self.stance_action(AttackStance::Side, |state| CharacterAction::Bash{state}),
+                    MainAction::Poke => self.stance_action(AttackStance::Forward, |state| CharacterAction::Poke{state}),
+                    MainAction::Shoot =>
+                    {
+                        let target = some_or_return!(self.ranged_target());
+
+                        self.stance_action(AttackStance::Forward, |state| CharacterAction::Ranged{state, target})
+                    }
+                }
+            },
+            Control::Bash =>
+            {
+                if is_animating
+                {
                     return;
                 }
 

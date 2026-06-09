@@ -2880,7 +2880,7 @@ impl Character
         &self.equips
     }
 
-    fn held_item_info<'a>(
+    pub fn held_item_info<'a>(
         &self,
         entities: &'a ClientEntities
     ) -> Option<&'a ItemInfo>
