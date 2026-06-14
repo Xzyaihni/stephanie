@@ -226,7 +226,7 @@ pub enum ChunkGenerationError
 {
     SymbolAllocation(String, lisp::Error),
     TagSymbolAllocation(lisp::Error),
-    LispRuntime{source: &'static str, err: lisp::ErrorPos},
+    LispRuntime{source: String, err: lisp::ErrorPos},
     WrongOutput(lisp::Error),
     WrongSize{expected: usize, got: usize}
 }
@@ -563,28 +563,7 @@ impl ChunkGenerator
         })?;
 
         let config = LispConfig{
-            load_handler: {
-                let parent_directory = chunks_directory;
-                Some(Box::new(move |filename|
-                {
-                    match fs::read_to_string(parent_directory.join(filename))
-                    {
-                        Ok(x) => Some(x),
-                        Err(err) =>
-                        {
-                            eprintln!("error trying to load `{filename}`: {err}");
-
-                            #[cfg(test)]
-                            {
-                                panic!();
-                            }
-
-                            #[allow(unreachable_code)]
-                            None
-                        }
-                    }
-                }))
-            },
+            load_handler: Some(load_handler_with_parent(chunks_directory)),
             memory,
             env_variables: vec!["height".to_owned(), "difficulty".to_owned(), "rotation".to_owned(), "position".to_owned()],
             ..Default::default()
@@ -647,14 +626,18 @@ impl ChunkGenerator
             define_symbol("difficulty", info.difficulty.into())?;
             define_symbol("rotation", (rotation as i32).into())?;
 
-            let (memory, value): (&LispMemory, LispValue) = this_chunk.run_precleared()
-                .map_err(|err|
+            let result = match this_chunk.run_precleared()
+            {
+                Ok(x) => x,
+                Err(err) =>
                 {
-                    let source = ["standard", "default", "chunk", "loaded file"].get(err.position.source).copied().unwrap_or("undefined");
+                    let source = this_chunk.get_source(err.position.source).to_owned();
 
-                    ChunkGenerationError::LispRuntime{source, err}
-                })?
-                .destructure();
+                    return Err(ChunkGenerationError::LispRuntime{source, err});
+                }
+            };
+
+            let (memory, value): (&LispMemory, LispValue) = result.destructure();
 
             let output = value.as_vector_ref(memory).map_err(|err|
             {

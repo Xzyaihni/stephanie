@@ -18,11 +18,14 @@ use crate::common::{
     ENTITY_SCALE,
     generic_info::*,
     clothing::*,
+    lisp::*,
     Drug,
     DamageType,
     Item,
     Light
 };
+
+pub use crate::common::scripts_container::{ScriptsContainer, ScriptIndex};
 
 
 pub const DEFAULT_ITEM_DURABILITY: f32 = 150.0;
@@ -141,7 +144,8 @@ pub struct ItemInfoRaw
     lighting: Option<f32>,
     held_offset: Option<f32>,
     tags: Option<Vec<String>>,
-    texture: Option<String>
+    texture: Option<String>,
+    on_use: Option<String>
 }
 
 impl ItemInfoRaw
@@ -171,7 +175,8 @@ impl ItemInfoRaw
             lighting,
             held_offset,
             tags,
-            texture
+            texture,
+            on_use
         );
 
         this
@@ -208,7 +213,8 @@ pub struct ItemInfo
     pub held_offset: f32,
     pub tags: Vec<ItemTag>,
     pub item_texture: Option<Sprite>,
-    pub texture: Sprite
+    pub texture: Sprite,
+    pub on_use: Option<ScriptIndex>
 }
 
 impl GenericItem for ItemInfo
@@ -262,6 +268,7 @@ impl ItemInfo
 {
     fn from_raw(
         texture_creator: &mut impl TextureCreatable,
+        scripts: &mut ScriptsContainer,
         item_names: &HashMap<String, ItemId>,
         tags: &mut ItemTags,
         textures_root: &Path,
@@ -326,6 +333,36 @@ impl ItemInfo
             }
         });
 
+        let on_use = raw.on_use.and_then(|x|
+        {
+            let memory = LispMemory::new(scripts.item_primitives.clone(), 128, 1 << 10);
+
+            let config = LispConfig{
+                memory,
+                env_variables: vec!["caller-entity".to_owned(), "caller-item-inventory-id".to_owned()],
+                ..Default::default()
+            };
+
+            match Lisp::new_with_config(config, &[&x])
+            {
+                Ok(mut lisp) =>
+                {
+                    lisp.set_source_name(0, raw.name.clone());
+
+                    Some(lisp)
+                },
+                Err(err) =>
+                {
+                    eprintln!("error parsing on_use for item `{}`: {err}", &raw.name);
+
+                    None
+                }
+            }
+        }).map(|x|
+        {
+            scripts.push(x)
+        });
+
         Self{
             name: raw.name,
             ranged: raw.ranged,
@@ -345,7 +382,8 @@ impl ItemInfo
             held_offset: raw.held_offset.unwrap_or(0.0) / ENTITY_PIXEL_SCALE as f32 * ENTITY_SCALE,
             tags: raw.tags.map(|x| x.into_iter().map(|x| tags.insert(x)).collect()).unwrap_or_default(),
             item_texture,
-            texture
+            texture,
+            on_use
         }
     }
 
@@ -469,6 +507,7 @@ impl ItemsInfo
 
     pub fn parse(
         mut texture_creator: impl TextureCreatable,
+        scripts: &mut ScriptsContainer,
         textures_root: PathBuf,
         info: PathBuf
     ) -> Self
@@ -495,7 +534,7 @@ impl ItemsInfo
 
         let items: Vec<_> = items.into_iter().map(|info_raw|
         {
-            ItemInfo::from_raw(&mut texture_creator, &item_names, &mut tags, &textures_root, info_raw)
+            ItemInfo::from_raw(&mut texture_creator, scripts, &item_names, &mut tags, &textures_root, info_raw)
         }).collect();
 
         let generic_info = GenericInfo::new(items);

@@ -144,6 +144,21 @@
         ]
     },
     {
+        "produces": ["boss device"],
+        "requires": [
+            {"item": {"Item": "metal shard"}},
+            {"item": {"Item": "depression"}},
+            {"item": {"Item": "depression"}},
+            {"item": {"Item": "depression"}},
+            {"item": {"Item": "dissociation"}},
+            {"item": {"Item": "dissociation"}},
+            {"item": {"Item": "dissociation"}},
+            {"item": {"Item": "anger"}},
+            {"item": {"Item": "anger"}},
+            {"item": {"Item": "anger"}}
+        ]
+    },
+    {
         "produces": ["splint"],
         "requires": [
             {"item": {"Item": "duct tape"}},

@@ -1,6 +1,8 @@
 use std::{
+    fs,
     mem,
     iter,
+    path::PathBuf,
     borrow::Borrow,
     rc::Rc,
     ops::Range,
@@ -1164,10 +1166,13 @@ impl LispMemory
     }
 
     #[must_use = "saved registers must get restored"]
-    pub fn with_saved_registers(
+    pub fn with_saved_registers<R>(
         &mut self,
-        registers: impl IntoIterator<Item=Register> + Clone
+        registers: R
     ) -> impl FnOnce(&mut LispMemory) -> Result<(), Error>
+    where
+        R: IntoIterator<Item=Register> + Clone,
+        R::IntoIter: DoubleEndedIterator
     {
         let result = registers.clone().into_iter().try_for_each(|register|
         {
@@ -1178,7 +1183,7 @@ impl LispMemory
         {
             result?;
 
-            registers.into_iter().for_each(|register|
+            registers.into_iter().rev().for_each(|register|
             {
                 memory.pop_stack_register(register);
             });
@@ -1865,6 +1870,29 @@ impl<M: Borrow<LispMemory>> GenericOutputWrapper<M>
     }
 }
 
+pub fn load_handler_with_parent(parent_directory: PathBuf) -> Box<dyn Fn(&str) -> Option<String>>
+{
+    Box::new(move |filename|
+    {
+        match fs::read_to_string(parent_directory.join(filename))
+        {
+            Ok(x) => Some(x),
+            Err(err) =>
+            {
+                eprintln!("error trying to load `{filename}`: {err}");
+
+                #[cfg(test)]
+                {
+                    panic!();
+                }
+
+                #[allow(unreachable_code)]
+                None
+            }
+        }
+    })
+}
+
 pub struct LispConfig
 {
     pub compile_config: CompileConfig,
@@ -1879,7 +1907,7 @@ impl Default for LispConfig
     {
         LispConfig{
             compile_config: CompileConfig::default(),
-            load_handler: None,
+            load_handler: Some(load_handler_with_parent("lisp/".into())),
             env_variables: Vec::new(),
             memory: LispMemory::default()
         }
@@ -1953,6 +1981,11 @@ impl Lisp
         self.program.eval(|_| {})
     }
 
+    pub fn run_with(&self, with_memory: impl FnOnce(&mut LispMemory)) -> Result<OutputWrapper, ErrorPos>
+    {
+        self.program.eval(with_memory)
+    }
+
     pub fn run_mut(&mut self) -> Result<OutputWrapperRef<'_>, ErrorPos>
     {
         self.program.eval_mut()
@@ -1963,8 +1996,23 @@ impl Lisp
         self.program.eval_precleared()
     }
 
+    pub fn set_source_name(&mut self, index: usize, name: String)
+    {
+        self.program.set_source_name(index, name);
+    }
+
+    pub fn get_source(&self, source: usize) -> &str
+    {
+        self.program.get_source(source)
+    }
+
     pub fn print_highlighted(sources: &[&str], position: CodePosition)
     {
+        if sources.len() <= position.source
+        {
+            return;
+        }
+
         if let Some(line) = sources[position.source].lines().nth(position.line - 1)
         {
             eprintln!("{line}");

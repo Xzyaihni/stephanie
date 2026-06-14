@@ -10,7 +10,7 @@ use yanyaengine::Assets;
 use crate::common::{
     with_error,
     some_or_value,
-    loot::{loot_compile, ServerFurnitureLootInfo, ClientFurnitureLootInfo},
+    loot::{loot_compile, ServerFurnitureLootInfo, ClientFurnitureLootInfo, ServerLootSingleInfo},
     generic_info::*,
     render_info::ZLevel,
     world::DirectionsGroup
@@ -134,11 +134,11 @@ impl FurnitureInfo
         };
 
         loot.server.push(ServerFurnitureLootInfo{
-            on_contents: raw.on_contents
+            on_contents: raw.on_contents.map(|code| ServerLootSingleInfo{name: raw.name.clone(), code})
         });
 
         loot.client.push(ClientFurnitureLootInfo{
-            on_destroy: raw.on_destroy.map(|s| loot_compile(&s)).unwrap_or_default()
+            on_destroy: raw.on_destroy.map(|s| loot_compile(raw.name.clone(), &s)).unwrap_or_default()
         });
 
         Self{
@@ -159,7 +159,7 @@ pub type FurnituresInfo = GenericInfo<FurnitureId, FurnitureInfo>;
 
 pub struct FurnitureLoot<'a, 'b>
 {
-    pub server: &'a mut Vec<ServerFurnitureLootInfo<Option<String>>>,
+    pub server: &'a mut Vec<ServerFurnitureLootInfo<Option<ServerLootSingleInfo>>>,
     pub client: &'b mut Vec<ClientFurnitureLootInfo>
 }
 

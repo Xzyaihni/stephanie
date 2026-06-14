@@ -17,6 +17,7 @@ use stephanie::common::{
     ItemRarity,
     ItemInfo,
     ItemsInfo,
+    items_info::ScriptsContainer,
     crafting::craft_item_rarity
 };
 
@@ -183,7 +184,12 @@ fn main()
         return;
     }
 
-    let mut infos = ItemsInfo::parse((), "".into(), "items/items.json".into()).items().iter().map(|info: &ItemInfo| -> ItemStats
+    let mut infos = ItemsInfo::parse(
+        (),
+        &mut ScriptsContainer::new_empty(),
+        "".into(),
+        "items/items.json".into()
+    ).items().iter().map(|info: &ItemInfo| -> ItemStats
     {
         let name = info.name.clone();
 

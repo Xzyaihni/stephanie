@@ -3,7 +3,7 @@
         "name": "asphalt",
         "textures": [1.0, 0.15, 0.05],
         "health": 0.9,
-        "on_destroy": "(points-drops '((rock 1) (boulder 3)) (random-integer-between 2 5))"
+        "on_destroy": "(load-once \"loot.scm\")(points-drops '((rock 1) (boulder 3)) (random-integer-between 2 5))"
     },
     {
         "name": "asphalt-line",
@@ -16,74 +16,74 @@
     {
         "name": "grassie",
         "health": 0.15,
-        "on_destroy": "(and-always (standard-drops '(rock)) 'grass)"
+        "on_destroy": "(load-once \"loot.scm\")(and-always (standard-drops '(rock)) 'grass)"
     },
     {
         "name": "concrete",
         "connecting": "Edge",
-        "on_destroy": "(points-drops '((rock 1) (boulder 3)) (random-integer-between 2 5))"
+        "on_destroy": "(load-once \"loot.scm\")(points-drops '((rock 1) (boulder 3)) (random-integer-between 2 5))"
     },
     {
         "name": "concrete-path",
-        "on_destroy": "(points-drops '((rock 1) (boulder 3)) (random-integer-between 2 5))"
+        "on_destroy": "(load-once \"loot.scm\")(points-drops '((rock 1) (boulder 3)) (random-integer-between 2 5))"
     },
     {
         "name": "concrete-path-tiled",
-        "on_destroy": "(points-drops '((rock 1) (boulder 3)) (random-integer-between 2 5))"
+        "on_destroy": "(load-once \"loot.scm\")(points-drops '((rock 1) (boulder 3)) (random-integer-between 2 5))"
     },
     {
         "name": "ceramic-tiles",
         "health": 0.3,
-        "on_destroy": "(standard-drops '(ceramic_shard))"
+        "on_destroy": "(load-once \"loot.scm\")(standard-drops '(ceramic_shard))"
     },
     {
         "name": "brick-path",
         "health": 0.9,
-        "on_destroy": "(points-drops '((rock 1) (boulder 3)) (random-integer-between 2 5))"
+        "on_destroy": "(load-once \"loot.scm\")(points-drops '((rock 1) (boulder 3)) (random-integer-between 2 5))"
     },
     {
         "name": "wood",
         "health": 0.1,
-        "on_destroy": "(points-drops '((short_stick 2) (stick 2) (plank 3)) 7)"
+        "on_destroy": "(load-once \"loot.scm\")(points-drops '((short_stick 2) (stick 2) (plank 3)) 7)"
     },
     {
         "name": "soil",
         "health": 0.2,
-        "on_destroy": "(standard-drops '(rock))"
+        "on_destroy": "(load-once \"loot.scm\")(standard-drops '(rock))"
     },
     {
         "name": "iron-ore",
         "health": 0.3,
-        "on_destroy": "(and-always (standard-drops '(metal_shard)) 'rock)"
+        "on_destroy": "(load-once \"loot.scm\")(and-always (standard-drops '(metal_shard)) 'rock)"
     },
     {
         "name": "glass",
         "connecting": "Edge",
         "health": 0.004,
-        "on_destroy": "(standard-drops '(glass_shard))"
+        "on_destroy": "(load-once \"loot.scm\")(standard-drops '(glass_shard))"
     },
     {
         "name": "concrete-fence",
         "connecting": "Edge",
         "transparent": true,
         "colliding": false,
-        "on_destroy": "(points-drops '((rock 1) (boulder 3)) (random-integer-between 2 5))"
+        "on_destroy": "(load-once \"loot.scm\")(points-drops '((rock 1) (boulder 3)) (random-integer-between 2 5))"
     },
     {
         "name": "metal-fence",
         "connecting": "Edge",
         "transparent": true,
         "health": 0.2,
-        "on_destroy": "(standard-drops '(pipe metal_shard))"
+        "on_destroy": "(load-once \"loot.scm\")(standard-drops '(pipe metal_shard))"
     },
     {
         "name": "stairs-up",
         "special": "StairsUp",
-        "on_destroy": "(points-drops '((rock 1) (boulder 3)) (random-integer-between 2 5))"
+        "on_destroy": "(load-once \"loot.scm\")(points-drops '((rock 1) (boulder 3)) (random-integer-between 2 5))"
     },
     {
         "name": "stairs-down",
         "special": "StairsDown",
-        "on_destroy": "(points-drops '((rock 1) (boulder 3)) (random-integer-between 2 5))"
+        "on_destroy": "(load-once \"loot.scm\")(points-drops '((rock 1) (boulder 3)) (random-integer-between 2 5))"
     }
 ]

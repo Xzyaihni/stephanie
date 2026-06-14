@@ -109,6 +109,19 @@ fn on_removed_item(entities: &ClientEntities, entity: Entity, item: InventoryIte
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct InventoryItem(usize);
 
+impl InventoryItem
+{
+    pub fn as_raw(self) -> usize
+    {
+        self.0
+    }
+
+    pub fn from_raw(id: usize) -> Self
+    {
+        Self(id)
+    }
+}
+
 pub struct ItemMutRef<'a, F: FnMut(&mut Inventory)>
 {
     inventory: &'a mut Inventory,

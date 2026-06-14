@@ -15,11 +15,23 @@ use crate::common::{
     generic_info::*,
     characters_info::*,
     ItemsInfo,
-    loot::EnemyLootInfo,
+    loot::{EnemyLootInfo, ServerLootSingleInfo},
     anatomy::HumanAnatomyInfo,
     enemy::EnemyBehavior
 };
 
+
+#[derive(Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct HumanAnatomyInfoRaw
+{
+    health: Option<f32>,
+    bone: Option<f32>,
+    muscle: Option<f32>,
+    skin: Option<f32>,
+    speed: Option<f32>,
+    strength: Option<f32>
+}
 
 #[derive(Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -28,7 +40,7 @@ struct EnemyInfoRaw
     name: String,
     inherit: Option<String>,
     hairstyle: Option<Hairstyle<String>>,
-    anatomy: Option<HumanAnatomyInfo>,
+    anatomy: Option<HumanAnatomyInfoRaw>,
     face: Option<String>,
     lying_face_offset: Option<Vector2<i8>>,
     behavior: Option<EnemyBehavior>,
@@ -119,13 +131,24 @@ impl EnemyInfo
         });
 
         loot.server.push(EnemyLootInfo{
-            on_contents: raw.on_contents,
-            on_equip: raw.on_equip
+            on_contents: raw.on_contents.map(|code| ServerLootSingleInfo{name: raw.name.clone(), code}),
+            on_equip: raw.on_equip.map(|code| ServerLootSingleInfo{name: raw.name.clone(), code})
         });
 
         Self{
             name: raw.name,
-            anatomy: raw.anatomy.unwrap_or_default(),
+            anatomy: raw.anatomy.map(|x|
+            {
+                let health = x.health.unwrap_or(1.0);
+
+                HumanAnatomyInfo{
+                    bone: x.bone.unwrap_or(1.0) * health,
+                    muscle: x.muscle.unwrap_or(1.0) * health,
+                    skin: x.skin.unwrap_or(1.0) * health,
+                    base_speed: x.speed.unwrap_or(1.0),
+                    base_strength: x.strength.unwrap_or(1.0)
+                }
+            }).unwrap_or_default(),
             behavior: raw.behavior.unwrap_or(EnemyBehavior::Melee),
             character
         }
@@ -136,7 +159,7 @@ pub type EnemiesInfo = GenericInfo<EnemyId, EnemyInfo>;
 
 pub struct EnemyLoot<'a>
 {
-    pub server: &'a mut Vec<EnemyLootInfo<Option<String>>>
+    pub server: &'a mut Vec<EnemyLootInfo<Option<ServerLootSingleInfo>>>
 }
 
 impl EnemiesInfo

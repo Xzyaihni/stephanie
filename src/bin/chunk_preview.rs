@@ -89,7 +89,7 @@ use stephanie::{
         tilemap::TileLoot,
         furnitures_info::FurnitureLoot,
         enemies_info::EnemyLoot,
-        items_info::TextureCreator,
+        items_info::{ScriptsContainer, TextureCreator},
         colors::Lcha,
         world::{
             CHUNK_SIZE,
@@ -410,7 +410,7 @@ impl AssetsDependent
                 assets: &mut assets
             };
 
-            ItemsInfo::parse(creator, "normal/items".into(), "items/items.json".into())
+            ItemsInfo::parse(creator, &mut ScriptsContainer::new_empty(), "normal/items".into(), "items/items.json".into())
         };
 
         let enemies = {

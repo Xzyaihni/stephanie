@@ -37,6 +37,7 @@ use crate::{
         ClientLoot,
         DataInfos,
         MessagePasser,
+        items_info::ScriptsContainer,
         tilemap::TileMapWithTextures
     }
 };
@@ -79,6 +80,7 @@ pub struct ClientInitInfo
     pub sliced_textures: Rc<HashMap<String, SlicedTexture>>,
     pub tilemap: TileMapWithTextures,
     pub data_infos: DataInfos,
+    pub scripts: ScriptsContainer,
     pub loot: ClientLoot
 }
 
@@ -187,6 +189,7 @@ impl Client
             camera: camera.clone(),
             timestamp_query,
             data_infos: client_init_info.data_infos,
+            scripts: Rc::new(client_init_info.scripts),
             loot: Rc::new(client_init_info.loot),
             tiles_factory,
             anatomy_locations,
@@ -237,8 +240,12 @@ impl Client
             client_info
         );
 
-        self.game = Some(Game::new(Rc::downgrade(&new_game_state)));
+        let game_state_weak = Rc::downgrade(&new_game_state);
+
+        self.game = Some(Game::new(game_state_weak.clone()));
         self.game_state = Some(new_game_state);
+
+        self.info.as_ref().unwrap().scripts.set_game_state(game_state_weak);
     }
 
     pub fn exit(&mut self)

@@ -50,11 +50,11 @@ pub fn create(
     {
         let loot = loot.enemy_generator(id);
 
-        loot.on_contents.create(items_info, || { let s: &str = name.as_ref(); s.into() })
+        loot.on_contents.create(items_info)
             .into_iter()
             .for_each(|item| { inventory.push(items_info, item); });
 
-        loot.on_equip.create(items_info, || { let s: &str = name.as_ref(); s.into() }).into_iter().for_each(|item|
+        loot.on_equip.create(items_info).into_iter().for_each(|item|
         {
             let item_info = items_info.get(item.id);
 

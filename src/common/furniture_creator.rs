@@ -144,7 +144,7 @@ pub fn create(
     let inventory = info.container.then(||
     {
         let mut inventory = Inventory::new(f32::INFINITY);
-        loot.furniture_generator(id).on_contents.create(items_info, || { let s: &str = info.name.as_ref(); s.into() })
+        loot.furniture_generator(id).on_contents.create(items_info)
             .into_iter()
             .for_each(|item|
             {

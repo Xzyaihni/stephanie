@@ -169,6 +169,8 @@ pub mod inventory;
 
 pub mod player;
 
+pub mod scripts_container;
+
 pub mod particle_creator;
 pub mod furniture_creator;
 pub mod furnitures_info;

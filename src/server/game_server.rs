@@ -36,6 +36,7 @@ use crate::{
         sanitized_name,
         player_save_path,
         ENTITY_SCALE,
+        enemy_creator,
         render_info::*,
         lazy_transform::*,
         physics::*,
@@ -685,6 +686,19 @@ impl GameServer
 
         match message
         {
+            Message::SpawnEnemy{id, pos} =>
+            {
+                let message = self.entities.push_message(enemy_creator::create(
+                    &self.data_infos.enemies_info,
+                    &self.data_infos.characters_info,
+                    &self.data_infos.items_info,
+                    &self.loot,
+                    id,
+                    pos
+                )).0;
+
+                self.send_message(message);
+            },
             Message::PlayerDisconnect{time, restart, host} =>
             {
                 if let (Some(world), Some(time)) = (self.world.as_mut(), time)

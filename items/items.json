@@ -30,6 +30,20 @@
         "mass": 0.3
     },
     {
+        "name": "zobbbbbb hand",
+        "rarity_rolls": false,
+        "damage_scale": 1.0,
+        "comfort": 2.0,
+        "mass": 0.3
+    },
+    {
+        "name": "bb hand",
+        "rarity_rolls": false,
+        "damage_scale": 1.0,
+        "comfort": 2.0,
+        "mass": 0.3
+    },
+    {
         "name": "runner cap",
         "damage_scale": 0.1,
         "mass": 0.05,
@@ -37,6 +51,15 @@
             "slot": "Head",
             "armor_multiply": 0.3,
             "armor_normal": 0.01
+        }
+    },
+    {
+        "name": "diamond hairpin",
+        "comfort": 0.2,
+        "sharpness": 0.1,
+        "mass": 0.001,
+        "clothing": {
+            "slot": "Head"
         }
     },
     {
@@ -352,6 +375,29 @@
         "comfort": 0.5,
         "mass": 0.09,
         "durability": 0.1
+    },
+    {
+        "name": "depression",
+        "rarity_rolls": false,
+        "comfort": 0.01,
+        "mass": 0.01,
+        "durability": 2.0
+    },
+    {
+        "name": "anger",
+        "inherit": "depression"
+    },
+    {
+        "name": "dissociation",
+        "inherit": "depression"
+    },
+    {
+        "name": "boss device",
+        "rarity_rolls": false,
+        "comfort": 0.5,
+        "mass": 1.0,
+        "durability": 0.1,
+        "on_use": "(load-once \"items.scm\")(destroy-this)(spawn-enemy \"zobbbbbb\" (position-add (entity->position caller-entity) (rotate-point '(0.0 tile-size 0.0) (entity->rotation caller-entity))))"
     },
     {
         "name": "heal pills",

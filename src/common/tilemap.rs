@@ -111,7 +111,7 @@ impl TileInfo
     ) -> Self
     {
         loot.client.push(TileLootInfo{
-            on_destroy: tile_raw.on_destroy.map(|s| loot_compile(&s)).unwrap_or_default()
+            on_destroy: tile_raw.on_destroy.map(|s| loot_compile(tile_raw.name.clone(), &s)).unwrap_or_default()
         });
 
         let mut this = TileInfo{

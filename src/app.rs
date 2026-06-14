@@ -66,7 +66,7 @@ use crate::{
         tilemap::TileLoot,
         furnitures_info::FurnitureLoot,
         enemies_info::EnemyLoot,
-        items_info::TextureCreator,
+        items_info::{ScriptsContainer, TextureCreator},
         door::{door_scale, door_texture, DoorMaterial},
         sender_loop::{waiting_loop, DELTA_TIME}
     }
@@ -363,6 +363,8 @@ impl YanyaApp for App
     {
         let app_info = app_info.unwrap();
 
+        let mut scripts = ScriptsContainer::new();
+
         let items_info = {
             let mut assets = partial_info.object_info.assets.lock();
             let builder_wrapper = &mut partial_info.object_info.builder_wrapper;
@@ -372,6 +374,7 @@ impl YanyaApp for App
                     builder_wrapper,
                     assets: &mut assets
                 },
+                &mut scripts,
                 "items".into(),
                 "items/items.json".into()
             ))
@@ -379,7 +382,7 @@ impl YanyaApp for App
 
         let mut characters_info = CharactersInfo::new();
 
-        let mut server_enemy_loot_info = Vec::new();
+        let mut server_enemy_loot_info: Vec<EnemyLootInfo<Option<ServerLootSingleInfo>>> = Vec::new();
 
         let enemies_info = EnemiesInfo::parse(
             EnemyLoot{
@@ -397,7 +400,7 @@ impl YanyaApp for App
             panic!("enemy named `me` is required, cant get player character id")
         })).character;
 
-        let mut server_furniture_loot_info = Vec::new();
+        let mut server_furniture_loot_info: Vec<ServerFurnitureLootInfo<Option<ServerLootSingleInfo>>> = Vec::new();
         let mut client_furniture_loot_info = Vec::new();
 
         let furnitures_info = FurnituresInfo::parse(
@@ -479,6 +482,7 @@ impl YanyaApp for App
             sliced_textures,
             tilemap: tilemap.clone(),
             data_infos: data_infos.clone(),
+            scripts,
             loot: client_loot
         };
 
@@ -587,9 +591,9 @@ impl YanyaApp for App
                             let listen_address = format!("{}:{port}", if listen_outside { "0.0.0.0" } else { "127.0.0.1" });
 
                             let server_loot = {
-                                let c = |s: Option<String>| -> Generator
+                                let c = |s: Option<ServerLootSingleInfo>| -> Generator
                                 {
-                                    s.map(|s| loot_compile(&s)).unwrap_or_default()
+                                    s.map(|s| loot_compile(s.name, &s.code)).unwrap_or_default()
                                 };
 
                                 ServerLoot{

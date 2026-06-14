@@ -19,8 +19,10 @@ use crate::{
     debug_config::*,
     common::{
         with_z,
+        with_error,
         some_or_value,
         some_or_return,
+        some_or_unexpected_return,
         inventory_remove_item,
         angle_to_direction_3d,
         random_rotation,
@@ -32,13 +34,21 @@ use crate::{
         Damageable,
         SpecialTile,
         AnyEntities,
-        Item,
         Inventory,
+        InventoryItem,
         Drug,
         Entity,
         EntityInfo,
         OnChangeInfo,
         ItemUsage,
+        scripts_container::{
+            parse_entity,
+            push_entity,
+            parse_position,
+            add_info_primitives,
+            ScriptsContainer,
+            ScriptIndex
+        },
         clothing::ClothingInfo,
         entity::ClientEntities,
         lisp::{self, *},
@@ -94,8 +104,14 @@ fn with_game_state<T>(
     f(&mut game_state)
 }
 
+enum OuterAction
+{
+    Use{script_index: ScriptIndex, entity: Entity, item: InventoryItem}
+}
+
 pub struct Game
 {
+    scripts: Rc<ScriptsContainer>,
     game_state: Weak<RefCell<GameState>>,
     info: Rc<RefCell<PlayerInfo>>
 }
@@ -104,7 +120,7 @@ impl Game
 {
     pub fn new(game_state: Weak<RefCell<GameState>>) -> Self
     {
-        let info = {
+        let (scripts, info) = {
             let game_state = game_state.upgrade().unwrap();
             let mut game_state = game_state.borrow_mut();
 
@@ -123,14 +139,18 @@ impl Game
                 ..Default::default()
             });
 
-            PlayerInfo::new(PlayerCreateInfo{
+            let scripts = game_state.scripts.clone();
+
+            let player_info = PlayerInfo::new(PlayerCreateInfo{
                 camera: game_state.entities.camera_entity,
                 entity: game_state.entities.player_entity,
                 mouse_entity
-            })
+            });
+
+            (scripts, player_info)
         };
 
-        let mut this = Self{info: Rc::new(RefCell::new(info)), game_state};
+        let mut this = Self{scripts, info: Rc::new(RefCell::new(info)), game_state};
 
         let primitives = this.console_primitives();
 
@@ -143,7 +163,6 @@ impl Game
 
             let mut infos = this.info.borrow_mut();
             infos.console.primitives = Some(primitives);
-            infos.console.standard = load("lisp/standard.scm");
             infos.console.console_standard = load("lisp/console.scm");
         }
 
@@ -233,13 +252,40 @@ impl Game
             }
         });
 
-        self.player_container(|mut x|
         {
-            controls.into_iter().for_each(|(control, state)|
+            let mut outer_actions = Vec::new();
+
+            self.player_container(|mut x|
             {
-                x.on_control(state, control)
+                controls.into_iter().for_each(|(control, state)|
+                {
+                    x.on_control(&mut outer_actions, state, control)
+                });
             });
-        });
+
+            outer_actions.into_iter().for_each(|action|
+            {
+                match action
+                {
+                    OuterAction::Use{script_index, entity, item} =>
+                    {
+                        let script = self.scripts.get(script_index);
+                        if let Err(err) = script.run_with(|memory|
+                        {
+                            if let Some(entity) = with_error(push_entity(memory, entity))
+                            {
+                                with_error(memory.define("caller-entity", entity));
+                            }
+
+                            with_error(memory.define("caller-item-inventory-id", (item.as_raw() as i32).into()));
+                        })
+                        {
+                            eprintln!("error running on_use (in {}): {err}", script.get_source(err.position.source));
+                        }
+                    }
+                }
+            });
+        }
 
         with_game_state(&self.game_state, |game_state|
         {
@@ -260,89 +306,6 @@ impl Game
         true
     }
 
-    fn pop_position(args: &mut PrimitiveArgs) -> Result<Vector3<f32>, lisp::Error>
-    {
-        let value = args.next().unwrap();
-
-        Self::parse_position(OutputWrapperRef::new(args.memory, value))
-    }
-
-    fn parse_position(value: OutputWrapperRef) -> Result<Vector3<f32>, lisp::Error>
-    {
-        let mut list = value.as_list();
-
-        let mut next_float = ||
-        {
-            let current = list.clone()?;
-            let value = current.car().as_float();
-
-            list = current.cdr().as_list();
-
-            value
-        };
-
-        Ok(vector![next_float()?, next_float()?, next_float()?])
-    }
-
-    fn pop_entity(entities: &ClientEntities, args: &mut PrimitiveArgs) -> Result<Entity, lisp::Error>
-    {
-        let mut values = args.next().unwrap().as_pairs_list(args.memory)?.into_iter();
-
-        let tag = values.next().unwrap().as_symbol(args.memory)?;
-        if tag != "entity"
-        {
-            let s = format!("(expected tag `entity` got `{tag}`)");
-
-            return Err(lisp::Error::Custom(s));
-        }
-
-        let local = values.next().unwrap().as_bool()?;
-        let id = values.next().unwrap().as_integer()?;
-
-        let entity = entities.with_seed(Entity::from_raw(local, id as usize).no_seed());
-
-        Ok(entity)
-    }
-
-    fn push_entity(memory: &mut LispMemory, entity: Entity) -> Result<LispValue, lisp::Error>
-    {
-        let tag = memory.new_symbol("entity");
-        let local = LispValue::new_bool(entity.local());
-        let id = LispValue::new_integer(entity.id() as i32);
-
-        memory.cons_list([tag, local, id])
-    }
-
-    fn add_simple_setter<F>(&self, primitives: &mut Primitives, name: &str, f: F)
-    where
-        F: Fn(
-            &mut ClientEntities,
-            Entity,
-            OutputWrapperRef
-        ) -> Result<(), lisp::Error> + 'static
-    {
-        let game_state = self.game_state.clone();
-
-        primitives.add(
-            name,
-            PrimitiveProcedureInfo::new_simple(2, Effect::Impure, move |mut args|
-            {
-                with_game_state(&game_state, |game_state|
-                {
-                    let entities = game_state.entities_mut();
-
-                    let entity = Self::pop_entity(entities, &mut args)?;
-
-                    let value = args.next().unwrap();
-                    let value = OutputWrapperRef::new(args.memory, value);
-
-                    f(entities, entity, value)?;
-
-                    Ok(().into())
-                })
-            }));
-    }
-
     fn maybe_format_component(
         game_state: &Weak<RefCell<GameState>>,
         args: &mut PrimitiveArgs
@@ -352,8 +315,8 @@ impl Game
         {
             let entities = game_state.entities();
 
-            let entity = Self::pop_entity(entities, args)?;
-            let component = args.next().unwrap().as_symbol(args.memory)?;
+            let entity = parse_entity(entities, args.next_value().unwrap())?;
+            let component = args.next_value().unwrap().as_symbol()?;
 
             let maybe_info = entities.component_info(entity, &component);
 
@@ -365,49 +328,9 @@ impl Game
 
     fn console_primitives(&mut self) -> Rc<Primitives>
     {
-        macro_rules! get_component_mut
-        {
-            ($name:ident, $entities:expr, $entity:expr) =>
-            {
-                {
-                    let name = stringify!($name).trim_end_matches("_mut");
-
-                    some_or_value!(
-                        $entities.$name($entity),
-                        Err(lisp::Error::Custom(format!("component {name} is missing")))
-                    )
-                }
-            }
-        }
-
         let mut primitives = Primitives::default();
 
-        {
-            let game_state = self.game_state.clone();
-
-            primitives.add(
-                "entity-collided",
-                PrimitiveProcedureInfo::new_simple(1, Effect::Impure, move |mut args|
-                {
-                    with_game_state(&game_state, |game_state|
-                    {
-                        let entities = game_state.entities();
-
-                        let entity = Self::pop_entity(entities, &mut args)?;
-                        let collided = entities.collider(entity)
-                            .map(|x| x.collided().to_vec()).into_iter().flatten()
-                            .next();
-
-                        if let Some(collided) = collided
-                        {
-                            Self::push_entity(args.memory, collided)
-                        } else
-                        {
-                            Ok(().into())
-                        }
-                    })
-                }));
-        }
+        add_info_primitives(&mut primitives, Rc::new(RefCell::new(self.game_state.clone())));
 
         {
             let game_state = self.game_state.clone();
@@ -494,7 +417,7 @@ impl Game
                 // set to next index
                 args.memory.set_car(query_id, (index as i32 - 1).into());
 
-                Self::push_entity(args.memory, entity)
+                push_entity(args.memory, entity)
             }));
 
         {
@@ -506,7 +429,7 @@ impl Game
                 {
                     with_game_state(&game_state, |game_state|
                     {
-                        let position = Self::pop_position(&mut args)?;
+                        let position = parse_position(args.next_value().unwrap())?;
 
                         let visual = args.next().map(|x| x.as_bool()).unwrap_or(Ok(false))?;
 
@@ -536,74 +459,6 @@ impl Game
                 }));
         }
 
-        self.add_simple_setter(&mut primitives, "set-floating", |entities, entity, value|
-        {
-            let state = value.as_bool()?;
-
-            get_component_mut!(physical_mut, entities, entity).set_floating(state);
-
-            Ok(())
-        });
-
-        self.add_simple_setter(&mut primitives, "set-speed", |entities, entity, value|
-        {
-            let speed = value.as_float()?;
-
-            get_component_mut!(anatomy_mut, entities, entity).set_speed(speed);
-
-            Ok(())
-        });
-
-        self.add_simple_setter(&mut primitives, "set-ghost", |entities, entity, value|
-        {
-            let state = value.as_bool()?;
-
-            get_component_mut!(collider_mut, entities, entity).ghost = state;
-
-            Ok(())
-        });
-
-        self.add_simple_setter(&mut primitives, "set-position", |entities, entity, value|
-        {
-            let position = Self::parse_position(value)?;
-
-            get_component_mut!(target, entities, entity).position = position;
-
-            Ok(())
-        });
-
-        self.add_simple_setter(&mut primitives, "set-rotation", |entities, entity, value|
-        {
-            get_component_mut!(target, entities, entity).rotation = value.as_float()?;
-
-            Ok(())
-        });
-
-        self.add_simple_setter(&mut primitives, "set-faction", |entities, entity, value|
-        {
-            let faction = value.as_symbol()?;
-            let faction: String = faction.to_lowercase().chars().enumerate().map(|(i, c)|
-            {
-                if i == 0
-                {
-                    c.to_ascii_uppercase()
-                } else
-                {
-                    c
-                }
-            }).collect();
-
-            let faction = format!("\"{faction}\"");
-            let faction = serde_json::from_str(&faction).map_err(|_|
-            {
-                lisp::Error::Custom(format!("cant deserialize {faction} as Faction"))
-            })?;
-
-            get_component_mut!(character_mut, entities, entity).faction = faction;
-
-            Ok(())
-        });
-
         {
             let game_state = self.game_state.clone();
 
@@ -622,70 +477,13 @@ impl Game
         }
 
         {
-            let game_state = self.game_state.clone();
-
-            primitives.add(
-                "add-screenshake-offset",
-                PrimitiveProcedureInfo::new_simple(2, Effect::Impure, move |mut args|
-                {
-                    with_game_state(&game_state, |game_state|
-                    {
-                        let entity = Self::pop_entity(game_state.entities(), &mut args)?;
-
-                        let list = args.next().unwrap().as_list(args.memory)?;
-
-                        let x = list.car.as_float()?;
-                        let y = list.cdr.as_list(args.memory)?.car.as_float()?;
-
-                        let mut player = game_state.entities().player_mut(entity).ok_or_else(||
-                        {
-                            lisp::Error::Custom("entity doesnt have a player component".to_owned())
-                        })?;
-
-                        player.screenshake.add_offset(vector![x, y]);
-
-                        Ok(().into())
-                    })
-                }));
-        }
-
-        {
-            let game_state = self.game_state.clone();
-
-            primitives.add(
-                "add-item",
-                PrimitiveProcedureInfo::new_simple(2, Effect::Impure, move |mut args|
-                {
-                    with_game_state(&game_state, |game_state|
-                    {
-                        let entities = game_state.entities();
-
-                        let entity = Self::pop_entity(entities, &mut args)?;
-                        let name = args.next().unwrap().as_symbol(args.memory)?.replace('_', " ");
-
-                        let mut inventory = entities.inventory_mut(entity).unwrap();
-
-                        let id = game_state.data_infos.items_info.get_id(&name).ok_or_else(||
-                        {
-                            lisp::Error::Custom(format!("item named {name} doesnt exist"))
-                        })?;
-
-                        let items_info = &game_state.data_infos.items_info;
-                        inventory.push(items_info, Item::new(items_info, id));
-
-                        Ok(().into())
-                    })
-                }));
-        }
-
-        {
             let player_entity = self.info.borrow().entity;
 
             primitives.add(
                 "player-entity",
                 PrimitiveProcedureInfo::new_simple(0, Effect::Impure, move |args|
                 {
-                    Self::push_entity(args.memory, player_entity)
+                    push_entity(args.memory, player_entity)
                 }));
         }
 
@@ -696,7 +494,7 @@ impl Game
                 "mouse-entity",
                 PrimitiveProcedureInfo::new_simple(0, Effect::Impure, move |args|
                 {
-                    Self::push_entity(args.memory, mouse_entity)
+                    push_entity(args.memory, mouse_entity)
                 }));
         }
 
@@ -707,7 +505,7 @@ impl Game
                 "camera-entity",
                 PrimitiveProcedureInfo::new_simple(0, Effect::Impure, move |args|
                 {
-                    Self::push_entity(args.memory, camera_entity)
+                    push_entity(args.memory, camera_entity)
                 }));
         }
 
@@ -721,7 +519,7 @@ impl Game
                 {
                     with_game_state(&game_state, |game_state|
                     {
-                        let entity = Self::pop_entity(game_state.entities(), &mut args)?;
+                        let entity = parse_entity(game_state.entities(), args.next_value().unwrap())?;
 
                         let mut info = info.borrow_mut();
                         PlayerContainer::new(&mut info, game_state).set_follow_target(entity);
@@ -742,93 +540,11 @@ impl Game
                 PrimitiveProcedureInfo::new_simple(1, Effect::Impure, move |mut args|
                 {
                     let value = args.next().unwrap();
-                    let position = Self::parse_position(OutputWrapperRef::new(args.memory, value))?;
+                    let position = parse_position(OutputWrapperRef::new(args.memory, value))?;
 
                     camera.write().set_position(position.into());
 
                     Ok(().into())
-                }));
-        }
-
-        {
-            let game_state = self.game_state.clone();
-
-            primitives.add(
-                "children-of",
-                PrimitiveProcedureInfo::new_simple(1, Effect::Impure, move |mut args|
-                {
-                    with_game_state(&game_state, |game_state|
-                    {
-                        let entities = game_state.entities();
-
-                        let entity = Self::pop_entity(entities, &mut args)?;
-
-                        args.memory.cons_list_with(|memory|
-                        {
-                            let mut count = 0;
-                            entities.children_of(entity).try_for_each(|x|
-                            {
-                                count += 1;
-                                let value = Self::push_entity(memory, x)?;
-
-                                memory.push_stack(value)?;
-
-                                Ok(())
-                            })?;
-
-                            Ok(count)
-                        })
-                    })
-                }));
-        }
-
-        {
-            let game_state = self.game_state.clone();
-
-            primitives.add(
-                "position-entity",
-                PrimitiveProcedureInfo::new_simple(1, Effect::Impure, move |mut args|
-                {
-                    with_game_state(&game_state, |game_state|
-                    {
-                        let entities = game_state.entities();
-
-                        let entity = Self::pop_entity(entities, &mut args)?;
-
-                        if let Some(transform) = entities.transform(entity)
-                        {
-                            let position = transform.position;
-
-                            args.memory.cons_list([position.x, position.y, position.z])
-                        } else
-                        {
-                            Ok(().into())
-                        }
-                    })
-                }));
-        }
-
-        {
-            let game_state = self.game_state.clone();
-
-            primitives.add(
-                "rotation-entity",
-                PrimitiveProcedureInfo::new_simple(1, Effect::Impure, move |mut args|
-                {
-                    with_game_state(&game_state, |game_state|
-                    {
-                        let entities = game_state.entities();
-
-                        let entity = Self::pop_entity(entities, &mut args)?;
-
-                        if let Some(transform) = entities.transform(entity)
-                        {
-                            Ok(transform.rotation.into())
-                        } else
-                        {
-                            Ok(().into())
-                        }
-                    })
                 }));
         }
 
@@ -854,7 +570,7 @@ impl Game
                     {
                         let entities = game_state.entities();
 
-                        let entity = Self::pop_entity(entities, &mut args)?;
+                        let entity = parse_entity(entities, args.next_value().unwrap())?;
                         let is_compact = args.next().map(|x| x.as_bool()).unwrap_or(Ok(true))?;
 
                         let info = entities.info_ref(entity).map(|x|
@@ -887,7 +603,7 @@ impl Game
                 {
                     with_game_state(&game_state, |game_state|
                     {
-                        let message = args.next().unwrap().as_string(args.memory)?;
+                        let message = args.next_value().unwrap().as_string()?;
                         let message: DebugMessage = serde_json::from_str(&message).map_err(|err|
                         {
                             lisp::Error::Custom(format!("cant deserialize {message} as DebugMessage ({err})"))
@@ -1012,10 +728,10 @@ impl Game
 
     fn console_command(&mut self, command: String, output: ConsoleOutput)
     {
-        fn code<'a>(info: &'a PlayerInfo, command: &'a str) -> [&'a str; 4]
+        fn code<'a>(info: &'a PlayerInfo, command: &'a str) -> [&'a str; 3]
         {
             let console = &info.console;
-            [&console.standard, &console.console_standard, &console.past_commands, command]
+            [&console.console_standard, &console.past_commands, command]
         }
 
         let config = LispConfig{
@@ -1048,7 +764,7 @@ impl Game
                 let info = self.info.borrow();
                 let code = code(&info, &command);
 
-                eprintln!("error running {command}: {err}");
+                eprintln!("error running {command} (in {}): {err}", lisp.get_source(err.position.source));
                 Lisp::print_highlighted(&code, err.position);
                 return;
             }
@@ -1076,7 +792,6 @@ struct PlayerCreateInfo
 struct ConsoleInfo
 {
     primitives: Option<Rc<Primitives>>,
-    standard: String,
     console_standard: String,
     past_commands: String
 }
@@ -1087,7 +802,6 @@ impl ConsoleInfo
     {
         Self{
             primitives: None,
-            standard: String::new(),
             console_standard: String::new(),
             past_commands: String::new()
         }
@@ -1252,10 +966,11 @@ impl<'a> PlayerContainer<'a>
         camera.update();
     }
 
-    pub fn on_control(&mut self, state: ControlState, control: Control)
+    pub fn on_control(&mut self, outer_actions: &mut Vec<OuterAction>, state: ControlState, control: Control)
     {
         enum MainAction
         {
+            Use,
             Bash,
             Poke,
             Shoot
@@ -1268,6 +983,11 @@ impl<'a> PlayerContainer<'a>
             let character = some_or_value!(entities.character(this.info.entity), MainAction::Bash);
 
             let item = some_or_value!(character.held_item_info(entities), MainAction::Bash);
+
+            if item.on_use.is_some()
+            {
+                return MainAction::Use;
+            }
 
             if item.ranged.is_some()
             {
@@ -1311,6 +1031,7 @@ impl<'a> PlayerContainer<'a>
 
                         match select_main_action(self)
                         {
+                            MainAction::Use => (),
                             MainAction::Bash => self.character_action(CharacterAction::Bash{state: true}),
                             MainAction::Poke => self.character_action(CharacterAction::Poke{state: true}),
                             MainAction::Shoot =>
@@ -1448,6 +1169,21 @@ impl<'a> PlayerContainer<'a>
 
                 match select_main_action(self)
                 {
+                    MainAction::Use =>
+                    {
+                        let entities = self.game_state.entities();
+
+                        let character = some_or_unexpected_return!(entities.character(self.info.entity));
+                        let item = some_or_unexpected_return!(character.held_item_info(entities));
+
+                        let script_index = some_or_unexpected_return!(item.on_use);
+
+                        outer_actions.push(OuterAction::Use{
+                            script_index,
+                            entity: self.info.entity,
+                            item: character.holding().expect("must be returned with the redundant check above")
+                        });
+                    },
                     MainAction::Bash => self.stance_action(AttackStance::Side, |state| CharacterAction::Bash{state}),
                     MainAction::Poke => self.stance_action(AttackStance::Forward, |state| CharacterAction::Poke{state}),
                     MainAction::Shoot =>

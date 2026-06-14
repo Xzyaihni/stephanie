@@ -132,6 +132,15 @@ impl<'a> PrimitiveArgs<'a>
     {
         self.position
     }
+
+    pub fn next_value<'b>(&'b mut self) -> Option<OutputWrapperRef<'b>>
+    where
+        'a: 'b
+    {
+        let value = self.memory.try_pop_arg()?;
+
+        Some(OutputWrapperRef{memory: self.memory, value})
+    }
 }
 
 impl<'a> Iterator for PrimitiveArgs<'a>
@@ -705,6 +714,19 @@ impl Default for Primitives
                 {
                     Ok(args.next().unwrap().as_float()?.floor().into())
                 })),
+            ("sqrt", PrimitiveProcedureInfo::new_simple(1, Effect::Pure, |mut args|
+            {
+                // this is faster than my newtons method thing in pure scheme but im still sad
+                Ok(args.next().unwrap().as_float()?.sqrt().into())
+            })),
+            ("cos", PrimitiveProcedureInfo::new_simple(1, Effect::Pure, |mut args|
+            {
+                Ok(args.next().unwrap().as_float()?.cos().into())
+            })),
+            ("sin", PrimitiveProcedureInfo::new_simple(1, Effect::Pure, |mut args|
+            {
+                Ok(args.next().unwrap().as_float()?.sin().into())
+            })),
             ("wrapping-add",
                 PrimitiveProcedureInfo::new_simple(2, Effect::Pure, |mut args|
                 {
@@ -1597,17 +1619,25 @@ impl InterReprPos
 
                 if let InterRepr::Lookup(LookupStage::Parsed{symbol: this_lookup}) = *op
                 {
-                    if let Some((load_symbol, source_id, interpret_state_fn)) = &interpret_state.load_handler
+                    if let Some(LoadHandler{
+                        load_symbol,
+                        load_once_symbol,
+                        source_id,
+                        sources,
+                        interpret_state_fn
+                    }) = &mut interpret_state.load_handler
                     {
-                        if this_lookup == *load_symbol
+                        if (this_lookup == *load_symbol) || (this_lookup == *load_once_symbol)
                         {
-                            let filename_repr = if let Some(x) = args.into_iter().next()
+                            let filename_repr = if let Some(x) = args.iter().next()
                             {
-                                x
+                                x.clone()
                             } else
                             {
+                                let proc = if this_lookup == *load_symbol { "load" } else { "load-once" };
+
                                 return Err(Error::WrongArgumentsCount{
-                                    proc: "load".to_owned(),
+                                    proc: proc.to_owned(),
                                     expected: 1.to_string(),
                                     got: 0
                                 }).with_position(ast.position);
@@ -1629,21 +1659,30 @@ impl InterReprPos
                                 return Err(Error::Custom("expected filepath string".to_owned())).with_position(ast.position);
                             };
 
-                            let loaded_code = if let Some(x) = interpret_state_fn(&filename)
-                            {
-                                x
-                            } else
-                            {
-                                return Err(Error::Custom(format!("error when loading {filename}"))).with_position(ast.position);
-                            };
+                            let skip_load = this_lookup == *load_once_symbol && sources.contains(&filename);
 
-                            let loaded_ast = Parser::parse(*source_id, &[&loaded_code])?;
+                            if !skip_load
+                            {
+                                sources.push(filename.clone());
 
-                            return InterReprPos::parse(
-                                interpret_state,
-                                memory,
-                                loaded_ast
-                            );
+                                let loaded_code = if let Some(x) = interpret_state_fn(&filename)
+                                {
+                                    x
+                                } else
+                                {
+                                    return Err(Error::Custom(format!("error when loading {filename}"))).with_position(ast.position);
+                                };
+
+                                let loaded_ast = Parser::parse(*source_id, &[&loaded_code])?;
+
+                                *source_id += 1;
+
+                                return InterReprPos::parse(
+                                    interpret_state,
+                                    memory,
+                                    loaded_ast
+                                );
+                            }
                         }
                     }
                 }
@@ -3493,13 +3532,22 @@ pub struct CompileSymbolState
     value: Option<LispValue>
 }
 
+struct LoadHandler
+{
+    load_symbol: SymbolId,
+    load_once_symbol: SymbolId,
+    source_id: usize,
+    sources: Vec<String>,
+    interpret_state_fn: Box<dyn Fn(&str) -> Option<String>>
+}
+
 pub struct InterpretState
 {
     eval_encountered: bool,
     outer_lookups: Vec<SymbolId>,
     current_env_position: CompileEnvPosition,
     compile_env: Vec<Vec<Vec<(SymbolId, CompileSymbolState)>>>,
-    load_handler: Option<(SymbolId, usize, Box<dyn Fn(&str) -> Option<String>>)>,
+    load_handler: Option<LoadHandler>,
     debug_mode_symbol: SymbolId,
     debug_mode: bool,
     #[cfg(debug_assertions)]
@@ -4169,6 +4217,7 @@ impl Default for CompileConfig
 #[derive(Debug, Clone)]
 pub struct Program
 {
+    sources: Vec<String>,
     memory: LispMemory,
     code: CompiledProgram
 }
@@ -4187,6 +4236,17 @@ impl Program
     {
         debug_assert!(memory.iter_values().all(|x| x.tag != ValueTag::Address));
 
+        let start_sources: Vec<String> = code.iter().enumerate().map(|(index, _)|
+        {
+            if index == 0
+            {
+                "source".to_owned()
+            } else
+            {
+                format!("source#{index}")
+            }
+        }).collect();
+
         let ast = Parser::parse(0, code)?;
 
         let mut interpret_state = InterpretState{
@@ -4194,10 +4254,18 @@ impl Program
             outer_lookups: Vec::new(),
             current_env_position: CompileEnvPosition::default(),
             compile_env: vec![vec![Vec::new()]],
-            load_handler: load_handler.map(|x|
+            load_handler: load_handler.map(|interpret_state_fn|
             {
                 let load_symbol = memory.new_symbol_id("load");
-                (load_symbol, code.len(), x)
+                let load_once_symbol = memory.new_symbol_id("load-once");
+
+                LoadHandler{
+                    load_symbol,
+                    load_once_symbol,
+                    source_id: code.len(),
+                    sources: Vec::new(),
+                    interpret_state_fn
+                }
             }),
             debug_mode_symbol: memory.new_symbol_id("debug-mode"),
             debug_mode: config.type_checks,
@@ -4332,7 +4400,23 @@ impl Program
             compiled.into_program(state)
         }?;
 
-        Ok(Self{memory, code})
+        let mut sources = start_sources;
+        if let Some(mut load_handler) = interpret_state.load_handler
+        {
+            sources.append(&mut load_handler.sources);
+        }
+
+        Ok(Self{sources, memory, code})
+    }
+
+    pub fn set_source_name(&mut self, index: usize, name: String)
+    {
+        self.sources[index] = name;
+    }
+
+    pub fn get_source(&self, index: usize) -> &str
+    {
+        &self.sources[index]
     }
 
     pub fn eval(&self, with_memory: impl FnOnce(&mut LispMemory)) -> Result<OutputWrapper, ErrorPos>

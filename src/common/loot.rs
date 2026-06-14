@@ -1,8 +1,6 @@
 use std::{
     fs,
-    cell::RefCell,
-    borrow::Cow,
-    path::PathBuf
+    cell::RefCell
 };
 
 use crate::{
@@ -21,9 +19,9 @@ use crate::{
 };
 
 
-pub fn loot_compile(code: &str) -> Generator
+pub fn loot_compile(name: String, code: &str) -> Generator
 {
-    with_error(Generator::new(code)).unwrap_or_default()
+    with_error(Generator::new(name, code)).unwrap_or_default()
 }
 
 fn parse_item(items_info: &ItemsInfo, value: OutputWrapperRef) -> Result<Item, lisp::Error>
@@ -44,15 +42,14 @@ fn parse_item(items_info: &ItemsInfo, value: OutputWrapperRef) -> Result<Item, l
     Ok(Item::new(items_info, id))
 }
 
-fn create_with_lisp<'a>(items_info: &ItemsInfo, lisp: &Lisp, name: impl Fn() -> Cow<'a, str>) -> Vec<Item>
+fn create_with_lisp<'a>(items_info: &ItemsInfo, lisp: &Lisp) -> Vec<Item>
 {
     let (memory, value) = match lisp.run()
     {
         Ok(x) => x.destructure(),
         Err(err) =>
         {
-            let name = name();
-            let source = ["standard", "loot", &name][err.position.source];
+            let source = lisp.get_source(err.position.source);
             eprintln!("(in {source}) {err}");
 
             return Vec::new();
@@ -64,7 +61,7 @@ fn create_with_lisp<'a>(items_info: &ItemsInfo, lisp: &Lisp, name: impl Fn() -> 
         Ok(x) => x,
         Err(err) =>
         {
-            eprintln!("{}: {err}", &name());
+            eprintln!("{}: {err}", lisp.get_source(0));
 
             return Vec::new();
         }
@@ -79,7 +76,7 @@ fn create_with_lisp<'a>(items_info: &ItemsInfo, lisp: &Lisp, name: impl Fn() -> 
             Ok(x) => Some(x),
             Err(err) =>
             {
-                eprintln!("{}: {err}", &name());
+                eprintln!("{}: {err}", lisp.get_source(0));
 
                 None
             }
@@ -100,18 +97,12 @@ impl Default for Generator
 
 impl Generator
 {
-    pub fn new(code: &str) -> Result<Self, ParseError>
+    pub fn new(name: String, code: &str) -> Result<Self, ParseError>
     {
-        let load = |filename|
-        {
-            fs::read_to_string(filename)
-                .map_err(|err| ParseError::new_named(PathBuf::from(filename), err))
-        };
+        let mut lisp = Lisp::new_one(code).map_err(ParseError::new)?;
+        lisp.set_source_name(0, name);
 
-        let standard = load("lisp/standard.scm")?;
-        let loot_standard = load("lisp/loot.scm")?;
-
-        Ok(Self(Some(Lisp::new(&[&standard, &loot_standard, code]).map_err(ParseError::new)?)))
+        Ok(Self(Some(lisp)))
     }
 
     pub fn new_empty() -> Self
@@ -119,11 +110,11 @@ impl Generator
         Self(None)
     }
 
-    pub fn create<'a>(&self, items_info: &ItemsInfo, name: impl Fn() -> Cow<'a, str>) -> Vec<Item>
+    pub fn create(&self, items_info: &ItemsInfo) -> Vec<Item>
     {
         let lisp = some_or_return!(self.0.as_ref());
 
-        create_with_lisp(items_info, lisp, name)
+        create_with_lisp(items_info, lisp)
     }
 }
 
@@ -174,10 +165,17 @@ pub struct TileLootInfo
 }
 
 #[derive(Clone)]
+pub struct ServerLootSingleInfo
+{
+    pub name: String,
+    pub code: String
+}
+
+#[derive(Clone)]
 pub struct ServerLootInfo
 {
-    pub furniture: Vec<ServerFurnitureLootInfo<Option<String>>>,
-    pub enemy: Vec<EnemyLootInfo<Option<String>>>
+    pub furniture: Vec<ServerFurnitureLootInfo<Option<ServerLootSingleInfo>>>,
+    pub enemy: Vec<EnemyLootInfo<Option<ServerLootSingleInfo>>>
 }
 
 #[derive(Clone, Default)]
@@ -218,14 +216,12 @@ impl DoorGenerator
 {
     pub fn new(path: &str) -> Self
     {
-        let load_file = |path| with_error(fs::read_to_string(path));
+        let code = some_or_return!(with_error(fs::read_to_string(path)));
 
-        let standard = some_or_return!(load_file("lisp/standard.scm"));
-        let loot_common = some_or_return!(load_file("lisp/loot.scm"));
-        let code = some_or_return!(load_file(path));
-
-        with_error(Lisp::new(&[&standard, &loot_common, &code])).map(|lisp|
+        with_error(Lisp::new_one(&code)).map(|mut lisp|
         {
+            lisp.set_source_name(0, "door".to_owned());
+
             Self{lisp: RefCell::new(lisp)}
         }).unwrap_or_default()
     }
@@ -245,11 +241,7 @@ impl DoorGenerator
             some_or_return!(with_error(memory.define("width", (door.width() as i32).into())));
         }
 
-        create_with_lisp(
-            items_info,
-            &lisp,
-            || (material_name.to_owned() + " door").into()
-        )
+        create_with_lisp(items_info, &lisp)
     }
 }
 

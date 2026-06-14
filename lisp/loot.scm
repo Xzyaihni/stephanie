@@ -1,3 +1,5 @@
+(load-once "standard.scm")
+
 (define (any-of xs)
     (list-ref xs (random-integer (length xs))))
 

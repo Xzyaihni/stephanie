@@ -1,3 +1,5 @@
+(load-once "loot.scm")
+
 (cond
     ((eq? material 'metal) (flatten (replicate width (standard-drops '(metal_shard)))))
     ((eq? material 'wood) (points-drops '((stick 2) (plank 3)) (* 6 width)))

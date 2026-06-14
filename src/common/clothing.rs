@@ -20,8 +20,8 @@ pub enum EquipSlot
 pub struct ClothingInfoRaw
 {
     slot: EquipSlot,
-    armor_multiply: f32,
-    armor_normal: f32
+    armor_multiply: Option<f32>,
+    armor_normal: Option<f32>
 }
 
 #[derive(Debug, Clone)]
@@ -49,8 +49,8 @@ impl ClothingInfo
         Self{
             sprites,
             slot: raw.slot,
-            armor_multiply: raw.armor_multiply,
-            armor_normal: raw.armor_normal
+            armor_multiply: raw.armor_multiply.unwrap_or(0.0),
+            armor_normal: raw.armor_normal.unwrap_or(0.0)
         }
     }
 }

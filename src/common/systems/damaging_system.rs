@@ -1,6 +1,5 @@
 use std::{
     f32,
-    borrow::Cow,
     ops::ControlFlow,
     cell::RefCell
 };
@@ -379,10 +378,7 @@ pub fn damager<'a, 'b, 'c>(
                     });
 
                     destroy_tile_dependent(entities, textures, space, loot, tile_pos);
-                    spawn_items(entities, textures, &transform, &loot.tile_generator(tile_id).on_destroy, ||
-                    {
-                        world.tilemap()[tile_id].name.clone().into()
-                    });
+                    spawn_items(entities, textures, &transform, &loot.tile_generator(tile_id).on_destroy);
                 }
 
                 create_particles(
@@ -853,15 +849,14 @@ pub fn spawn_item(entities: &ClientEntities, textures: &CommonTextures, transfor
     entities.add_watcher(entity, item_disappear_watcher(textures));
 }
 
-fn spawn_items<'a>(
+fn spawn_items(
     entities: &ClientEntities,
     textures: &CommonTextures,
     transform: &Transform,
-    loot: &loot::Generator,
-    name: impl Fn() -> Cow<'a, str>
+    loot: &loot::Generator
 )
 {
-    loot.create(&entities.infos().items_info, name).into_iter().for_each(|item|
+    loot.create(&entities.infos().items_info).into_iter().for_each(|item|
     {
         spawn_item(entities, textures, transform, &item)
     });
@@ -914,8 +909,7 @@ fn destroy_entity(entities: &ClientEntities, textures: &CommonTextures, loot: &C
         entities,
         textures,
         &transform,
-        generator,
-        || entities.named(entity).map(|x| x.clone().into()).unwrap_or_else(|| "entity loot".into())
+        generator
     );
 }
 

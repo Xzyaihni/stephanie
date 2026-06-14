@@ -23,6 +23,7 @@ use crate::common::{
     Player,
     Parent,
     Enemy,
+    EnemyId,
     Anatomy,
     RenderInfo,
     OnConnectInfo,
@@ -87,6 +88,7 @@ pub enum Message
     SyncCharacter{entity: Entity, info: CharacterSyncInfo},
     SyncCamera{position: Pos3<f32>},
     SyncWorldTime{time: f64},
+    SpawnEnemy{id: EnemyId, pos: Vector3<f32>},
     PlayerConnect{name: String, host: bool},
     PlayerOnConnect(OnConnectInfo),
     PlayerFullyConnected,
@@ -111,6 +113,7 @@ impl Message
             | Message::EntityRemoveChunkFinished{..}
             | Message::SyncCamera{..}
             | Message::SyncWorldTime{..}
+            | Message::SpawnEnemy{..}
             | Message::PlayerConnect{..}
             | Message::PlayerOnConnect{..}
             | Message::PlayerFullyConnected

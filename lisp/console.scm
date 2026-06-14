@@ -1,42 +1,4 @@
-(define (entity? x)
-    (eq? (car x) 'entity))
-
-(define (local? x) (car (cdr x)))
-
-(define (entity->position x)
-    (if (entity? x)
-        (position-entity x)
-        x))
-
-(define (position-combine f a b)
-    (map
-        (lambda (x) (f (car x) (cdr x)))
-        (zip a b)))
-
-(define (position-add a b)
-    (position-combine + a b))
-
-(define (teleport a b)
-    (set-position a (entity->position b)))
-
-(define (move a amount)
-    (set-position
-        a
-        (position-add (position-entity a) amount)))
-
-(define (distance a b)
-    (let ((a-pos (entity->position a)) (b-pos (entity->position b)))
-        (if (or (null? a-pos) (null? b-pos))
-            (/ 1.0 0.0)
-            (sqrt
-                (fold
-                    +
-                    0
-                    (map
-                        square
-                        (map
-                            (lambda (x) (- (car x) (cdr x)))
-                            (zip a-pos b-pos))))))))
+(load-once "infos.scm")
 
 (define (fold-entities f start)
     (define query (all-entities-query))
