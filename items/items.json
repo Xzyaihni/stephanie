@@ -397,7 +397,7 @@
         "comfort": 0.5,
         "mass": 1.0,
         "durability": 0.1,
-        "on_use": "(load-once \"items.scm\")(destroy-this)(spawn-enemy \"zobbbbbb\" (position-add (entity->position caller-entity) (rotate-point '(0.0 tile-size 0.0) (entity->rotation caller-entity))))"
+        "on_use": "(load-once \"items.scm\")(destroy-this)(spawn-enemy \"zobbbbbb\" (position-add (entity->position caller-entity) (rotate-point (list tile-size 0.0 0.0) (entity->rotation caller-entity))))"
     },
     {
         "name": "heal pills",
