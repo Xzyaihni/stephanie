@@ -11,6 +11,7 @@ use crate::{
         some_or_value,
         lisp::{self, *},
         Entity,
+        EntityInfo,
         Message,
         Item,
         AnyEntities,
@@ -107,6 +108,215 @@ pub fn add_info_primitives(primitives: &mut Primitives, game_state: Rc<RefCell<W
         let mut game_state = game_state.borrow_mut();
 
         f(&mut game_state)
+    }
+
+    {
+        let game_state = game_state.clone();
+
+        primitives.add("entity-transform", PrimitiveProcedureInfo::new_simple(1, Effect::Impure, move |mut args|
+        {
+            with_game_state(&game_state, |game_state|
+            {
+                let entities = game_state.entities();
+
+                let entity = parse_entity(entities, args.next_value().unwrap())?;
+
+                let transform = entities.transform(entity)
+                    .ok_or_else(|| lisp::Error::Custom("entity doesnt have a transform".to_owned()))?;
+
+                let position = transform.position;
+                let scale = transform.scale;
+                let rotation = transform.rotation;
+
+                let restore = args.memory.with_saved_registers([Register::Temporary]);
+
+                {
+                    let position_list = args.memory.cons_list([position.x, position.y, position.z])?;
+                    args.memory.set_register(Register::Temporary, position_list);
+                }
+
+                let scale_list = args.memory.cons_list([scale.x, scale.y, scale.z])?;
+
+                let transform_list = args.memory.cons_list([args.memory.get_register(Register::Temporary), scale_list, rotation.into()])?;
+
+                restore(args.memory)?;
+
+                Ok(transform_list)
+            })
+        }));
+    }
+
+    {
+        let game_state = game_state.clone();
+
+        primitives.add("remove-inventory-item", PrimitiveProcedureInfo::new_simple(2, Effect::Impure, move |mut args|
+        {
+            with_game_state(&game_state, |game_state|
+            {
+                let entities = game_state.entities();
+
+                let entity = parse_entity(entities, args.next_value().unwrap())?;
+
+                let item_index = args.next().unwrap().as_integer()?;
+
+                inventory_remove_item(entities, entity, InventoryItem::from_raw(item_index as usize));
+
+                Ok(().into())
+            })
+        }));
+    }
+
+    {
+        let game_state = game_state.clone();
+
+        primitives.add("add-item", PrimitiveProcedureInfo::new_simple(2, Effect::Impure, move |mut args|
+        {
+            with_game_state(&game_state, |game_state|
+            {
+                let entities = game_state.entities();
+
+                let entity = parse_entity(entities, args.next_value().unwrap())?;
+
+                let name = parse_symbol_or_string(args.next_value().unwrap())?;
+
+                let mut inventory = entities.inventory_mut(entity).ok_or_else(||
+                {
+                    lisp::Error::Custom("entity doesnt have an inventory".to_owned())
+                })?;
+
+                let id = game_state.data_infos.items_info.get_id(&name).ok_or_else(||
+                {
+                    lisp::Error::Custom(format!("item named {name} doesnt exist"))
+                })?;
+
+                let items_info = &game_state.data_infos.items_info;
+                inventory.push(items_info, Item::new(items_info, id));
+
+                Ok(().into())
+            })
+        }));
+    }
+
+    {
+        let game_state = game_state.clone();
+
+        primitives.add("spawn-enemy", PrimitiveProcedureInfo::new_simple(2, Effect::Impure, move |mut args|
+        {
+            with_game_state(&game_state, |game_state|
+            {
+                let name = parse_symbol_or_string(args.next_value().unwrap())?;
+                let pos = parse_position(args.next_value().unwrap())?;
+
+                let id = game_state.data_infos.enemies_info.get_id(&name).ok_or_else(||
+                {
+                    lisp::Error::Custom(format!("enemy named `{name}` not found"))
+                })?;
+
+                game_state.send_message(Message::SpawnEnemy{id, pos});
+
+                Ok(().into())
+            })
+        }));
+    }
+
+    {
+        let game_state = game_state.clone();
+
+        primitives.add("entity-collided", PrimitiveProcedureInfo::new_simple(1, Effect::Impure, move |mut args|
+        {
+            with_game_state(&game_state, |game_state|
+            {
+                let entities = game_state.entities();
+
+                let entity = parse_entity(entities, args.next_value().unwrap())?;
+                let collided = entities.collider(entity)
+                    .map(|x| x.collided().to_vec()).into_iter().flatten()
+                    .next();
+
+                if let Some(collided) = collided
+                {
+                    push_entity(args.memory, collided)
+                } else
+                {
+                    Ok(().into())
+                }
+            })
+        }));
+    }
+
+    {
+        let game_state = game_state.clone();
+
+        primitives.add("children-of", PrimitiveProcedureInfo::new_simple(1, Effect::Impure, move |mut args|
+        {
+            with_game_state(&game_state, |game_state|
+            {
+                let entities = game_state.entities();
+
+                let entity = parse_entity(entities, args.next_value().unwrap())?;
+
+                args.memory.cons_list_with(|memory|
+                {
+                    let mut count = 0;
+                    entities.children_of(entity).try_for_each(|x|
+                    {
+                        count += 1;
+                        let value = push_entity(memory, x)?;
+
+                        memory.push_stack(value)?;
+
+                        Ok(())
+                    })?;
+
+                    Ok(count)
+                })
+            })
+        }));
+    }
+
+    {
+        let game_state = game_state.clone();
+
+        primitives.add("spawn-entity-raw", PrimitiveProcedureInfo::new_simple(1, Effect::Impure, move |mut args|
+        {
+            with_game_state(&game_state, |game_state|
+            {
+                let entities = game_state.entities();
+
+                let info: EntityInfo = serde_json::from_str(&args.next_value().unwrap().as_string()?)
+                    .map_err(|err| lisp::Error::Custom(format!("error spawning entity: {err}")))?;
+
+                let entity = entities.push(true, info);
+
+                push_entity(args.memory, entity)
+            })
+        }));
+    }
+
+    {
+        let game_state = game_state.clone();
+
+        primitives.add("add-screenshake-offset", PrimitiveProcedureInfo::new_simple(2, Effect::Impure, move |mut args|
+        {
+            with_game_state(&game_state, |game_state|
+            {
+                let entity = parse_entity(game_state.entities(), args.next_value().unwrap())?;
+
+                let list = args.next_value().unwrap().as_list()?;
+
+                let x = list.car.as_float()?;
+                let y = list.cdr.as_list()?.car.as_float()?;
+
+                let mut player = game_state.entities().player_mut(entity).ok_or_else(||
+                {
+                    lisp::Error::Custom("entity doesnt have a player component".to_owned())
+                })?;
+
+                player.screenshake.add_offset(vector![x, y]);
+
+                Ok(().into())
+            })
+        }));
     }
 
     fn add_simple_setter<F>(
@@ -224,193 +434,6 @@ pub fn add_info_primitives(primitives: &mut Primitives, game_state: Rc<RefCell<W
 
         Ok(())
     });
-
-    {
-        let game_state = game_state.clone();
-
-        primitives.add("entity-transform", PrimitiveProcedureInfo::new_simple(1, Effect::Impure, move |mut args|
-        {
-            with_game_state(&game_state, |game_state|
-            {
-                let entities = game_state.entities();
-
-                let entity = parse_entity(entities, args.next_value().unwrap())?;
-
-                let transform = entities.transform(entity)
-                    .ok_or_else(|| lisp::Error::Custom("entity doesnt have a transform".to_owned()))?;
-
-                let position = transform.position;
-                let scale = transform.scale;
-                let rotation = transform.rotation;
-
-                let restore = args.memory.with_saved_registers([Register::Temporary]);
-
-                {
-                    let position_list = args.memory.cons_list([position.x, position.y, position.z])?;
-                    args.memory.set_register(Register::Temporary, position_list);
-                }
-
-                let scale_list = args.memory.cons_list([scale.x, scale.y, scale.z])?;
-
-                let transform_list = args.memory.cons_list([args.memory.get_register(Register::Temporary), scale_list, rotation.into()])?;
-
-                restore(args.memory)?;
-
-                Ok(transform_list)
-            })
-        }));
-    }
-
-    {
-        let game_state = game_state.clone();
-
-        primitives.add("remove-inventory-item", PrimitiveProcedureInfo::new_simple(2, Effect::Impure, move |mut args|
-        {
-            with_game_state(&game_state, |game_state|
-            {
-                let entities = game_state.entities();
-
-                let entity = parse_entity(entities, args.next_value().unwrap())?;
-
-                let item_index = args.next().unwrap().as_integer()?;
-
-                inventory_remove_item(entities, entity, InventoryItem::from_raw(item_index as usize));
-
-                Ok(().into())
-            })
-        }));
-    }
-
-    {
-        let game_state = game_state.clone();
-
-        primitives.add("add-item", PrimitiveProcedureInfo::new_simple(2, Effect::Impure, move |mut args|
-        {
-            with_game_state(&game_state, |game_state|
-            {
-                let entities = game_state.entities();
-
-                let entity = parse_entity(entities, args.next_value().unwrap())?;
-
-                let name = parse_symbol_or_string(args.next_value().unwrap())?;
-
-                let mut inventory = entities.inventory_mut(entity).unwrap();
-
-                let id = game_state.data_infos.items_info.get_id(&name).ok_or_else(||
-                {
-                    lisp::Error::Custom(format!("item named {name} doesnt exist"))
-                })?;
-
-                let items_info = &game_state.data_infos.items_info;
-                inventory.push(items_info, Item::new(items_info, id));
-
-                Ok(().into())
-            })
-        }));
-    }
-
-    {
-        let game_state = game_state.clone();
-
-        primitives.add("spawn-enemy", PrimitiveProcedureInfo::new_simple(2, Effect::Impure, move |mut args|
-        {
-            with_game_state(&game_state, |game_state|
-            {
-                let name = parse_symbol_or_string(args.next_value().unwrap())?;
-                let pos = parse_position(args.next_value().unwrap())?;
-
-                let id = game_state.data_infos.enemies_info.get_id(&name).ok_or_else(||
-                {
-                    lisp::Error::Custom(format!("enemy named `{name}` not found"))
-                })?;
-
-                game_state.send_message(Message::SpawnEnemy{id, pos});
-
-                Ok(().into())
-            })
-        }));
-    }
-
-    {
-        let game_state = game_state.clone();
-
-        primitives.add("entity-collided", PrimitiveProcedureInfo::new_simple(1, Effect::Impure, move |mut args|
-        {
-            with_game_state(&game_state, |game_state|
-            {
-                let entities = game_state.entities();
-
-                let entity = parse_entity(entities, args.next_value().unwrap())?;
-                let collided = entities.collider(entity)
-                    .map(|x| x.collided().to_vec()).into_iter().flatten()
-                    .next();
-
-                if let Some(collided) = collided
-                {
-                    push_entity(args.memory, collided)
-                } else
-                {
-                    Ok(().into())
-                }
-            })
-        }));
-    }
-
-    {
-        let game_state = game_state.clone();
-
-        primitives.add("children-of", PrimitiveProcedureInfo::new_simple(1, Effect::Impure, move |mut args|
-        {
-            with_game_state(&game_state, |game_state|
-            {
-                let entities = game_state.entities();
-
-                let entity = parse_entity(entities, args.next_value().unwrap())?;
-
-                args.memory.cons_list_with(|memory|
-                {
-                    let mut count = 0;
-                    entities.children_of(entity).try_for_each(|x|
-                    {
-                        count += 1;
-                        let value = push_entity(memory, x)?;
-
-                        memory.push_stack(value)?;
-
-                        Ok(())
-                    })?;
-
-                    Ok(count)
-                })
-            })
-        }));
-    }
-
-    {
-        let game_state = game_state.clone();
-
-        primitives.add("add-screenshake-offset", PrimitiveProcedureInfo::new_simple(2, Effect::Impure, move |mut args|
-        {
-            with_game_state(&game_state, |game_state|
-            {
-                let entity = parse_entity(game_state.entities(), args.next_value().unwrap())?;
-
-                let list = args.next_value().unwrap().as_list()?;
-
-                let x = list.car.as_float()?;
-                let y = list.cdr.as_list()?.car.as_float()?;
-
-                let mut player = game_state.entities().player_mut(entity).ok_or_else(||
-                {
-                    lisp::Error::Custom("entity doesnt have a player component".to_owned())
-                })?;
-
-                player.screenshake.add_offset(vector![x, y]);
-
-                Ok(().into())
-            })
-        }));
-    }
 }
 
 #[derive(Debug, Clone, Copy)]

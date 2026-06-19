@@ -46,6 +46,7 @@ struct EnemyInfoRaw
     behavior: Option<EnemyBehavior>,
     body: Option<String>,
     hand: Option<String>,
+    on_create: Option<String>,
     on_contents: Option<String>,
     on_equip: Option<String>
 }
@@ -58,7 +59,20 @@ impl EnemyInfoRaw
 
         this.name = other.name.clone();
 
-        inherit_with_fields!(this, other, hairstyle, anatomy, face, lying_face_offset, behavior, body, hand, on_contents, on_equip);
+        inherit_with_fields!{
+            this,
+            other,
+            hairstyle,
+            anatomy,
+            face,
+            lying_face_offset,
+            behavior,
+            body,
+            hand,
+            on_create,
+            on_contents,
+            on_equip
+        };
 
         this
     }
@@ -130,10 +144,15 @@ impl EnemyInfo
             lying: body_part("lying")
         });
 
-        loot.server.push(EnemyLootInfo{
-            on_contents: raw.on_contents.map(|code| ServerLootSingleInfo{name: raw.name.clone(), code}),
-            on_equip: raw.on_equip.map(|code| ServerLootSingleInfo{name: raw.name.clone(), code})
-        });
+        {
+            let f = |code| ServerLootSingleInfo{name: raw.name.clone(), code};
+
+            loot.server.push(EnemyLootInfo{
+                on_create: raw.on_create.map(f),
+                on_contents: raw.on_contents.map(f),
+                on_equip: raw.on_equip.map(f)
+            });
+        }
 
         Self{
             name: raw.name,

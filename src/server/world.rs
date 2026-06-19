@@ -564,6 +564,15 @@ impl World
                 self.set_tile_local(pos, tile);
                 None
             },
+            Message::SetTiles(tiles) =>
+            {
+                tiles.into_iter().for_each(|(pos, tile)|
+                {
+                    self.set_tile_local(pos, tile);
+                });
+
+                None
+            },
             Message::ChunkRequest{pos} =>
             {
                 self.send_chunk(container, id, pos);

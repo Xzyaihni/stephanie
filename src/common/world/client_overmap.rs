@@ -1,4 +1,5 @@
 use std::{
+    iter,
     fmt::{self, Display},
     cmp::Ordering,
     sync::Arc
@@ -413,36 +414,69 @@ impl ClientOvermap
         })
     }
 
+    fn set_tiles_inner(
+        &mut self,
+        iter: impl IntoIterator<Item=(TilePos, Tile)>,
+        mut regenerate: impl FnMut(&mut Self, LocalPos)
+    )
+    {
+        iter.into_iter().for_each(|(pos, tile)|
+        {
+            if let Some(local) = self.to_local(pos.chunk)
+            {
+                if let Some(ref chunk) = self.chunks[local]
+                {
+                    let old_tile = chunk[pos.local];
+                    let new_chunk = chunk.with_set_tile(pos.local, tile);
+
+                    self.chunks[local] = Some(Arc::new(new_chunk));
+
+                    if old_tile.visual_eq(&tile)
+                    {
+                        return;
+                    }
+
+                    regenerate(self, local);
+
+                    local.maybe_group().other.map(|direction, chunk_pos|
+                    {
+                        if let Some(chunk_pos) = chunk_pos
+                        {
+                            if pos.local.is_edge(direction)
+                            {
+                                regenerate(self, chunk_pos);
+                            }
+                        }
+                    });
+                }
+            }
+        });
+    }
+
+    pub fn set_tiles(&mut self, iter: impl IntoIterator<Item=(TilePos, Tile)>)
+    {
+        let mut marked = Vec::new();
+
+        self.set_tiles_inner(iter, |_this, local|
+        {
+            if !marked.contains(&local)
+            {
+                marked.push(local);
+            }
+        });
+
+        marked.into_iter().for_each(|local|
+        {
+            self.visual_overmap.try_regenerate(&self.chunks, local);
+        });
+    }
+
     pub fn set_tile(&mut self, pos: TilePos, tile: Tile)
     {
-        if let Some(local) = self.to_local(pos.chunk)
+        self.set_tiles_inner(iter::once((pos, tile)), |this, local|
         {
-            if let Some(ref chunk) = self.chunks[local]
-            {
-                let old_tile = chunk[pos.local];
-                let new_chunk = chunk.with_set_tile(pos.local, tile);
-
-                self.chunks[local] = Some(Arc::new(new_chunk));
-
-                if old_tile.visual_eq(&tile)
-                {
-                    return;
-                }
-
-                self.visual_overmap.try_regenerate(&self.chunks, local);
-
-                local.maybe_group().other.map(|direction, chunk_pos|
-                {
-                    if let Some(chunk_pos) = chunk_pos
-                    {
-                        if pos.local.is_edge(direction)
-                        {
-                            self.visual_overmap.try_regenerate(&self.chunks, chunk_pos);
-                        }
-                    }
-                });
-            }
-        }
+            this.visual_overmap.try_regenerate(&this.chunks, local);
+        });
     }
 
     pub fn camera_position(&self) -> Pos3<f32>

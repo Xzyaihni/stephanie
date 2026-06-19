@@ -143,6 +143,7 @@ pub struct ClientFurnitureLootInfo
 #[derive(Clone)]
 pub struct EnemyLootInfo<T>
 {
+    pub on_create: T,
     pub on_contents: T,
     pub on_equip: T
 }
@@ -152,6 +153,7 @@ impl<T> EnemyLootInfo<T>
     pub fn map<U>(self, mut f: impl FnMut(T) -> U) -> EnemyLootInfo<U>
     {
         EnemyLootInfo{
+            on_create: f(self.on_create),
             on_contents: f(self.on_contents),
             on_equip: f(self.on_equip)
         }

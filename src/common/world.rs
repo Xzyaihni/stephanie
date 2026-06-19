@@ -1,4 +1,5 @@
 use std::{
+    mem,
     borrow::Borrow,
     sync::Arc,
     collections::VecDeque
@@ -155,6 +156,7 @@ pub struct World
 {
     tilemap: Arc<TileMap>,
     overmap: ClientOvermap,
+    lazy_tile_sets: Vec<(TilePos, Tile)>,
     time_speed: f64,
     time: f64
 }
@@ -179,7 +181,7 @@ impl World
             player_position
         );
 
-        Self{tilemap, overmap, time_speed: 1.0, time}
+        Self{tilemap, overmap, lazy_tile_sets: Vec::new(), time_speed: 1.0, time}
     }
 
     pub fn tilemap(&self) -> &TileMap
@@ -347,6 +349,36 @@ impl World
         })
     }
 
+    fn modify_tile_inner<T>(
+        &mut self,
+        pos: TilePos,
+        f: impl FnOnce(&mut Self, &mut Tile) -> T
+    ) -> (Option<T>, Option<Tile>)
+    {
+        let tile: Tile = *some_or_return!(self.tile(pos));
+        let mut new_tile: Tile = tile;
+
+        let value = f(self, &mut new_tile);
+
+        (Some(value), (tile != new_tile).then_some(new_tile))
+    }
+
+    pub fn modify_tile_lazy<T>(
+        &mut self,
+        pos: TilePos,
+        f: impl FnOnce(&mut Self, &mut Tile) -> T
+    ) -> Option<T>
+    {
+        let (value, new_tile) = self.modify_tile_inner(pos, f);
+
+        if let Some(new_tile) = new_tile
+        {
+            self.set_tile_lazy(pos, new_tile);
+        }
+
+        value
+    }
+
     pub fn modify_tile<T>(
         &mut self,
         passer: &mut ConnectionsHandler,
@@ -354,22 +386,36 @@ impl World
         f: impl FnOnce(&mut Self, &mut Tile) -> T
     ) -> Option<T>
     {
-        let tile: Tile = *some_or_return!(self.tile(pos));
-        let mut new_tile: Tile = tile;
+        let (value, new_tile) = self.modify_tile_inner(pos, f);
 
-        let value = f(self, &mut new_tile);
-
-        if tile != new_tile
+        if let Some(new_tile) = new_tile
         {
             self.set_tile(passer, pos, new_tile);
         }
 
-        Some(value)
+        value
     }
 
     pub fn tile(&self, index: TilePos) -> Option<&Tile>
     {
         self.overmap.tile(index)
+    }
+
+    pub fn set_tile_lazy(&mut self, pos: TilePos, tile: Tile)
+    {
+        self.lazy_tile_sets.push((pos, tile));
+    }
+
+    pub fn set_tiles(&mut self, passer: &mut ConnectionsHandler, iter: impl IntoIterator<Item=(TilePos, Tile)>)
+    {
+        let changed = self.set_tiles_local(iter);
+
+        if changed.is_empty()
+        {
+            return;
+        }
+
+        passer.send_message(Message::SetTiles(changed));
     }
 
     pub fn set_tile(&mut self, passer: &mut ConnectionsHandler, pos: TilePos, tile: Tile)
@@ -380,16 +426,43 @@ impl World
         }
     }
 
-    fn set_tile_local(&mut self, pos: TilePos, new_tile: Tile) -> bool
+    fn set_tile_local(&mut self, pos: TilePos, tile: Tile) -> bool
     {
-        if self.tile(pos).copied() == Some(new_tile)
+        if self.is_same_tile(pos, tile)
         {
             return false;
         }
 
-        self.overmap.set_tile(pos, new_tile);
+        self.overmap.set_tile(pos, tile);
 
         true
+    }
+
+    fn set_tiles_local(
+        &mut self,
+        iter: impl IntoIterator<Item=(TilePos, Tile)>
+    ) -> Vec<(TilePos, Tile)>
+    {
+        let changed: Vec<_> = iter.into_iter().filter(|(pos, new_tile)|
+        {
+            !self.is_same_tile(*pos, *new_tile)
+        }).collect();
+
+        self.overmap.set_tiles(changed.iter().copied());
+
+        changed
+    }
+
+    fn is_same_tile(&self, pos: TilePos, tile: Tile) -> bool
+    {
+        self.tile(pos).copied() == Some(tile)
+    }
+
+    pub fn apply_lazy_updates(&mut self, passer: &mut ConnectionsHandler)
+    {
+        let tiles = mem::take(&mut self.lazy_tile_sets);
+
+        self.set_tiles(passer, tiles.into_iter());
     }
 
     pub fn time(&self) -> f64
@@ -484,6 +557,11 @@ impl World
             Message::SetTile{pos, tile} =>
             {
                 self.set_tile_local(pos, tile);
+                None
+            },
+            Message::SetTiles(tiles) =>
+            {
+                self.set_tiles_local(tiles);
                 None
             },
             Message::ChunkSync{pos, chunk, entities} =>

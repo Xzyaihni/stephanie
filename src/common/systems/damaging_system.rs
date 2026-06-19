@@ -176,14 +176,13 @@ pub struct DamagingResult
     pub damage: DamagePartial
 }
 
-pub fn damager<'a, 'b, 'c>(
+fn damager<'a, 'b>(
     world: &'b mut World,
     space: &'a SpatialGrid,
     entities: &'a ClientEntities,
     loot: &'a ClientLoot,
-    passer: &'c mut ConnectionsHandler,
     textures: &'a CommonTextures
-) -> impl FnMut(DamagingResult) + use<'a, 'b, 'c>
+) -> impl FnMut(DamagingResult) + use<'a, 'b>
 {
     move |result|
     {
@@ -352,7 +351,7 @@ pub fn damager<'a, 'b, 'c>(
                     tile_info.transparent
                 };
 
-                let destroyed = world.modify_tile(passer, tile_pos, |world, tile|
+                let destroyed = world.modify_tile_lazy(tile_pos, |world, tile|
                 {
                     let previous_tile = *tile;
                     let tilemap = world.tilemap();
@@ -715,7 +714,9 @@ pub fn update(
         }).collect::<Vec<_>>()
     };
 
-    damage_entities.into_iter().for_each(damager(world, space, entities, loot, passer, textures));
+    damage_entities.into_iter().for_each(damager(world, space, entities, loot, textures));
+
+    world.apply_lazy_updates(passer);
 }
 
 fn bullet_trail_between(

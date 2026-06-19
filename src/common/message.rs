@@ -98,6 +98,7 @@ pub enum Message
     ChunkRequest{pos: GlobalPos},
     ChunkSync{pos: GlobalPos, chunk: Chunk, entities: Vec<(Entity, EntityInfo)>},
     SetTile{pos: TilePos, tile: Tile},
+    SetTiles(Vec<(TilePos, Tile)>),
     RepeatMessage{message: Box<Message>},
     #[cfg(debug_assertions)]
     DebugMessage(DebugMessage)
