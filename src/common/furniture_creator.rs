@@ -12,7 +12,7 @@ use crate::common::{
     lazy_transform::*,
     collider::*,
     EntityInfo,
-    ServerLoot,
+    ServerScripts,
     FurnituresInfo,
     FurnitureInfo,
     FurnitureId,
@@ -127,7 +127,7 @@ pub fn furniture_scale(info: &FurnitureInfo) -> Vector3<f32>
 pub fn create(
     furnitures_info: &FurnituresInfo,
     items_info: &ItemsInfo,
-    loot: &ServerLoot,
+    scripts: &ServerScripts,
     id: FurnitureId,
     rotation: TileRotation,
     pos: Vector3<f32>
@@ -144,7 +144,7 @@ pub fn create(
     let inventory = info.container.then(||
     {
         let mut inventory = Inventory::new(f32::INFINITY);
-        loot.furniture_generator(id).on_contents.create(items_info)
+        scripts.furniture_generator(id).on_contents.create(items_info)
             .into_iter()
             .for_each(|item|
             {

@@ -333,7 +333,7 @@ pub struct App
     scene: Scene,
     data_infos: DataInfos,
     tilemap: TileMapWithTextures,
-    server_loot_info: ServerLootInfo,
+    server_scripts_info: ServerScriptsInfo,
     engine_events: VecDeque<EngineEvent>,
     server_handle: Option<JoinHandle<()>>,
     slow_mode: <SlowMode as SlowModeTrait>::State
@@ -382,11 +382,11 @@ impl YanyaApp for App
 
         let mut characters_info = CharactersInfo::new();
 
-        let mut server_enemy_loot_info: Vec<EnemyLootInfo<Option<ServerLootSingleInfo>>> = Vec::new();
+        let mut server_enemy_scripts_info: Vec<EnemyScriptsInfo<Option<ServerScriptSingleInfo>>> = Vec::new();
 
         let enemies_info = EnemiesInfo::parse(
             EnemyLoot{
-                server: &mut server_enemy_loot_info
+                server: &mut server_enemy_scripts_info
             },
             &partial_info.object_info.assets.lock(),
             &mut characters_info,
@@ -400,7 +400,7 @@ impl YanyaApp for App
             panic!("enemy named `me` is required, cant get player character id")
         })).character;
 
-        let mut server_furniture_loot_info: Vec<ServerFurnitureLootInfo<Option<ServerLootSingleInfo>>> = Vec::new();
+        let mut server_furniture_loot_info: Vec<ServerFurnitureLootInfo<Option<ServerScriptSingleInfo>>> = Vec::new();
         let mut client_furniture_loot_info = Vec::new();
 
         let furnitures_info = FurnituresInfo::parse(
@@ -413,9 +413,9 @@ impl YanyaApp for App
             "info/furnitures.json".into()
         );
 
-        let server_loot_info = ServerLootInfo{
+        let server_scripts_info = ServerScriptsInfo{
             furniture: server_furniture_loot_info,
-            enemy: server_enemy_loot_info
+            enemy: server_enemy_scripts_info
         };
 
         let crafts = Crafts::parse(&items_info, "info/crafts.json".into());
@@ -501,7 +501,7 @@ impl YanyaApp for App
             scene,
             data_infos,
             tilemap,
-            server_loot_info,
+            server_scripts_info,
             engine_events: VecDeque::new(),
             server_handle: None,
             slow_mode: Default::default()
@@ -579,7 +579,7 @@ impl YanyaApp for App
                         let listen_outside = false;
 
                         let tilemap = self.tilemap.clone();
-                        let server_loot = self.server_loot_info.clone();
+                        let server_loot = self.server_scripts_info.clone();
                         let data_infos = self.data_infos.clone();
 
                         let world_name = client_info.name.world_name();
@@ -591,12 +591,12 @@ impl YanyaApp for App
                             let listen_address = format!("{}:{port}", if listen_outside { "0.0.0.0" } else { "127.0.0.1" });
 
                             let server_loot = {
-                                let c = |s: Option<ServerLootSingleInfo>| -> Generator
+                                let c = |s: Option<ServerScriptSingleInfo>| -> Generator
                                 {
                                     s.map(|s| loot_compile(s.name, &s.code)).unwrap_or_default()
                                 };
 
-                                ServerLoot{
+                                ServerScripts{
                                     furniture: server_loot.furniture.into_iter().map(|x| x.map(c)).collect(),
                                     enemy: server_loot.enemy.into_iter().map(|x| x.map(c)).collect()
                                 }

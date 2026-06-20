@@ -41,6 +41,8 @@
                         "road_straight",
                         {"rotation": "Right", "value": "road_corner"},
                         {"rotation": "Left", "value": "road_t"},
+                        "road_end",
+                        {"rotation": "Down", "value": "road_end"},
                         {"rotation": "Right", "value": "road_end"}
                     ],
                     "down": ["building"],

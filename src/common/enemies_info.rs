@@ -15,7 +15,7 @@ use crate::common::{
     generic_info::*,
     characters_info::*,
     ItemsInfo,
-    loot::{EnemyLootInfo, ServerLootSingleInfo},
+    loot::{EnemyScriptsInfo, ServerScriptSingleInfo},
     anatomy::HumanAnatomyInfo,
     enemy::EnemyBehavior
 };
@@ -145,9 +145,9 @@ impl EnemyInfo
         });
 
         {
-            let f = |code| ServerLootSingleInfo{name: raw.name.clone(), code};
+            let f = |code| ServerScriptSingleInfo{name: raw.name.clone(), code};
 
-            loot.server.push(EnemyLootInfo{
+            loot.server.push(EnemyScriptsInfo{
                 on_create: raw.on_create.map(f),
                 on_contents: raw.on_contents.map(f),
                 on_equip: raw.on_equip.map(f)
@@ -178,7 +178,7 @@ pub type EnemiesInfo = GenericInfo<EnemyId, EnemyInfo>;
 
 pub struct EnemyLoot<'a>
 {
-    pub server: &'a mut Vec<EnemyLootInfo<Option<ServerLootSingleInfo>>>
+    pub server: &'a mut Vec<EnemyScriptsInfo<Option<ServerScriptSingleInfo>>>
 }
 
 impl EnemiesInfo

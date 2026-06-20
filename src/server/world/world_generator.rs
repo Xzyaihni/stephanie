@@ -93,13 +93,6 @@ fn log_worldchunks(
     let entropy_size = world_size + Pos2::repeat(ENTROPY_EDGE * 2);
     let edge_chunks: Vec<(Pos2<i32>, WorldChunkId)> = FlatIndexer::new(entropy_size).positions().filter_map(|local_pos|
     {
-        let pos = local_pos.pos.map(|x| x as i32) - Pos2::repeat(ENTROPY_EDGE as i32);
-
-        if !(0..world_size.x as i32).contains(&pos.x) || !(0..world_size.y as i32).contains(&pos.y)
-        {
-            return None;
-        }
-
         edges(local_pos).map(|x| (local_pos.pos.map(|x| x as i32), x))
     }).collect();
 

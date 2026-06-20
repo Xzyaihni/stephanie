@@ -10,7 +10,7 @@ use crate::common::{
     render_info::*,
     physics::*,
     ENTITY_SCALE,
-    ServerLoot,
+    ServerScripts,
     Inventory,
     Anatomy,
     HumanAnatomy,
@@ -33,7 +33,7 @@ pub fn create(
     enemies_info: &EnemiesInfo,
     characters_info: &CharactersInfo,
     items_info: &ItemsInfo,
-    loot: &ServerLoot,
+    scripts: &ServerScripts,
     id: EnemyId,
     pos: Vector3<f32>
 ) -> EntityInfo
@@ -48,13 +48,13 @@ pub fn create(
     let mut character = Character::new(info.character, Faction::Zob);
 
     {
-        let loot = loot.enemy_generator(id);
+        let scripts = scripts.enemy_generator(id);
 
-        loot.on_contents.create(items_info)
+        scripts.on_contents.create(items_info)
             .into_iter()
             .for_each(|item| { inventory.push(items_info, item); });
 
-        loot.on_equip.create(items_info).into_iter().for_each(|item|
+        scripts.on_equip.create(items_info).into_iter().for_each(|item|
         {
             let item_info = items_info.get(item.id);
 

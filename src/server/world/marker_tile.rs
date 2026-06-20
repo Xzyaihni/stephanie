@@ -17,7 +17,7 @@ use crate::{
         rotate_point_z_3d,
         collider::*,
         door::*,
-        ServerLoot,
+        ServerScripts,
         EntityInfo,
         Light,
         Health,
@@ -64,7 +64,7 @@ impl MarkerTile
                 ..
             }
         }: CreateInfos,
-        loot: &ServerLoot,
+        server_scripts: &ServerScripts,
         chunk_pos: Pos3<f32>
     ) -> Option<EntityInfo>
     {
@@ -92,7 +92,7 @@ impl MarkerTile
                     enemies_info,
                     characters_info,
                     items_info,
-                    loot,
+                    server_scripts,
                     id,
                     position
                 ))
@@ -113,7 +113,7 @@ impl MarkerTile
                 Some(furniture_creator::create(
                     furnitures_info,
                     items_info,
-                    loot,
+                    server_scripts,
                     id,
                     rotation,
                     position + offset.get(rotation)

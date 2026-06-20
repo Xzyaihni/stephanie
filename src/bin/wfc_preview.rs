@@ -1111,7 +1111,7 @@ impl YanyaApp for ChunkPreviewer
 
                 let wave_collapser = WaveCollapser::new(SeededRandom::new(), &rules.surface, plane, &mapper, |local_pos_unconverted|
                 {
-                    loader_chunks.iter().find(|x| x.0 == local_pos_unconverted.0).map(|x| x.1)
+                    loader_chunks.iter().find(|x| x.0 == edge_map_raw(local_pos_unconverted.0)).map(|x| x.1)
                 });
 
                 let entropies = wave_collapser.entropies().clone();

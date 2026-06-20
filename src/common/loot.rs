@@ -141,18 +141,18 @@ pub struct ClientFurnitureLootInfo
 }
 
 #[derive(Clone)]
-pub struct EnemyLootInfo<T>
+pub struct EnemyScriptsInfo<T>
 {
     pub on_create: T,
     pub on_contents: T,
     pub on_equip: T
 }
 
-impl<T> EnemyLootInfo<T>
+impl<T> EnemyScriptsInfo<T>
 {
-    pub fn map<U>(self, mut f: impl FnMut(T) -> U) -> EnemyLootInfo<U>
+    pub fn map<U>(self, mut f: impl FnMut(T) -> U) -> EnemyScriptsInfo<U>
     {
-        EnemyLootInfo{
+        EnemyScriptsInfo{
             on_create: f(self.on_create),
             on_contents: f(self.on_contents),
             on_equip: f(self.on_equip)
@@ -167,34 +167,34 @@ pub struct TileLootInfo
 }
 
 #[derive(Clone)]
-pub struct ServerLootSingleInfo
+pub struct ServerScriptSingleInfo
 {
     pub name: String,
     pub code: String
 }
 
 #[derive(Clone)]
-pub struct ServerLootInfo
+pub struct ServerScriptsInfo
 {
-    pub furniture: Vec<ServerFurnitureLootInfo<Option<ServerLootSingleInfo>>>,
-    pub enemy: Vec<EnemyLootInfo<Option<ServerLootSingleInfo>>>
+    pub furniture: Vec<ServerFurnitureLootInfo<Option<ServerScriptSingleInfo>>>,
+    pub enemy: Vec<EnemyScriptsInfo<Option<ServerScriptSingleInfo>>>
 }
 
 #[derive(Clone, Default)]
-pub struct ServerLoot
+pub struct ServerScripts
 {
     pub furniture: Vec<ServerFurnitureLootInfo<Generator>>,
-    pub enemy: Vec<EnemyLootInfo<Generator>>
+    pub enemy: Vec<EnemyScriptsInfo<Generator>>
 }
 
-impl ServerLoot
+impl ServerScripts
 {
     pub fn furniture_generator(&self, id: FurnitureId) -> &ServerFurnitureLootInfo<Generator>
     {
         &self.furniture[usize::from(id)]
     }
 
-    pub fn enemy_generator(&self, id: EnemyId) -> &EnemyLootInfo<Generator>
+    pub fn enemy_generator(&self, id: EnemyId) -> &EnemyScriptsInfo<Generator>
     {
         &self.enemy[usize::from(id)]
     }

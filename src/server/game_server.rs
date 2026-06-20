@@ -59,7 +59,7 @@ use crate::{
         MessagePasser,
         ConnectionId,
         OnConnectInfo,
-        ServerLoot,
+        ServerScripts,
         inventory::BASE_INVENTORY_LIMIT,
         character::SpriteState,
         world::{TILE_SIZE, CHUNK_VISUAL_SIZE, Pos3},
@@ -119,7 +119,7 @@ pub struct GameServer
     entities: Entities,
     data_infos: DataInfos,
     tilemap: Rc<TileMap>,
-    loot: Rc<ServerLoot>,
+    server_scripts: Rc<ServerScripts>,
     world: Option<World>,
     world_name: String,
     sender: Sender<(ConnectionId, Message, Entity)>,
@@ -168,13 +168,13 @@ impl GameServer
     pub fn new(
         tilemap: TileMap,
         data_infos: DataInfos,
-        loot: ServerLoot,
+        server_scripts: ServerScripts,
         world_name: String,
         limit: usize
     ) -> Result<(Sender<TcpStream>, Self), ParseError>
     {
         let tilemap = Rc::new(tilemap);
-        let loot = Rc::new(loot);
+        let server_scripts = Rc::new(server_scripts);
 
         let entities = Entities::new(data_infos.clone());
         let connection_handler = Arc::new(Mutex::new(ConnectionsHandler::new(limit)));
@@ -183,7 +183,7 @@ impl GameServer
             connection_handler.clone(),
             tilemap.clone(),
             data_infos.clone(),
-            loot.clone(),
+            server_scripts.clone(),
             world_name.clone()
         )?);
 
@@ -197,7 +197,7 @@ impl GameServer
             entities,
             data_infos,
             tilemap,
-            loot,
+            server_scripts,
             world,
             world_name,
             sender,
@@ -233,7 +233,7 @@ impl GameServer
             self.connection_handler.clone(),
             self.tilemap.clone(),
             self.data_infos.clone(),
-            self.loot.clone(),
+            self.server_scripts.clone(),
             self.world_name.clone()
         ).unwrap());
     }
@@ -692,7 +692,7 @@ impl GameServer
                     &self.data_infos.enemies_info,
                     &self.data_infos.characters_info,
                     &self.data_infos.items_info,
-                    &self.loot,
+                    &self.server_scripts,
                     id,
                     pos
                 )).0;

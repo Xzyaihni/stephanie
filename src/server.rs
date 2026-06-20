@@ -6,7 +6,7 @@ use std::{
 use crate::common::{
     DataInfos,
     TileMapWithTextures,
-    loot::ServerLoot
+    loot::ServerScripts
 };
 
 use game_server::{GameServer, ParseError};
@@ -31,7 +31,7 @@ impl Server
     pub fn new(
         tilemap: TileMapWithTextures,
         data_infos: DataInfos,
-        loot: ServerLoot,
+        server_scripts: ServerScripts,
         world_name: String,
         address: &str,
         connections_limit: usize
@@ -42,7 +42,7 @@ impl Server
         let (connector, game_server) = GameServer::new(
             tilemap.tilemap,
             data_infos,
-            loot,
+            server_scripts,
             world_name,
             connections_limit
         )?;

@@ -17,7 +17,7 @@ use crate::{
         get_env_value,
         world_path,
         world_save_path,
-        ServerLoot,
+        ServerScripts,
         TileMap,
         WorldChunkSaver,
         ChunkSaver,
@@ -151,7 +151,7 @@ pub struct World
     chunk_saver: ChunkSaver,
     pub entities_saver: EntitiesSaver,
     data_infos: DataInfos,
-    loot: Rc<ServerLoot>,
+    server_scripts: Rc<ServerScripts>,
     overmaps: OvermapsType,
     client_indexers: HashMap<ConnectionId, EntitiesTracker>,
     pub time: f64
@@ -163,7 +163,7 @@ impl World
         message_handler: Arc<Mutex<ConnectionsHandler>>,
         tilemap: Rc<TileMap>,
         data_infos: DataInfos,
-        loot: Rc<ServerLoot>,
+        server_scripts: Rc<ServerScripts>,
         world_name: String
     ) -> Result<Self, ParseError>
     {
@@ -197,7 +197,7 @@ impl World
             chunk_saver,
             entities_saver,
             data_infos,
-            loot,
+            server_scripts,
             overmaps,
             client_indexers,
             time
@@ -420,7 +420,7 @@ impl World
                         infos: &self.data_infos
                     };
 
-                    if let Some(info) = marker.create(create_infos, &self.loot, chunk_pos)
+                    if let Some(info) = marker.create(create_infos, &self.server_scripts, chunk_pos)
                     {
                         let entity = container.push_eager(false, info.clone());
                         chunk_entities.push((entity, info));
@@ -663,7 +663,7 @@ mod tests
                     crafts: Arc::new(Crafts::empty()),
                     player_character: CharacterId::from(0)
                 },
-                Rc::new(ServerLoot::default()),
+                Rc::new(ServerScripts::default()),
                 "default".to_owned()
             ).unwrap();
 
