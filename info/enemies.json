@@ -74,7 +74,7 @@
             "strength": 2.0
         },
         "lying_face_offset": [-3, 0],
-        "on_create": "(load-once \"infos.scm\")",
+        "on_create": "(load-once \"infos.scm\")(spawn-enemy-clean \"bb\" (transform-position caller-transform))",
         "on_contents": "'(diamond_hairpin) ; squid game looking mfer"
     },
     {

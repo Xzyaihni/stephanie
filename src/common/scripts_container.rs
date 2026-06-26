@@ -1,6 +1,7 @@
 use std::{
     rc::{Weak, Rc},
-    cell::RefCell
+    cell::RefCell,
+    sync::mpsc::Sender
 };
 
 use nalgebra::{vector, Vector3};
@@ -10,12 +11,15 @@ use crate::{
     common::{
         some_or_value,
         lisp::{self, *},
+        Transform,
         Entity,
         EntityInfo,
         Message,
         Item,
         AnyEntities,
-        entity::ClientEntities,
+        ConnectionId,
+        DataInfos,
+        entity::{ServerEntities, ClientEntities},
         inventory::{inventory_remove_item, InventoryItem}
     }
 };
@@ -37,7 +41,7 @@ fn parse_symbol_or_string(value: OutputWrapperRef) -> Result<String, lisp::Error
     Ok(s)
 }
 
-pub fn parse_entity(entities: &ClientEntities, value: OutputWrapperRef) -> Result<Entity, lisp::Error>
+pub fn parse_entity(entities: &impl AnyEntities, value: OutputWrapperRef) -> Result<Entity, lisp::Error>
 {
     fn err_if_none(value: Option<OutputWrapperRef>) -> Result<OutputWrapperRef, lisp::Error>
     {
@@ -85,26 +89,126 @@ pub fn push_entity(memory: &mut LispMemory, entity: Entity) -> Result<LispValue,
     memory.cons_list([tag, local, id])
 }
 
-pub fn add_info_primitives(primitives: &mut Primitives, game_state: Rc<RefCell<Weak<RefCell<GameState>>>>)
+pub fn push_transform(memory: &mut LispMemory, transform: Transform) -> Result<LispValue, lisp::Error>
 {
-    fn upgrade_game_state(
-        game_state: &Rc<RefCell<Weak<RefCell<GameState>>>>
-    ) -> Result<Rc<RefCell<GameState>>, lisp::Error>
-    {
-        let game_state = game_state.borrow();
+    let position = transform.position;
+    let scale = transform.scale;
+    let rotation = transform.rotation;
 
-        game_state.upgrade().ok_or_else(||
-        {
-            lisp::Error::Custom("game_state must exist when calling script".to_owned())
-        })
+    let restore = memory.with_saved_registers([Register::Temporary]);
+
+    {
+        let position_list = memory.cons_list([position.x, position.y, position.z])?;
+        memory.set_register(Register::Temporary, position_list);
     }
 
+    let scale_list = memory.cons_list([scale.x, scale.y, scale.z])?;
+
+    let transform_list = memory.cons_list([memory.get_register(Register::Temporary), scale_list, rotation.into()])?;
+
+    restore(memory)?;
+
+    Ok(transform_list)
+}
+
+fn entity_transform_common(entities: &impl AnyEntities, mut args: PrimitiveArgs) -> Result<LispValue, lisp::Error>
+{
+    let entity = parse_entity(entities, args.next_value().unwrap())?;
+
+    let transform = entities.transform(entity)
+        .ok_or_else(|| lisp::Error::Custom("entity doesnt have a transform".to_owned()))?;
+
+    push_transform(args.memory, transform.clone())
+}
+
+type MessageSenderType = Rc<RefCell<Option<Sender<(ConnectionId, Message, Option<Entity>)>>>>;
+
+pub fn server_info_primitives(
+    entities: Rc<RefCell<Weak<RefCell<ServerEntities>>>>,
+    data_infos: DataInfos,
+    sender: MessageSenderType
+) -> Primitives
+{
+    let mut primitives = Primitives::default();
+
+    fn with_entities<T>(
+        entities: &Rc<RefCell<Weak<RefCell<ServerEntities>>>>,
+        f: impl FnOnce(&mut ServerEntities) -> Result<T, lisp::Error>
+    ) -> Result<T, lisp::Error>
+    {
+        let entities = entities.borrow();
+
+        let entities = entities.upgrade().ok_or_else(||
+        {
+            lisp::Error::Custom("entities must exist when calling script".to_owned())
+        })?;
+
+        let mut entities = entities.borrow_mut();
+
+        f(&mut entities)
+    }
+
+    {
+        let entities = entities.clone();
+
+        primitives.add("entity-transform", PrimitiveProcedureInfo::new_simple(1, Effect::Impure, move |args|
+        {
+            with_entities(&entities, |entities|
+            {
+                entity_transform_common(entities, args)
+            })
+        }));
+    }
+
+    fn make_sender(sender: MessageSenderType) -> impl Fn(Message)
+    {
+        move |message|
+        {
+            let mut sender = sender.borrow_mut();
+
+            if let Err(err) = sender.as_mut().expect("must be initialized before primitive calls").send((ConnectionId(0), message, None))
+            {
+                eprintln!("error sending message: {err}");
+            }
+        }
+    }
+
+    {
+        let messager = make_sender(sender.clone());
+
+        primitives.add("spawn-enemy", PrimitiveProcedureInfo::new_simple(2, Effect::Impure, move |mut args|
+        {
+            let name = parse_symbol_or_string(args.next_value().unwrap())?;
+            let pos = parse_position(args.next_value().unwrap())?;
+
+            let id = data_infos.enemies_info.get_id(&name).ok_or_else(||
+            {
+                lisp::Error::Custom(format!("enemy named `{name}` not found"))
+            })?;
+
+            messager(Message::SpawnEnemy{id, pos});
+
+            Ok(().into())
+        }));
+    }
+
+    primitives
+}
+
+pub fn add_info_primitives(primitives: &mut Primitives, game_state: Rc<RefCell<Weak<RefCell<GameState>>>>)
+{
     fn with_game_state<T>(
         game_state: &Rc<RefCell<Weak<RefCell<GameState>>>>,
         f: impl FnOnce(&mut GameState) -> Result<T, lisp::Error>
     ) -> Result<T, lisp::Error>
     {
-        let game_state = upgrade_game_state(game_state)?;
+        let game_state = game_state.borrow();
+
+        let game_state = game_state.upgrade().ok_or_else(||
+        {
+            lisp::Error::Custom("game_state must exist when calling script".to_owned())
+        })?;
+
         let mut game_state = game_state.borrow_mut();
 
         f(&mut game_state)
@@ -113,35 +217,13 @@ pub fn add_info_primitives(primitives: &mut Primitives, game_state: Rc<RefCell<W
     {
         let game_state = game_state.clone();
 
-        primitives.add("entity-transform", PrimitiveProcedureInfo::new_simple(1, Effect::Impure, move |mut args|
+        primitives.add("entity-transform", PrimitiveProcedureInfo::new_simple(1, Effect::Impure, move |args|
         {
             with_game_state(&game_state, |game_state|
             {
                 let entities = game_state.entities();
 
-                let entity = parse_entity(entities, args.next_value().unwrap())?;
-
-                let transform = entities.transform(entity)
-                    .ok_or_else(|| lisp::Error::Custom("entity doesnt have a transform".to_owned()))?;
-
-                let position = transform.position;
-                let scale = transform.scale;
-                let rotation = transform.rotation;
-
-                let restore = args.memory.with_saved_registers([Register::Temporary]);
-
-                {
-                    let position_list = args.memory.cons_list([position.x, position.y, position.z])?;
-                    args.memory.set_register(Register::Temporary, position_list);
-                }
-
-                let scale_list = args.memory.cons_list([scale.x, scale.y, scale.z])?;
-
-                let transform_list = args.memory.cons_list([args.memory.get_register(Register::Temporary), scale_list, rotation.into()])?;
-
-                restore(args.memory)?;
-
-                Ok(transform_list)
+                entity_transform_common(entities, args)
             })
         }));
     }

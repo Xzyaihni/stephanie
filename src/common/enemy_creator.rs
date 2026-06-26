@@ -5,6 +5,8 @@ use nalgebra::Vector3;
 use yanyaengine::Transform;
 
 use crate::common::{
+    some_or_return,
+    with_error,
     with_z,
     random_rotation,
     render_info::*,
@@ -22,6 +24,7 @@ use crate::common::{
     CharactersInfo,
     ItemsInfo,
     EntityInfo,
+    scripts_container::push_transform,
     inventory::BASE_INVENTORY_LIMIT,
     lazy_transform::*
 };
@@ -47,8 +50,30 @@ pub fn create(
     let mut inventory = Inventory::new(BASE_INVENTORY_LIMIT);
     let mut character = Character::new(info.character, Faction::Zob);
 
+    let scale = characters_info.get(info.character).normal.scale;
+
+    let transform = Transform{
+        position: pos,
+        scale: with_z(scale, ENTITY_SCALE),
+        rotation: random_rotation(),
+        ..Default::default()
+    };
+
     {
         let scripts = scripts.enemy_generator(id);
+
+        {
+            let transform = transform.clone();
+            scripts.on_create.run_with_memory(move |memory|
+            {
+                let transform_value = some_or_return!(with_error(push_transform(memory, transform)));
+
+                if let Err(err) = memory.define("caller-transform", transform_value)
+                {
+                    eprintln!("error defining caller-entity: {err}");
+                }
+            });
+        }
 
         scripts.on_contents.create(items_info)
             .into_iter()
@@ -72,8 +97,6 @@ pub fn create(
         });
     }
 
-    let scale = characters_info.get(info.character).normal.scale;
-
     EntityInfo{
         lazy_transform: Some(LazyTransformInfo{
             rotation: Rotation::EaseOut(
@@ -83,12 +106,7 @@ pub fn create(
                     momentum: 0.0
                 }.into()
             ),
-            transform: Transform{
-                position: pos,
-                scale: with_z(scale, ENTITY_SCALE),
-                rotation: random_rotation(),
-                ..Default::default()
-            },
+            transform,
             ..Default::default()
         }.into()),
         render: Some(RenderInfo{

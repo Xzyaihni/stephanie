@@ -961,6 +961,11 @@ macro_rules! common_trait_impl
             Self::remove(self, entity);
         }
 
+        fn with_seed(&self, entity: Entity) -> Entity
+        {
+            Self::with_seed(self, entity)
+        }
+
         fn check_guarantees(&mut self)
         {
             const PANIC_ON_FAIL: bool = false;
@@ -2857,6 +2862,7 @@ macro_rules! define_entities
 
             fn is_server(&self) -> bool { Self::IS_SERVER }
 
+            fn with_seed(&self, entity: Entity) -> Entity;
             fn check_guarantees(&mut self);
         }
 

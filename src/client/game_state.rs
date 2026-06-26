@@ -62,7 +62,6 @@ use crate::{
         EntityInfo,
         Entities,
         EntityPasser,
-        EntitiesController,
         OccludingCaster,
         OnChangeInfo,
         OnConnectInfo,
@@ -1915,21 +1914,5 @@ impl GameState
         }
 
         self.entities.update_aspect(size);
-    }
-}
-
-impl EntitiesController for GameState
-{
-    type Container = ClientEntitiesContainer;
-    type Passer = ConnectionsHandler;
-
-    fn container_ref(&self) -> &Self::Container
-    {
-        &self.entities
-    }
-
-    fn container_mut(&mut self) -> &mut Self::Container
-    {
-        &mut self.entities
     }
 }

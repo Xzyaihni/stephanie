@@ -666,15 +666,6 @@ pub trait EntityPasser
     fn send_message(&mut self, message: Message);
 }
 
-pub trait EntitiesController
-{
-    type Container;
-    type Passer: EntityPasser;
-
-    fn container_ref(&self) -> &Self::Container;
-    fn container_mut(&mut self) -> &mut Self::Container;
-}
-
 
 pub type MessageError = MessageSerError;
 /*#[derive(Debug)]

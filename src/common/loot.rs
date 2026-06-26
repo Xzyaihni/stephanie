@@ -110,6 +110,26 @@ impl Generator
         Self(None)
     }
 
+    pub fn new_raw(lisp: Option<Lisp>) -> Self
+    {
+        Self(lisp)
+    }
+
+    pub fn run(&self)
+    {
+        self.run_with_memory(|_memory| {})
+    }
+
+    pub fn run_with_memory(&self, f: impl FnOnce(&mut LispMemory))
+    {
+        let lisp = some_or_return!(self.0.as_ref());
+
+        if let Err(err) = lisp.run_with(f)
+        {
+            eprintln!("{}: {err}", lisp.get_source(err.position.source));
+        }
+    }
+
     pub fn create(&self, items_info: &ItemsInfo) -> Vec<Item>
     {
         let lisp = some_or_return!(self.0.as_ref());

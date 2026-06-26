@@ -3,7 +3,8 @@ use std::{
     fmt,
     fs,
     path::PathBuf,
-    rc::Rc,
+    rc::{Weak, Rc},
+    cell::RefCell,
     thread::JoinHandle,
     ops::ControlFlow,
     net::TcpStream,
@@ -55,11 +56,11 @@ use crate::{
         HumanAnatomy,
         HumanAnatomyInfo,
         EntityPasser,
-        EntitiesController,
         MessagePasser,
         ConnectionId,
         OnConnectInfo,
         ServerScripts,
+        entity::ServerEntities,
         inventory::BASE_INVENTORY_LIMIT,
         character::SpriteState,
         world::{TILE_SIZE, CHUNK_VISUAL_SIZE, Pos3},
@@ -116,14 +117,14 @@ impl From<MessageError> for ConnectionError
 
 pub struct GameServer
 {
-    entities: Entities,
+    entities: Rc<RefCell<Entities>>,
     data_infos: DataInfos,
     tilemap: Rc<TileMap>,
     server_scripts: Rc<ServerScripts>,
     world: Option<World>,
     world_name: String,
-    sender: Sender<(ConnectionId, Message, Entity)>,
-    receiver: Receiver<(ConnectionId, Message, Entity)>,
+    sender: Sender<(ConnectionId, Message, Option<Entity>)>,
+    receiver: Receiver<(ConnectionId, Message, Option<Entity>)>,
     connection_receiver: Receiver<TcpStream>,
     connection_handler: Arc<Mutex<ConnectionsHandler>>,
     receiver_handles: Vec<JoinHandle<()>>,
@@ -137,12 +138,12 @@ impl Drop for GameServer
     {
         if let Some(world) = self.world.as_mut()
         {
-            world.exit(&mut self.entities);
+            world.exit(&mut self.entities.borrow_mut());
         }
 
         if let Some(world) = self.world.as_mut()
         {
-            World::collect_to_delete(self.entities.take_remove_awaiting().into_iter().filter_map(|(info, _id)|
+            World::collect_to_delete(self.entities.borrow_mut().take_remove_awaiting().into_iter().filter_map(|(info, _id)|
             {
                 info.info.saveable?;
 
@@ -176,7 +177,7 @@ impl GameServer
         let tilemap = Rc::new(tilemap);
         let server_scripts = Rc::new(server_scripts);
 
-        let entities = Entities::new(data_infos.clone());
+        let entities = Rc::new(RefCell::new(Entities::new(data_infos.clone())));
         let connection_handler = Arc::new(Mutex::new(ConnectionsHandler::new(limit)));
 
         let world = Some(World::new(
@@ -212,7 +213,7 @@ impl GameServer
 
     fn restart(&mut self)
     {
-        self.entities = Entities::new(self.data_infos.clone());
+        *self.entities.borrow_mut() = Entities::new(self.data_infos.clone());
 
         self.world.take();
 
@@ -238,6 +239,16 @@ impl GameServer
         ).unwrap());
     }
 
+    pub fn entities(&self) -> Weak<RefCell<ServerEntities>>
+    {
+        Rc::downgrade(&self.entities)
+    }
+
+    pub fn sender(&self) -> Sender<(ConnectionId, Message, Option<Entity>)>
+    {
+        self.sender.clone()
+    }
+
     pub fn update(&mut self, dt: f32) -> bool
     {
         crate::frame_time_this!{
@@ -249,7 +260,7 @@ impl GameServer
             [server_update] -> create_queued,
             {
                 let mut writer = self.connection_handler.lock();
-                self.entities.create_queued(&mut writer);
+                self.entities.borrow_mut().create_queued(&mut writer);
             }
         };
 
@@ -270,7 +281,7 @@ impl GameServer
     {
         if DebugConfig::is_debug()
         {
-            self.entities.check_guarantees();
+            self.entities.borrow_mut().check_guarantees();
         }
     }
 
@@ -360,7 +371,7 @@ impl GameServer
                     _ => false
                 };
 
-                if sender0.send((id, message, entity)).is_err() || is_disconnect
+                if sender0.send((id, message, Some(entity))).is_err() || is_disconnect
                 {
                     ControlFlow::Break(())
                 } else
@@ -370,7 +381,7 @@ impl GameServer
             },
             move ||
             {
-                let _ = sender1.send((id, Message::PlayerDisconnect{time: None, restart: false, host: false}, entity));
+                let _ = sender1.send((id, Message::PlayerDisconnect{time: None, restart: false, host: false}, Some(entity)));
             }
         );
 
@@ -454,7 +465,7 @@ impl GameServer
             info.lazy_transform.as_ref().map(|x| x.target_local.position)
         }).unwrap_or_else(Vector3::zeros);
 
-        let player_entity = self.entities.push_eager(false, info);
+        let player_entity = self.entities.borrow_mut().push_eager(false, info);
 
         player_info.entity = Some(player_entity);
 
@@ -464,7 +475,7 @@ impl GameServer
 
         self.connection_handler.lock().send_message_without(connection, Message::EntitySet{
             entity: player_entity,
-            info: Box::new(self.entities.info(player_entity))
+            info: Box::new(self.entities.borrow().info(player_entity))
         });
 
         Ok((player_entity, connection, messager))
@@ -515,16 +526,16 @@ impl GameServer
         }
 
         self.world.as_mut().unwrap().add_player(
-            &mut self.entities,
+            &mut self.entities.borrow_mut(),
             connection_id,
             position.into()
         );
 
-        self.world.as_mut().unwrap().sync_camera(&mut self.entities, connection_id, player_position);
+        self.world.as_mut().unwrap().sync_camera(&mut self.entities.borrow_mut(), connection_id, player_position);
 
         crate::time_this!{
             "world-gen",
-            self.world.as_mut().unwrap().send_all(&mut self.entities, connection_id)
+            self.world.as_mut().unwrap().send_all(&mut self.entities.borrow_mut(), connection_id)
         };
 
         let mut writer = self.connection_handler.lock();
@@ -532,25 +543,28 @@ impl GameServer
 
         let messager = writer.get_mut(connection_id);
 
-        self.entities.iter_entities().try_for_each(|entity|
         {
-            if entity.local()
+            let entities = self.entities.borrow();
+            entities.iter_entities().try_for_each(|entity|
             {
-                return Ok(());
-            }
+                if entity.local()
+                {
+                    return Ok(());
+                }
 
-            if is_host && self.entities.saveable_exists(entity)
-            {
-                return Ok(());
-            }
+                if is_host && entities.saveable_exists(entity)
+                {
+                    return Ok(());
+                }
 
-            let message = Message::EntitySet{
-                entity,
-                info: Box::new(self.entities.info(entity))
-            };
+                let message = Message::EntitySet{
+                    entity,
+                    info: Box::new(entities.info(entity))
+                };
 
-            messager.send_blocking(message)
-        })?;
+                messager.send_blocking(message)
+            })?;
+        }
 
         Ok((connection_id, messager.clone_messager()))
     }
@@ -559,7 +573,7 @@ impl GameServer
     {
         let removed = self.connection_handler.lock().remove_connection(id);
 
-        self.world.as_mut().unwrap().remove_player(&mut self.entities, id);
+        self.world.as_mut().unwrap().remove_player(&mut self.entities.borrow_mut(), id);
 
         if !restart && host
         {
@@ -575,7 +589,7 @@ impl GameServer
             {
                 if let Some(player_entity) = removed.entity
                 {
-                    let player_info = self.entities.info(player_entity);
+                    let player_info = self.entities.borrow().info(player_entity);
 
                     debug_assert!(player_info.character.is_some());
 
@@ -604,7 +618,7 @@ impl GameServer
 
             {
                 let mut writer = self.connection_handler.lock();
-                writer.send_message(Message::EntityRemove(self.entities.send_remove(entity)));
+                writer.send_message(Message::EntityRemove(self.entities.borrow_mut().send_remove(entity)));
             }
         }
 
@@ -625,7 +639,7 @@ impl GameServer
         &mut self,
         message: Message,
         id: ConnectionId,
-        entity: Entity
+        entity: Option<Entity>
     )
     {
         if DebugConfig::is_enabled(DebugTool::ServerMessages)
@@ -647,9 +661,11 @@ impl GameServer
         }
 
         {
+            let entities = self.entities.borrow_mut();
+
             let sync_transform = |entity: Entity, transform: Transform|
             {
-                self.entities.set_transform(entity, Some(transform));
+                entities.set_transform(entity, Some(transform));
             };
 
             match &message
@@ -660,7 +676,7 @@ impl GameServer
                 },
                 Message::SetLazyTransform{entity, component: Some(lazy)} =>
                 {
-                    let parent_transform = self.entities.parent_transform(*entity);
+                    let parent_transform = entities.parent_transform(*entity);
                     sync_transform(*entity, lazy.target_global(parent_transform.as_ref()));
                 },
                 _ => ()
@@ -673,12 +689,12 @@ impl GameServer
         }
 
         let message = some_or_return!{self.world.as_mut().unwrap().handle_message(
-            &mut self.entities,
+            &mut self.entities.borrow_mut(),
             id,
             message
         )};
 
-        let message = some_or_return!{self.entities.handle_message(
+        let message = some_or_return!{self.entities.borrow_mut().handle_message(
             &mut self.connection_handler.lock(),
             &mut self.world.as_mut().unwrap().entities_saver,
             message
@@ -688,14 +704,16 @@ impl GameServer
         {
             Message::SpawnEnemy{id, pos} =>
             {
-                let message = self.entities.push_message(enemy_creator::create(
+                let enemy_info = enemy_creator::create(
                     &self.data_infos.enemies_info,
                     &self.data_infos.characters_info,
                     &self.data_infos.items_info,
                     &self.server_scripts,
                     id,
                     pos
-                )).0;
+                );
+
+                let message = self.entities.borrow_mut().push_message(enemy_info).0;
 
                 self.send_message(message);
             },
@@ -706,17 +724,17 @@ impl GameServer
                     world.time = time;
                 }
 
-                self.connection_close(restart, host, id, entity)
+                self.connection_close(restart, host, id, entity.expect("disconnect message must have an entity"))
             },
             #[cfg(debug_assertions)]
             Message::DebugMessage(DebugMessage::PrintRemoveAwaiting) =>
             {
-                eprintln!("remove awaiting: {:#?}", self.entities.get_remove_awaiting())
+                eprintln!("remove awaiting: {:#?}", self.entities.borrow().get_remove_awaiting())
             },
             #[cfg(debug_assertions)]
             Message::DebugMessage(DebugMessage::PrintEntityInfo(entity)) =>
             {
-                eprintln!("server entity info: {}", self.entities.info_ref(entity).map(|x| format!("{x:#?}")).unwrap_or_default())
+                eprintln!("server entity info: {}", self.entities.borrow().info_ref(entity).map(|x| format!("{x:#?}")).unwrap_or_default())
             },
             x => panic!("unhandled message: {x:?}")
         }
@@ -725,21 +743,5 @@ impl GameServer
     fn send_message(&mut self, message: Message)
     {
         self.connection_handler.lock().send_message(message);
-    }
-}
-
-impl EntitiesController for GameServer
-{
-    type Container = Entities;
-    type Passer = ConnectionsHandler;
-
-    fn container_ref(&self) -> &Self::Container
-    {
-        &self.entities
-    }
-
-    fn container_mut(&mut self) -> &mut Self::Container
-    {
-        &mut self.entities
     }
 }

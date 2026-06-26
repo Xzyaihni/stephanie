@@ -1,6 +1,7 @@
 use std::{
     fs,
-    rc::Rc,
+    rc::{Weak, Rc},
+    cell::RefCell,
     thread::{self, JoinHandle},
     sync::{mpsc, Arc},
     collections::{VecDeque, HashMap}
@@ -63,6 +64,8 @@ use crate::{
         CharactersInfo,
         Crafts,
         loot::*,
+        lisp::*,
+        scripts_container::server_info_primitives,
         tilemap::TileLoot,
         furnitures_info::FurnitureLoot,
         enemies_info::EnemyLoot,
@@ -590,7 +593,16 @@ impl YanyaApp for App
 
                             let listen_address = format!("{}:{port}", if listen_outside { "0.0.0.0" } else { "127.0.0.1" });
 
+                            let server_entities = Rc::new(RefCell::new(Weak::new()));
+                            let server_message_sender = Rc::new(RefCell::new(None));
+
                             let server_loot = {
+                                let enemy_primitives = Rc::new(server_info_primitives(
+                                    server_entities.clone(),
+                                    data_infos.clone(),
+                                    server_message_sender.clone()
+                                ));
+
                                 let c = |s: Option<ServerScriptSingleInfo>| -> Generator
                                 {
                                     s.map(|s| loot_compile(s.name, &s.code)).unwrap_or_default()
@@ -598,7 +610,43 @@ impl YanyaApp for App
 
                                 ServerScripts{
                                     furniture: server_loot.furniture.into_iter().map(|x| x.map(c)).collect(),
-                                    enemy: server_loot.enemy.into_iter().map(|x| x.map(c)).collect()
+                                    enemy: server_loot.enemy.into_iter().map(|x| -> EnemyScriptsInfo<Generator>
+                                    {
+                                        let on_create = x.on_create.map(|s|
+                                        {
+                                            let memory = LispMemory::new(enemy_primitives.clone(), 128, 1 << 10);
+
+                                            let config = LispConfig{
+                                                memory,
+                                                env_variables: vec!["caller-transform".to_owned()],
+                                                ..Default::default()
+                                            };
+
+                                            let lisp = match Lisp::new_with_config(config, &[&s.code])
+                                            {
+                                                Ok(mut lisp) =>
+                                                {
+                                                    lisp.set_source_name(0, s.name.clone());
+
+                                                    Some(lisp)
+                                                },
+                                                Err(err) =>
+                                                {
+                                                    eprintln!("error parsing on_use for enemy `{}`: {err}", &s.name);
+
+                                                    None
+                                                }
+                                            };
+
+                                            Generator::new_raw(lisp)
+                                        }).unwrap_or_default();
+
+                                        EnemyScriptsInfo{
+                                            on_create,
+                                            on_contents: c(x.on_contents),
+                                            on_equip: c(x.on_equip)
+                                        }
+                                    }).collect()
                                 }
                             };
 
@@ -616,6 +664,9 @@ impl YanyaApp for App
                                 Ok(x) => x,
                                 Err(err) => panic!("{err}")
                             };
+
+                            *server_entities.borrow_mut() = game_server.entities();
+                            *server_message_sender.borrow_mut() = Some(game_server.sender());
 
                             let port = server.port();
                             tx.send(port).unwrap();

@@ -63,3 +63,7 @@
                         (map
                             (lambda (x) (- (car x) (cdr x)))
                             (zip a-pos b-pos))))))))
+
+(define (spawn-enemy-clean enemy pos)
+    ; remove tiles here
+    (spawn-enemy enemy pos))
