@@ -1,5 +1,7 @@
 use std::{
     f32,
+    str::FromStr,
+    net::SocketAddr,
     fs::{self, ReadDir},
     borrow::Cow,
     path::PathBuf,
@@ -76,9 +78,11 @@ enum MainMenuId
     Version,
     Main(MainPartId),
     Options(OptionsPartId),
+    OptionsExtras(OptionsPartId),
     Controls(ControlsPartId),
     WorldSelect(WorldSelectPartId),
-    WorldCreate(WorldCreatePartId)
+    WorldCreate(WorldCreatePartId),
+    AddressEnter(AddressEnterPartId)
 }
 
 impl Idable for MainMenuId
@@ -116,7 +120,9 @@ enum OptionsPartId
 {
     Menu,
     Controls(ButtonPartId),
+    Extras(ButtonPartId),
     FrameLimitToggle(ButtonPartId),
+    OnlineModeToggle(ButtonPartId),
     DebugToggle(ButtonPartId),
     Back(ButtonPartId)
 }
@@ -176,6 +182,18 @@ enum WorldCreatePartId
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum AddressEnterPartId
+{
+    Panel,
+    PanelInner,
+    Message,
+    Textbox(TextboxPartId),
+    Buttons,
+    Confirm(ButtonPartId),
+    Back(ButtonPartId)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 enum WorldButtonPartId
 {
     Body,
@@ -192,7 +210,10 @@ enum ButtonPartId
     BarOuter,
     Bar,
     BarText,
-    TextValue
+    TextValue,
+    TooltipPanel,
+    TooltipPanelInner,
+    Tooltip
 }
 
 pub enum MenuAction
@@ -209,9 +230,11 @@ enum MenuState
 {
     Main,
     Options,
+    OptionsExtras,
     Controls,
     WorldSelect,
-    WorldCreate
+    WorldCreate,
+    AddressEnter
 }
 
 const BUTTON_SIZE: f32 = 0.05;
@@ -255,12 +278,43 @@ impl NameInfo
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OnlineMode
+{
+    Off,
+    Host,
+    Client
+}
+
+impl OnlineMode
+{
+    fn as_str(&self) -> &str
+    {
+        match self
+        {
+            Self::Off => "off",
+            Self::Host => "host",
+            Self::Client => "client"
+        }
+    }
+
+    fn next(self) -> Self
+    {
+        match self
+        {
+            Self::Off => Self::Host,
+            Self::Host => Self::Client,
+            Self::Client => Self::Off
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct MenuClientInfo
 {
-    pub address: Option<String>,
+    pub address: TextboxInfo,
     pub name: NameInfo,
-    pub host: bool,
+    pub online_mode: OnlineMode,
     pub debug: bool
 }
 
@@ -355,9 +409,9 @@ impl MainMenu
         let controller = Controller::new(partial_info);
 
         let info = MenuClientInfo{
-            address: None,
+            address: TextboxInfo::new(String::new()),
             name: NameInfo::new(TextboxInfo::new_with_limit("stephanie".to_owned(), 30)),
-            host: true,
+            online_mode: OnlineMode::Off,
             debug: cfg!(debug_assertions)
         };
 
@@ -823,8 +877,169 @@ impl MainMenu
         (state, action)
     }
 
+    fn setting_button(
+        ui_info: &mut UiInfo,
+        parent: TreeInserter<MainMenuId>,
+        id: impl Fn(ButtonPartId) -> MainMenuId,
+        tooltip: Option<String>,
+        text: String,
+        value: String
+    ) -> bool
+    {
+        let panel = parent.update(id(ButtonPartId::PanelOuter), UiElement{
+            width: MainMenu::menu_button_width(),
+            height: MainMenu::menu_button_height(),
+            children_layout: UiLayout::Horizontal,
+            ..Default::default()
+        });
+
+        let height = some_or_value!(panel.try_height(), false);
+
+        let is_clicked = MainMenu::update_button(ui_info.controls, panel, &id, ButtonInfo{
+            name: text.to_owned(),
+            width: UiSize::FitChildren.into(),
+            height: MainMenu::menu_button_height(),
+            body_width: UiSize::FitChildren.into(),
+            override_font_size: None,
+            padding_left: MainMenu::menu_button_padding_left(),
+            padding_right: 0.0.into(),
+            align_left: true,
+            disabled: false,
+            invert_colors: false
+        });
+
+        add_padding_horizontal(panel, UiSize::Rest(1.0).into());
+
+        let text_element = panel.update(id(ButtonPartId::TextValue), UiElement{
+            texture: UiTexture::Text(TextInfo::new_simple(MainMenu::menu_font_size(panel.screen_size(), height), value)),
+            mix: Some(MixColorLch::color(BACKGROUND_COLOR)),
+            ..UiElement::fit_content()
+        });
+
+        add_padding_horizontal(panel, 0.1.into());
+
+        if let Some(tooltip) = tooltip.as_ref()
+        {
+            if panel.is_mouse_inside()
+            {
+                let tooltip_panel = text_element.update(id(ButtonPartId::TooltipPanel), UiElement{
+                    texture: UiTexture::Sliced(ui_info.sliced_textures["rounded"]),
+                    mix: Some(MixColorLch::color(BACKGROUND_COLOR)),
+                    position: UiPosition::Absolute{
+                        position: panel.mouse_position(),
+                        align: UiPositionAlign{
+                            horizontal: AlignHorizontal::Left,
+                            vertical: AlignVertical::Top
+                        }
+                    },
+                    ..Default::default()
+                });
+
+                add_padding_horizontal(tooltip_panel, UiSize::Pixels(20.0).into());
+
+                let tooltip_panel_inner = tooltip_panel.update(id(ButtonPartId::TooltipPanelInner), UiElement{
+                    children_layout: UiLayout::Vertical,
+                    ..Default::default()
+                });
+
+                add_padding_horizontal(tooltip_panel_inner, UiSize::Pixels(20.0).into());
+
+                tooltip_panel_inner.update(id(ButtonPartId::Tooltip), UiElement{
+                    texture: UiTexture::Text(TextInfo::new_simple(24, tooltip.clone())),
+                    mix: Some(MixColorLch::color(ACCENT_COLOR)),
+                    ..UiElement::fit_content()
+                });
+
+                add_padding_horizontal(tooltip_panel_inner, UiSize::Pixels(20.0).into());
+
+                add_padding_horizontal(tooltip_panel, UiSize::Pixels(20.0).into());
+            }
+        }
+
+        is_clicked
+    }
+
+    fn update_options_extras(
+        mut ui_info: UiInfo,
+        outer_menu: TreeInserter<MainMenuId>
+    ) -> (MenuState, MenuAction)
+    {
+        let id = |part| MainMenuId::OptionsExtras(part);
+
+        let mut state = ui_info.state;
+
+        let menu = {
+            let width = outer_menu.try_width().unwrap_or(0.0);
+
+            outer_menu.update(id(OptionsPartId::Menu), UiElement{
+                width: UiSize::Rest(1.0).into(),
+                height: UiSize::Rest(1.0).into(),
+                children_layout: UiLayout::Vertical,
+                    animation: Animation{
+                    position: Some(PositionAnimation{
+                        offsets: Some(PositionOffsets{
+                            start: vector![-width, 0.0],
+                            ..Default::default()
+                        }),
+                        start_mode: Connection::EaseOut{decay: 16.0, limit: None},
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+                ..Default::default()
+            })
+        };
+
+        let button_pad = || Self::button_pad(menu);
+
+        add_padding_vertical(menu, UiSize::Rest(1.0).into());
+
+        {
+            let value = (ui_info.info.online_mode.as_str()).to_owned();
+            if Self::setting_button(
+                &mut ui_info,
+                menu,
+                |part| id(OptionsPartId::OnlineModeToggle(part)),
+                Some("makes the game run in multiplayer\nVERY BROKEN!!".to_owned()),
+                "online mode".to_owned(),
+                value
+            )
+            {
+                ui_info.info.online_mode = ui_info.info.online_mode.next();
+            }
+        }
+
+        button_pad();
+
+        {
+            let value = (if ui_info.info.debug { "on" } else { "off" }).to_owned();
+            if Self::setting_button(
+                &mut ui_info,
+                menu,
+                |part| id(OptionsPartId::DebugToggle(part)),
+                None,
+                "debug mode".to_owned(),
+                value
+            )
+            {
+                ui_info.info.debug = !ui_info.info.debug;
+            }
+        }
+
+        button_pad();
+
+        if Self::update_main_button(ui_info.controls, menu, |part| id(OptionsPartId::Back(part)), "back")
+        {
+            state = MenuState::Options;
+        }
+
+        add_padding_vertical(menu, UiSize::Rest(1.0).into());
+
+        (state, MenuAction::None)
+    }
+
     fn update_options(
-        ui_info: UiInfo,
+        mut ui_info: UiInfo,
         outer_menu: TreeInserter<MainMenuId>
     ) -> (MenuState, MenuAction)
     {
@@ -866,74 +1081,29 @@ impl MainMenu
 
         button_pad();
 
-        fn setting_button(
-            controls: &mut UiControls<MainMenuId>,
-            parent: TreeInserter<MainMenuId>,
-            id: impl Fn(ButtonPartId) -> MainMenuId,
-            text: String,
-            value: String
-        ) -> bool
         {
-            let panel = parent.update(id(ButtonPartId::PanelOuter), UiElement{
-                width: MainMenu::menu_button_width(),
-                height: MainMenu::menu_button_height(),
-                children_layout: UiLayout::Horizontal,
-                ..Default::default()
-            });
+            let value = (ui_info.settings_config.value().frame_limit.as_str()).to_owned();
+            if Self::setting_button(
+                &mut ui_info,
+                menu,
+                |part| id(OptionsPartId::FrameLimitToggle(part)),
+                None,
+                "frame limit".to_owned(),
+                value
+            )
+            {
+                let config = ui_info.settings_config.value_mut();
+                config.frame_limit = config.frame_limit.next();
 
-            let height = some_or_value!(panel.try_height(), false);
-
-            let is_clicked = MainMenu::update_button(controls, panel, &id, ButtonInfo{
-                name: text.to_owned(),
-                width: UiSize::FitChildren.into(),
-                height: MainMenu::menu_button_height(),
-                body_width: UiSize::FitChildren.into(),
-                override_font_size: None,
-                padding_left: MainMenu::menu_button_padding_left(),
-                padding_right: 0.0.into(),
-                align_left: true,
-                disabled: false,
-                invert_colors: false
-            });
-
-            add_padding_horizontal(panel, UiSize::Rest(1.0).into());
-
-            panel.update(id(ButtonPartId::TextValue), UiElement{
-                texture: UiTexture::Text(TextInfo::new_simple(MainMenu::menu_font_size(panel.screen_size(), height), value)),
-                mix: Some(MixColorLch::color(BACKGROUND_COLOR)),
-                ..UiElement::fit_content()
-            });
-
-            add_padding_horizontal(panel, 0.1.into());
-
-            is_clicked
-        }
-
-        if setting_button(
-            ui_info.controls,
-            menu,
-            |part| id(OptionsPartId::FrameLimitToggle(part)),
-            "frame limit".to_owned(),
-            (ui_info.settings_config.value().frame_limit.as_str()).to_owned()
-        )
-        {
-            let config = ui_info.settings_config.value_mut();
-            config.frame_limit = config.frame_limit.next();
-
-            action = MenuAction::SetFrameLimit(config.frame_limit);
+                action = MenuAction::SetFrameLimit(config.frame_limit);
+            }
         }
 
         button_pad();
 
-        if setting_button(
-            ui_info.controls,
-            menu,
-            |part| id(OptionsPartId::DebugToggle(part)),
-            "debug mode".to_owned(),
-            (if ui_info.info.debug { "on" } else { "off" }).to_owned()
-        )
+        if Self::update_main_button(ui_info.controls, menu, |part| id(OptionsPartId::Extras(part)), "extra")
         {
-            ui_info.info.debug = !ui_info.info.debug;
+            state = MenuState::OptionsExtras;
         }
 
         button_pad();
@@ -1056,7 +1226,11 @@ impl MainMenu
                     },
                     height: item_height.into(),
                     animation: Animation{
-                        mix: Some(MixAnimation::default()),
+                        mix: Some(MixAnimation{
+                            start_decay: MixDecay::all(20.0),
+                            close_decay: MixDecay::all(9999.0),
+                            ..Default::default()
+                        }),
                         ..Default::default()
                     },
                     children_layout: UiLayout::Horizontal,
@@ -1275,6 +1449,134 @@ impl MainMenu
 
         if confirm_clicked && confirm_allowed
         {
+            if ui_info.info.online_mode == OnlineMode::Client
+            {
+                state = MenuState::AddressEnter;
+            } else
+            {
+                action = MenuAction::Start;
+            }
+        }
+
+        add_padding_vertical(panel, panel_padding.into());
+        add_padding_horizontal(panel_outer, panel_padding_horizontal.into());
+
+        (state, action)
+    }
+
+    fn update_address_enter(
+        ui_info: UiInfo,
+        menu: TreeInserter<MainMenuId>
+    ) -> (MenuState, MenuAction)
+    {
+        let id = |part| MainMenuId::AddressEnter(part);
+
+        let mut state = ui_info.state;
+        let mut action = MenuAction::None;
+
+        let panel_padding = 0.05;
+        let panel_padding_horizontal = 0.06;
+
+        let panel_outer = menu.update(id(AddressEnterPartId::Panel), UiElement{
+            texture: UiTexture::Sliced(ui_info.sliced_textures["rounded"]),
+            mix: Some(MixColorLch::color(BACKGROUND_COLOR)),
+            position: UiPosition::Absolute{position: Vector2::zeros(), align: UiPositionAlign::default()},
+            children_layout: UiLayout::Horizontal,
+            ..Default::default()
+        });
+
+        add_padding_horizontal(panel_outer, panel_padding_horizontal.into());
+
+        let panel = panel_outer.update(id(AddressEnterPartId::PanelInner), UiElement{
+            children_layout: UiLayout::Vertical,
+            ..Default::default()
+        });
+
+        add_padding_vertical(panel, (panel_padding * 0.8).into());
+
+        let font_size = (panel.screen_size().max() * 0.02) as u32;
+        let font_height = ui_info.fonts.text_height(font_size, panel.screen_size().max());
+
+        panel.update(id(AddressEnterPartId::Message), UiElement{
+            texture: UiTexture::Text(TextInfo::new_simple(font_size, "enter server address (ip:port format)")),
+            mix: Some(MixColorLch::color(ACCENT_COLOR)),
+            ..UiElement::fit_content()
+        });
+
+        add_padding_vertical(panel, 0.008.into());
+
+        let textbox = panel.update(id(AddressEnterPartId::Textbox(TextboxPartId::Body)), UiElement{
+            width: UiElementSize{
+                minimum_size: Some(UiMinimumSize::FitChildren),
+                size: UiSize::Rest(1.0)
+            },
+            children_layout: UiLayout::Vertical,
+            ..Default::default()
+        });
+
+        ui_info.info.address.update(ui_info.dt);
+
+        textbox_update(
+            ui_info.controls,
+            ui_info.fonts,
+            |part| MainMenuId::AddressEnter(AddressEnterPartId::Textbox(part)),
+            textbox,
+            font_size,
+            &mut ui_info.info.address
+        );
+
+        add_padding_vertical(panel, 0.01.into());
+
+        let buttons = panel.update(id(AddressEnterPartId::Buttons), UiElement::default());
+
+        let confirm_allowed = SocketAddr::from_str(&ui_info.info.address.text).is_ok();
+
+        let confirm_info = {
+            let padding: UiElementSize<_> = 0.005.into();
+
+            ButtonInfo{
+                name: "confirm".to_owned(),
+                width: UiSize::FitChildren.into(),
+                height: font_height.into(),
+                body_width: UiSize::FitChildren.into(),
+                override_font_size: Some(font_size),
+                padding_left: padding.clone(),
+                padding_right: padding,
+                align_left: false,
+                disabled: !confirm_allowed,
+                invert_colors: true
+            }
+        };
+
+        let back_clicked = Self::update_button(
+            ui_info.controls,
+            buttons,
+            |part| id(AddressEnterPartId::Back(part)),
+            ButtonInfo{
+                name: "back".to_owned(),
+                disabled: false,
+                ..confirm_info.clone()
+            }
+        );
+
+        if back_clicked
+        {
+            state = MenuState::Main;
+        }
+
+        add_padding_horizontal(buttons, 0.005.into());
+
+        let confirm_clicked = Self::update_button(
+            ui_info.controls,
+            buttons,
+            |part| id(AddressEnterPartId::Confirm(part)),
+            confirm_info
+        );
+
+        let confirm_clicked = confirm_clicked || ui_info.controls.take_key_down(KeyMapping::Keyboard(KeyCode::Enter));
+
+        if confirm_clicked && confirm_allowed
+        {
             action = MenuAction::Start;
         }
 
@@ -1442,8 +1744,8 @@ impl MainMenu
 
         let align_left = match self.state
         {
-            MenuState::Main | MenuState::Options => true,
-            MenuState::Controls | MenuState::WorldSelect | MenuState::WorldCreate => false,
+            MenuState::Main | MenuState::Options | MenuState::OptionsExtras => true,
+            MenuState::Controls | MenuState::WorldSelect | MenuState::WorldCreate | MenuState::AddressEnter => false
         };
 
         if align_left
@@ -1461,7 +1763,7 @@ impl MainMenu
         let menu = {
             let (width, children_layout) = match self.state
             {
-                MenuState::Options => (UiSize::Rest(1.0).into(), UiLayout::Horizontal),
+                MenuState::Options | MenuState::OptionsExtras => (UiSize::Rest(1.0).into(), UiLayout::Horizontal),
                 _ => (UiSize::FitChildren.into(), UiLayout::Vertical)
             };
 
@@ -1492,9 +1794,11 @@ impl MainMenu
             {
                 MenuState::Main => Self::update_main(ui_info, menu),
                 MenuState::Options => Self::update_options(ui_info, menu),
+                MenuState::OptionsExtras => Self::update_options_extras(ui_info, menu),
                 MenuState::Controls => Self::update_controls(ui_info, menu),
                 MenuState::WorldSelect => Self::update_world_select(ui_info, menu),
-                MenuState::WorldCreate => Self::update_world_create(ui_info, menu)
+                MenuState::WorldCreate => Self::update_world_create(ui_info, menu),
+                MenuState::AddressEnter => Self::update_address_enter(ui_info, menu)
             }
         };
 

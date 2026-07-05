@@ -269,6 +269,8 @@ impl Game
                 {
                     OuterAction::Use{script_index, entity, item} =>
                     {
+                        with_game_state(&self.game_state, |game_state| game_state.world.verify_empty_lazy());
+
                         let script = self.scripts.get(script_index);
                         if let Err(err) = script.run_with(|memory|
                         {
@@ -282,6 +284,8 @@ impl Game
                         {
                             eprintln!("error running on_use (in {}): {err}", script.get_source(err.position.source));
                         }
+
+                        with_game_state(&self.game_state, |game_state| game_state.world_apply_lazy_updates());
                     }
                 }
             });
@@ -728,6 +732,8 @@ impl Game
 
     fn console_command(&mut self, command: String, output: ConsoleOutput)
     {
+        with_game_state(&self.game_state, |game_state| game_state.world.verify_empty_lazy());
+
         fn code<'a>(info: &'a PlayerInfo, command: &'a str) -> [&'a str; 3]
         {
             let console = &info.console;
@@ -769,6 +775,8 @@ impl Game
                 return;
             }
         };
+
+        with_game_state(&self.game_state, |game_state| game_state.world_apply_lazy_updates());
 
         if !output.is_quiet()
         {
@@ -875,6 +883,8 @@ impl<'a> PlayerContainer<'a>
     {
         if let Some(mut character) = self.game_state.entities().character_mut(self.info.entity)
         {
+            character.try_initialize(self.game_state.entities(), self.info.entity);
+
             character.initialized_buffered(BufferedActions{
                 target: {
                     let f = self.ranged_target_function();

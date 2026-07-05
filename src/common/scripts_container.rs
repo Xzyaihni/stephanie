@@ -8,9 +8,11 @@ use nalgebra::{vector, Vector3};
 
 use crate::{
     client::game_state::GameState,
+    server::world::World as ServerWorld,
     common::{
         some_or_value,
         lisp::{self, *},
+        Pos3,
         Transform,
         Entity,
         EntityInfo,
@@ -19,6 +21,8 @@ use crate::{
         AnyEntities,
         ConnectionId,
         DataInfos,
+        TileMap,
+        world::{TilePos, GlobalPos, ChunkLocal, Tile},
         entity::{ServerEntities, ClientEntities},
         inventory::{inventory_remove_item, InventoryItem}
     }
@@ -66,7 +70,10 @@ pub fn parse_entity(entities: &impl AnyEntities, value: OutputWrapperRef) -> Res
     Ok(entity)
 }
 
-pub fn parse_position(value: OutputWrapperRef) -> Result<Vector3<f32>, lisp::Error>
+fn parse_position_with<T>(
+    value: OutputWrapperRef,
+    f: impl Fn(&OutputWrapperRef) -> Result<T, lisp::Error>
+) -> Result<Vector3<T>, lisp::Error>
 {
     let value: Vec<_> = value.as_pairs_list()?;
 
@@ -75,9 +82,24 @@ pub fn parse_position(value: OutputWrapperRef) -> Result<Vector3<f32>, lisp::Err
         return Err(lisp::Error::Custom("expected list of length 3".to_owned()));
     }
 
-    let f = |i: usize| value[i].as_float();
+    let f = |i: usize| f(&value[i]);
 
     Ok(vector![f(0)?, f(1)?, f(2)?])
+}
+
+pub fn parse_position(value: OutputWrapperRef) -> Result<Vector3<f32>, lisp::Error>
+{
+    parse_position_with(value, |x| x.as_float())
+}
+
+pub fn parse_tile_position(value: OutputWrapperRef) -> Result<TilePos, lisp::Error>
+{
+    let LispList{car: tile_pos, cdr: chunk_pos} = value.as_list()?;
+
+    Ok(TilePos{
+        local: ChunkLocal::from(Pos3::from(parse_position_with(tile_pos, |x| x.as_integer())?.map(|x| x as usize))),
+        chunk: GlobalPos(parse_position_with(chunk_pos, |x| x.as_integer())?.into())
+    })
 }
 
 pub fn push_entity(memory: &mut LispMemory, entity: Entity) -> Result<LispValue, lisp::Error>
@@ -121,9 +143,40 @@ fn entity_transform_common(entities: &impl AnyEntities, mut args: PrimitiveArgs)
     push_transform(args.memory, transform.clone())
 }
 
+fn world_set_tile_common(
+    tilemap: &TileMap,
+    mut args: PrimitiveArgs,
+    handler: impl FnOnce(TilePos, Tile)
+) -> Result<LispValue, lisp::Error>
+{
+    let pos = parse_tile_position(args.next_value().unwrap())?;
+    let tile = parse_symbol_or_string(args.next_value().unwrap())?;
+
+    let id = tilemap.tile_named(&tile).ok_or_else(||
+    {
+        lisp::Error::Custom(format!("tile named `{tile}` not found"))
+    })?;
+
+    handler(pos, id);
+
+    Ok(().into())
+}
+
 type MessageSenderType = Rc<RefCell<Option<Sender<(ConnectionId, Message, Option<Entity>)>>>>;
 
+fn upgraded<T>(
+    x: &Rc<RefCell<Weak<RefCell<T>>>>,
+    name: &str
+) -> Result<Rc<RefCell<T>>, lisp::Error>
+{
+    let x = x.borrow();
+
+    x.upgrade().ok_or_else(|| lisp::Error::Custom(format!("{name} must exist when calling script")))
+}
+
 pub fn server_info_primitives(
+    tilemap: Rc<TileMap>,
+    world: Rc<RefCell<Weak<RefCell<Option<ServerWorld>>>>>,
     entities: Rc<RefCell<Weak<RefCell<ServerEntities>>>>,
     data_infos: DataInfos,
     sender: MessageSenderType
@@ -136,12 +189,7 @@ pub fn server_info_primitives(
         f: impl FnOnce(&mut ServerEntities) -> Result<T, lisp::Error>
     ) -> Result<T, lisp::Error>
     {
-        let entities = entities.borrow();
-
-        let entities = entities.upgrade().ok_or_else(||
-        {
-            lisp::Error::Custom("entities must exist when calling script".to_owned())
-        })?;
+        let entities = upgraded(entities, "entities")?;
 
         let mut entities = entities.borrow_mut();
 
@@ -157,6 +205,19 @@ pub fn server_info_primitives(
             {
                 entity_transform_common(entities, args)
             })
+        }));
+    }
+
+    {
+        let tilemap = tilemap.clone();
+
+        primitives.add("set-tile", PrimitiveProcedureInfo::new_simple(2, Effect::Impure, move |args|
+        {
+            let world = upgraded(&world, "world")?;
+            let mut world = world.borrow_mut();
+            let world = world.as_mut().expect("must always exist");
+
+            world_set_tile_common(&tilemap, args, |pos, id| world.set_tile_lazy(pos, id))
         }));
     }
 
@@ -202,12 +263,7 @@ pub fn add_info_primitives(primitives: &mut Primitives, game_state: Rc<RefCell<W
         f: impl FnOnce(&mut GameState) -> Result<T, lisp::Error>
     ) -> Result<T, lisp::Error>
     {
-        let game_state = game_state.borrow();
-
-        let game_state = game_state.upgrade().ok_or_else(||
-        {
-            lisp::Error::Custom("game_state must exist when calling script".to_owned())
-        })?;
+        let game_state = upgraded(game_state, "game_state")?;
 
         let mut game_state = game_state.borrow_mut();
 
@@ -297,6 +353,20 @@ pub fn add_info_primitives(primitives: &mut Primitives, game_state: Rc<RefCell<W
                 game_state.send_message(Message::SpawnEnemy{id, pos});
 
                 Ok(().into())
+            })
+        }));
+    }
+
+    {
+        let game_state = game_state.clone();
+
+        primitives.add("set-tile", PrimitiveProcedureInfo::new_simple(2, Effect::Impure, move |args|
+        {
+            with_game_state(&game_state, |game_state|
+            {
+                let tilemap = game_state.world.tilemap_clone();
+
+                world_set_tile_common(&tilemap, args, |pos, id| game_state.world.set_tile_lazy(pos, id))
             })
         }));
     }

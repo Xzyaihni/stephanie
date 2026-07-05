@@ -111,6 +111,7 @@ impl Message
         match self
         {
             Message::ChunkRequest{..}
+            | Message::EntityRemoveManyRequest{..}
             | Message::EntityRemoveChunkFinished{..}
             | Message::SyncCamera{..}
             | Message::SyncWorldTime{..}

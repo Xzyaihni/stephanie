@@ -1225,6 +1225,11 @@ impl GameState
         self.entities.player_entity
     }
 
+    pub fn world_apply_lazy_updates(&mut self)
+    {
+        self.world.apply_lazy_updates(&mut self.connections_handler);
+    }
+
     pub fn process_messages(&mut self, create_info: &mut UpdateBuffersInfo)
     {
         crate::frame_time_this!{

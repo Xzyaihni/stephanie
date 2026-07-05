@@ -714,6 +714,8 @@ pub fn update(
         }).collect::<Vec<_>>()
     };
 
+    world.verify_empty_lazy();
+
     damage_entities.into_iter().for_each(damager(world, space, entities, loot, textures));
 
     world.apply_lazy_updates(passer);

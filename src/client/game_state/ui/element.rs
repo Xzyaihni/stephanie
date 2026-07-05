@@ -469,11 +469,11 @@ impl ResolvedSize
         elements: &mut T,
         parallel: bool,
         parent_size: f32,
-        mut output_getter: impl FnMut(&mut T, usize) -> &mut Option<f32>,
+        mut output_getter: impl FnMut(&mut T, usize, bool) -> &mut Option<f32>,
         mut minimum_size_getter: impl FnMut(&mut T, usize) -> Option<Option<f32>>,
         mut size_getter: impl FnMut(&mut T, usize) -> &UiSize<Id>,
         children: impl Iterator<Item=usize>
-    )
+    ) -> bool
     {
         if parallel
         {
@@ -481,29 +481,28 @@ impl ResolvedSize
             let mut children_size = 0.0;
             let rests = children.filter_map(|index|
             {
-                let output = output_getter(elements, index);
-                let is_some = output.is_some();
+                let minimum_output = minimum_size_getter(elements, index).flatten().unwrap_or(0.0);
 
-                children_size += output.unwrap_or(0.0);
+                let output = output_getter(elements, index, false);
+                let output_exists = output.is_some();
+
+                children_size += output.unwrap_or(0.0).max(minimum_output);
 
                 let value = if let UiSize::Rest(x) = size_getter(elements, index)
                 {
                     let x: f32 = *x;
-
-                    if is_some
-                    {
-                        is_ready = false;
-                    }
 
                     if minimum_size_getter(elements, index).map(|x| x.is_none()).unwrap_or(false)
                     {
                         is_ready = false;
                     }
 
+                    debug_assert!(!output_exists);
+
                     Some(x)
                 } else
                 {
-                    if !is_some
+                    if !output_exists
                     {
                         is_ready = false;
                     }
@@ -516,7 +515,7 @@ impl ResolvedSize
 
             if !is_ready
             {
-                return;
+                return false;
             }
 
             let mut ratios_total: f32 = rests.iter().map(|(_, x)| *x).sum();
@@ -550,7 +549,7 @@ impl ResolvedSize
             {
                 let size = rest_size(children_size, ratio, ratios_total);
 
-                *output_getter(elements, index) = Some(size);
+                *output_getter(elements, index, true) = Some(size);
             });
         } else
         {
@@ -558,10 +557,12 @@ impl ResolvedSize
             {
                 if let UiSize::Rest(_) = size_getter(elements, index)
                 {
-                    *output_getter(elements, index) = Some(parent_size);
+                    *output_getter(elements, index, true) = Some(parent_size);
                 }
             });
         }
+
+        true
     }
 }
 

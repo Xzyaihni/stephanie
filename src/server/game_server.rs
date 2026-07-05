@@ -121,7 +121,7 @@ pub struct GameServer
     data_infos: DataInfos,
     tilemap: Rc<TileMap>,
     server_scripts: Rc<ServerScripts>,
-    world: Option<World>,
+    world: Rc<RefCell<Option<World>>>,
     world_name: String,
     sender: Sender<(ConnectionId, Message, Option<Entity>)>,
     receiver: Receiver<(ConnectionId, Message, Option<Entity>)>,
@@ -136,12 +136,14 @@ impl Drop for GameServer
 {
     fn drop(&mut self)
     {
-        if let Some(world) = self.world.as_mut()
+        let mut world = self.world.borrow_mut();
+
+        if let Some(world) = world.as_mut()
         {
             world.exit(&mut self.entities.borrow_mut());
         }
 
-        if let Some(world) = self.world.as_mut()
+        if let Some(world) = world.as_mut()
         {
             World::collect_to_delete(self.entities.borrow_mut().take_remove_awaiting().into_iter().filter_map(|(info, _id)|
             {
@@ -167,26 +169,25 @@ impl Drop for GameServer
 impl GameServer
 {
     pub fn new(
-        tilemap: TileMap,
+        tilemap: Rc<TileMap>,
         data_infos: DataInfos,
         server_scripts: ServerScripts,
         world_name: String,
         limit: usize
     ) -> Result<(Sender<TcpStream>, Self), ParseError>
     {
-        let tilemap = Rc::new(tilemap);
         let server_scripts = Rc::new(server_scripts);
 
         let entities = Rc::new(RefCell::new(Entities::new(data_infos.clone())));
         let connection_handler = Arc::new(Mutex::new(ConnectionsHandler::new(limit)));
 
-        let world = Some(World::new(
+        let world = Rc::new(RefCell::new(Some(World::new(
             connection_handler.clone(),
             tilemap.clone(),
             data_infos.clone(),
             server_scripts.clone(),
             world_name.clone()
-        )?);
+        )?)));
 
         let _sender_handle = sender_loop(connection_handler.clone());
 
@@ -215,7 +216,7 @@ impl GameServer
     {
         *self.entities.borrow_mut() = Entities::new(self.data_infos.clone());
 
-        self.world.take();
+        self.world.borrow_mut().take();
 
         {
             let path = PathBuf::from("worlds").join(&self.world_name);
@@ -230,7 +231,7 @@ impl GameServer
             }
         }
 
-        self.world = Some(World::new(
+        *self.world.borrow_mut() = Some(World::new(
             self.connection_handler.clone(),
             self.tilemap.clone(),
             self.data_infos.clone(),
@@ -242,6 +243,11 @@ impl GameServer
     pub fn entities(&self) -> Weak<RefCell<ServerEntities>>
     {
         Rc::downgrade(&self.entities)
+    }
+
+    pub fn world(&self) -> Weak<RefCell<Option<World>>>
+    {
+        Rc::downgrade(&self.world)
     }
 
     pub fn sender(&self) -> Sender<(ConnectionId, Message, Option<Entity>)>
@@ -509,10 +515,14 @@ impl GameServer
         let player_position = Pos3::from(position);
 
         let player_entity = player_info.entity.unwrap();
+
+        let mut world = self.world.borrow_mut();
+        let world = world.as_mut().unwrap();
+
         let on_connect_info = OnConnectInfo{
             player_entity,
             player_position,
-            time: self.world.as_ref().unwrap().time
+            time: world.time
         };
 
         player_info.send_blocking(Message::PlayerOnConnect(on_connect_info))?;
@@ -525,17 +535,17 @@ impl GameServer
             eprintln!("server {connection_id:?}: {player_position}");
         }
 
-        self.world.as_mut().unwrap().add_player(
+        world.add_player(
             &mut self.entities.borrow_mut(),
             connection_id,
             position.into()
         );
 
-        self.world.as_mut().unwrap().sync_camera(&mut self.entities.borrow_mut(), connection_id, player_position);
+        world.sync_camera(&mut self.entities.borrow_mut(), connection_id, player_position);
 
         crate::time_this!{
             "world-gen",
-            self.world.as_mut().unwrap().send_all(&mut self.entities.borrow_mut(), connection_id)
+            world.send_all(&mut self.entities.borrow_mut(), connection_id)
         };
 
         let mut writer = self.connection_handler.lock();
@@ -573,7 +583,7 @@ impl GameServer
     {
         let removed = self.connection_handler.lock().remove_connection(id);
 
-        self.world.as_mut().unwrap().remove_player(&mut self.entities.borrow_mut(), id);
+        self.world.borrow_mut().as_mut().unwrap().remove_player(&mut self.entities.borrow_mut(), id);
 
         if !restart && host
         {
@@ -688,7 +698,7 @@ impl GameServer
             self.connection_handler.lock().send_message_without(id, message.clone());
         }
 
-        let message = some_or_return!{self.world.as_mut().unwrap().handle_message(
+        let message = some_or_return!{self.world.borrow_mut().as_mut().unwrap().handle_message(
             &mut self.entities.borrow_mut(),
             id,
             message
@@ -696,7 +706,7 @@ impl GameServer
 
         let message = some_or_return!{self.entities.borrow_mut().handle_message(
             &mut self.connection_handler.lock(),
-            &mut self.world.as_mut().unwrap().entities_saver,
+            &mut self.world.borrow_mut().as_mut().unwrap().entities_saver,
             message
         )};
 
@@ -704,6 +714,8 @@ impl GameServer
         {
             Message::SpawnEnemy{id, pos} =>
             {
+                self.world.borrow().as_ref().unwrap().verify_empty_lazy();
+
                 let enemy_info = enemy_creator::create(
                     &self.data_infos.enemies_info,
                     &self.data_infos.characters_info,
@@ -713,13 +725,15 @@ impl GameServer
                     pos
                 );
 
+                self.world.borrow_mut().as_mut().unwrap().apply_lazy_updates();
+
                 let message = self.entities.borrow_mut().push_message(enemy_info).0;
 
                 self.send_message(message);
             },
             Message::PlayerDisconnect{time, restart, host} =>
             {
-                if let (Some(world), Some(time)) = (self.world.as_mut(), time)
+                if let (Some(world), Some(time)) = (self.world.borrow_mut().as_mut(), time)
                 {
                     world.time = time;
                 }

@@ -189,6 +189,11 @@ impl World
         &self.tilemap
     }
 
+    pub fn tilemap_clone(&self) -> Arc<TileMap>
+    {
+        self.tilemap.clone()
+    }
+
     pub fn tile_info(&self, tile: Tile) -> &TileInfo
     {
         self.tilemap.info(tile)
@@ -458,11 +463,16 @@ impl World
         self.tile(pos).copied() == Some(tile)
     }
 
+    pub fn verify_empty_lazy(&self)
+    {
+        debug_assert!(self.lazy_tile_sets.is_empty());
+    }
+
     pub fn apply_lazy_updates(&mut self, passer: &mut ConnectionsHandler)
     {
         let tiles = mem::take(&mut self.lazy_tile_sets);
 
-        self.set_tiles(passer, tiles.into_iter());
+        self.set_tiles(passer, tiles);
     }
 
     pub fn time(&self) -> f64

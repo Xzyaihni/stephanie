@@ -1,11 +1,12 @@
 use std::{
+    rc::Rc,
     net::{TcpStream, TcpListener},
     sync::mpsc::Sender
 };
 
 use crate::common::{
     DataInfos,
-    TileMapWithTextures,
+    TileMap,
     loot::ServerScripts
 };
 
@@ -29,7 +30,7 @@ pub struct Server
 impl Server
 {
     pub fn new(
-        tilemap: TileMapWithTextures,
+        tilemap: Rc<TileMap>,
         data_infos: DataInfos,
         server_scripts: ServerScripts,
         world_name: String,
@@ -40,7 +41,7 @@ impl Server
         let listener = TcpListener::bind(address)?;
 
         let (connector, game_server) = GameServer::new(
-            tilemap.tilemap,
+            tilemap,
             data_infos,
             server_scripts,
             world_name,

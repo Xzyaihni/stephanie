@@ -874,7 +874,9 @@ pub struct UiDeferredInfo<Id>
     scissor: Option<Id>,
     position: Option<Vector2<f32>>,
     width: ResolvedSize,
-    height: ResolvedSize
+    height: ResolvedSize,
+    width_resolved_rest: bool,
+    height_resolved_rest: bool
 }
 
 impl<Id> Default for UiDeferredInfo<Id>
@@ -885,7 +887,9 @@ impl<Id> Default for UiDeferredInfo<Id>
             scissor: None,
             position: None,
             width: ResolvedSize::default(),
-            height: ResolvedSize::default()
+            height: ResolvedSize::default(),
+            width_resolved_rest: false,
+            height_resolved_rest: false
         }
     }
 }
@@ -900,7 +904,9 @@ impl<Id: Idable> UiDeferredInfo<Id>
             scissor: None,
             position: Some(Vector2::zeros()),
             width: one(aspect.x),
-            height: one(aspect.y)
+            height: one(aspect.y),
+            width_resolved_rest: false,
+            height_resolved_rest: false
         }
     }
 
@@ -1086,6 +1092,8 @@ impl<Id: Idable> UiDeferredInfo<Id>
         self.width.resolved()
             && self.height.resolved()
             && self.position.is_some()
+            && self.width_resolved_rest
+            && self.height_resolved_rest
     }
 }
 
@@ -1143,7 +1151,7 @@ impl<Id: Idable> TreeElement<Id>
 
     pub fn resolve_backward(
         trees: &mut Vec<TreeElement<Id>>,
-        resolved: &mut HashMap<Id, UiDeferredInfo<Id>>,
+        resolved_map: &mut HashMap<Id, UiDeferredInfo<Id>>,
         index: usize,
         sizer: &TextureSizer
     ) -> ResolvedBackward
@@ -1157,7 +1165,7 @@ impl<Id: Idable> TreeElement<Id>
             {
                 let x = trees[index].children[i];
 
-                infos.push(Self::resolve_backward(trees, resolved, x, sizer));
+                infos.push(Self::resolve_backward(trees, resolved_map, x, sizer));
             }
 
             infos
@@ -1176,9 +1184,9 @@ impl<Id: Idable> TreeElement<Id>
                 infos
             );
 
-            if !previously_resolved && this.deferred.resolved()
+            if !previously_resolved
             {
-                resolved.insert(this.id.clone(), this.deferred.clone());
+                resolved_map.insert(this.id.clone(), this.deferred.clone());
             }
 
             resolved_info
@@ -1195,22 +1203,51 @@ impl<Id: Idable> TreeElement<Id>
                         let parallel = $is_width ^ (!this.element.children_layout.is_horizontal());
 
                         let children: Vec<_> = this.children.iter().copied().collect();
-                        ResolvedSize::resolve_rest(
+
+                        let mut modified = Vec::new();
+
+                        let this_resolved = ResolvedSize::resolve_rest(
                             trees,
                             parallel,
                             $name,
-                            |trees, index| &mut trees[index].deferred.$name.size,
+                            |trees, index, modifying|
+                            {
+                                if modifying
+                                {
+                                    modified.push(index);
+                                }
+
+                                &mut trees[index].deferred.$name.size
+                            },
                             |trees, index| trees[index].deferred.$name.minimum_size,
                             |trees, index| &trees[index].element.$name.size,
                             children.into_iter()
                         );
+
+                        modified.into_iter().for_each(|index|
+                        {
+                            let this = &trees[index];
+                            resolved_map.insert(this.id.clone(), this.deferred.clone());
+                        });
+
+                        this_resolved
+                    } else
+                    {
+                        false
                     }
                 }
             }
         }
 
-        for_children!(width, true);
-        for_children!(height, false);
+        if !trees[index].deferred.width_resolved_rest
+        {
+            trees[index].deferred.width_resolved_rest = for_children!(width, true);
+        }
+
+        if !trees[index].deferred.height_resolved_rest
+        {
+            trees[index].deferred.height_resolved_rest = for_children!(height, false);
+        }
 
         resolved
     }
@@ -1226,7 +1263,7 @@ impl<Id: Idable> TreeElement<Id>
         Id: Idable
     {
         let is_resolved = trees[index].deferred.resolved();
-        if !is_resolved
+        if !is_resolved && parent_index.is_some()
         {
             let parent_index = parent_index.unwrap();
             let (this, parent, previous) = if let Some(previous) = previous
@@ -1724,7 +1761,11 @@ impl<Id: Idable> Controller<Id>
 
             if i == (LIMIT - 1)
             {
-                eprintln!("{created_trees:#?}");
+                created_trees.iter().enumerate().for_each(|(index, tree)|
+                {
+                    eprintln!("{index}: {tree:#?}");
+                });
+
                 panic!("must be resolved");
             }
         }

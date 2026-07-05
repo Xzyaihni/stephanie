@@ -1,5 +1,6 @@
 use std::{
     fs,
+    mem,
     path::PathBuf,
     sync::Arc,
     rc::Rc,
@@ -43,6 +44,7 @@ use crate::{
             LocalPos,
             GlobalPos,
             Pos3,
+            ChunkLocal,
             overmap::{Overmap, OvermapIndexing, OvermapIndexing3d, CommonIndexing}
         }
     }
@@ -154,6 +156,7 @@ pub struct World
     server_scripts: Rc<ServerScripts>,
     overmaps: OvermapsType,
     client_indexers: HashMap<ConnectionId, EntitiesTracker>,
+    lazy_tile_sets: Vec<(TilePos, Tile)>,
     pub time: f64
 }
 
@@ -200,26 +203,125 @@ impl World
             server_scripts,
             overmaps,
             client_indexers,
+            lazy_tile_sets: Vec::new(),
             time
         })
     }
 
-    fn set_tile_local(&mut self, pos: TilePos, tile: Tile)
+    fn set_tile_local(&mut self, pos: TilePos, tile: Tile) -> bool
     {
-        self.modify_chunk(pos, |chunk|
+        self.modify_chunk(pos.chunk, |chunk|
         {
-            *chunk = chunk.with_set_tile(pos.local, tile);
-        });
+            let pos = pos.local;
+
+            let changed = chunk[pos] != tile;
+
+            if changed
+            {
+                *chunk = chunk.with_set_tile(pos, tile);
+            }
+
+            changed
+        })
     }
 
-    pub fn modify_chunk(&mut self, pos: TilePos, f: impl FnOnce(&mut Chunk))
+    fn set_tiles_local(&mut self, iter: impl IntoIterator<Item=(TilePos, Tile)>) -> Vec<(TilePos, Tile)>
     {
-        if let Some(mut chunk) = self.chunk_saver.load(pos.chunk)
-        {
-            f(&mut chunk);
+        let mut chunk_sets: Vec<(GlobalPos, Vec<(ChunkLocal, Tile)>)> = Vec::new();
 
-            self.chunk_saver.save(pos.chunk, chunk);
+        iter.into_iter().for_each(|(pos, tile)|
+        {
+            let pair = (pos.local, tile);
+
+            if let Some((_pos, group)) = chunk_sets.iter_mut().find(|(group_pos, _)| *group_pos == pos.chunk)
+            {
+                group.push(pair);
+            } else
+            {
+                chunk_sets.push((pos.chunk, vec![pair]));
+            }
+        });
+
+        let mut changed_sets = Vec::new();
+
+        chunk_sets.into_iter().for_each(|(chunk_pos, sets)|
+        {
+            self.modify_chunk(chunk_pos, |chunk|
+            {
+                sets.into_iter().fold(false, |any_changed, (pos, tile)|
+                {
+                    let changed = chunk[pos] != tile;
+
+                    if changed
+                    {
+                        *chunk = chunk.with_set_tile(pos, tile);
+
+                        changed_sets.push((TilePos{chunk: chunk_pos, local: pos}, tile));
+                    }
+
+                    any_changed || changed
+                })
+            });
+        });
+
+        changed_sets
+    }
+
+    pub fn set_tiles(&mut self, iter: impl IntoIterator<Item=(TilePos, Tile)>)
+    {
+        let changed = self.set_tiles_local(iter);
+
+        if changed.is_empty()
+        {
+            return;
         }
+
+        let message = if changed.len() == 1
+        {
+            let (pos, tile) = changed.into_iter().next().expect("must be length 1");
+
+            Message::SetTile{pos, tile}
+        } else
+        {
+            Message::SetTiles(changed)
+        };
+
+        self.message_handler.lock().send_message(message);
+    }
+
+    pub fn set_tile_lazy(&mut self, pos: TilePos, tile: Tile)
+    {
+        self.lazy_tile_sets.push((pos, tile));
+    }
+
+    pub fn verify_empty_lazy(&self)
+    {
+        debug_assert!(self.lazy_tile_sets.is_empty());
+    }
+
+    pub fn apply_lazy_updates(&mut self)
+    {
+        let tiles = mem::take(&mut self.lazy_tile_sets);
+
+        self.set_tiles(tiles);
+    }
+
+    pub fn modify_chunk(&mut self, pos: GlobalPos, f: impl FnOnce(&mut Chunk) -> bool) -> bool
+    {
+        if let Some(mut chunk) = self.chunk_saver.load(pos)
+        {
+            let changed = f(&mut chunk);
+
+            if changed
+            {
+                self.chunk_saver.save(pos, chunk);
+            }
+
+            return changed;
+        }
+
+        // doesnt modify tiles if the chunk theyre in doesnt exist yet
+        false
     }
 
     pub fn add_player(
@@ -566,11 +668,7 @@ impl World
             },
             Message::SetTiles(tiles) =>
             {
-                tiles.into_iter().for_each(|(pos, tile)|
-                {
-                    self.set_tile_local(pos, tile);
-                });
-
+                self.set_tiles_local(tiles);
                 None
             },
             Message::ChunkRequest{pos} =>

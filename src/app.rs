@@ -43,7 +43,7 @@ use yanyaengine::{
 use crate::{
     LONGEST_FRAME,
     debug_config::*,
-    main_menu::{MainMenu, MenuAction},
+    main_menu::{OnlineMode, MainMenu, MenuAction},
     server::Server,
     client::{
         Client,
@@ -579,7 +579,7 @@ impl YanyaApp for App
 
                         let (tx, rx) = mpsc::channel();
 
-                        let listen_outside = false;
+                        let listen_outside = client_info.online_mode == OnlineMode::Host;
 
                         let tilemap = self.tilemap.clone();
                         let server_loot = self.server_scripts_info.clone();
@@ -587,123 +587,142 @@ impl YanyaApp for App
 
                         let world_name = client_info.name.world_name();
 
-                        self.server_handle = thread::Builder::new().name("stephy_server".to_owned()).spawn(move ||
+                        let address = if client_info.online_mode != OnlineMode::Client
                         {
-                            let port = 0;
+                            self.server_handle = thread::Builder::new().name("stephy_server".to_owned()).spawn(move ||
+                            {
+                                let port = 0;
 
-                            let listen_address = format!("{}:{port}", if listen_outside { "0.0.0.0" } else { "127.0.0.1" });
+                                let listen_address = format!("{}:{port}", if listen_outside { "0.0.0.0" } else { "127.0.0.1" });
 
-                            let server_entities = Rc::new(RefCell::new(Weak::new()));
-                            let server_message_sender = Rc::new(RefCell::new(None));
+                                let tilemap = Rc::new(tilemap.tilemap);
 
-                            let server_loot = {
-                                let enemy_primitives = Rc::new(server_info_primitives(
-                                    server_entities.clone(),
-                                    data_infos.clone(),
-                                    server_message_sender.clone()
-                                ));
+                                let server_entities = Rc::new(RefCell::new(Weak::new()));
+                                let server_world = Rc::new(RefCell::new(Weak::new()));
+                                let server_message_sender = Rc::new(RefCell::new(None));
 
-                                let c = |s: Option<ServerScriptSingleInfo>| -> Generator
-                                {
-                                    s.map(|s| loot_compile(s.name, &s.code)).unwrap_or_default()
+                                let server_loot = {
+                                    let enemy_primitives = Rc::new(server_info_primitives(
+                                        tilemap.clone(),
+                                        server_world.clone(),
+                                        server_entities.clone(),
+                                        data_infos.clone(),
+                                        server_message_sender.clone()
+                                    ));
+
+                                    let c = |s: Option<ServerScriptSingleInfo>| -> Generator
+                                    {
+                                        s.map(|s| loot_compile(s.name, &s.code)).unwrap_or_default()
+                                    };
+
+                                    ServerScripts{
+                                        furniture: server_loot.furniture.into_iter().map(|x| x.map(c)).collect(),
+                                        enemy: server_loot.enemy.into_iter().map(|x| -> EnemyScriptsInfo<Generator>
+                                        {
+                                            let on_create = x.on_create.map(|s|
+                                            {
+                                                let memory = LispMemory::new(enemy_primitives.clone(), 128, 1 << 10);
+
+                                                let config = LispConfig{
+                                                    memory,
+                                                    env_variables: vec!["caller-transform".to_owned()],
+                                                    ..Default::default()
+                                                };
+
+                                                let lisp = match Lisp::new_with_config(config, &[&s.code])
+                                                {
+                                                    Ok(mut lisp) =>
+                                                    {
+                                                        lisp.set_source_name(0, s.name.clone());
+
+                                                        Some(lisp)
+                                                    },
+                                                    Err(err) =>
+                                                    {
+                                                        eprintln!("error parsing on_use for enemy `{}`: {err}", &s.name);
+
+                                                        None
+                                                    }
+                                                };
+
+                                                Generator::new_raw(lisp)
+                                            }).unwrap_or_default();
+
+                                            EnemyScriptsInfo{
+                                                on_create,
+                                                on_contents: c(x.on_contents),
+                                                on_equip: c(x.on_equip)
+                                            }
+                                        }).collect()
+                                    }
                                 };
 
-                                ServerScripts{
-                                    furniture: server_loot.furniture.into_iter().map(|x| x.map(c)).collect(),
-                                    enemy: server_loot.enemy.into_iter().map(|x| -> EnemyScriptsInfo<Generator>
-                                    {
-                                        let on_create = x.on_create.map(|s|
-                                        {
-                                            let memory = LispMemory::new(enemy_primitives.clone(), 128, 1 << 10);
+                                let x = Server::new(
+                                    tilemap,
+                                    data_infos,
+                                    server_loot,
+                                    world_name,
+                                    &listen_address,
+                                    16
+                                );
 
-                                            let config = LispConfig{
-                                                memory,
-                                                env_variables: vec!["caller-transform".to_owned()],
-                                                ..Default::default()
-                                            };
+                                let (mut game_server, mut server) = match x
+                                {
+                                    Ok(x) => x,
+                                    Err(err) => panic!("{err}")
+                                };
 
-                                            let lisp = match Lisp::new_with_config(config, &[&s.code])
-                                            {
-                                                Ok(mut lisp) =>
-                                                {
-                                                    lisp.set_source_name(0, s.name.clone());
+                                *server_entities.borrow_mut() = game_server.entities();
+                                *server_world.borrow_mut() = game_server.world();
+                                *server_message_sender.borrow_mut() = Some(game_server.sender());
 
-                                                    Some(lisp)
-                                                },
-                                                Err(err) =>
-                                                {
-                                                    eprintln!("error parsing on_use for enemy `{}`: {err}", &s.name);
+                                let port = server.port();
+                                tx.send(port).unwrap();
 
-                                                    None
-                                                }
-                                            };
+                                thread::spawn(move ||
+                                {
+                                    server.run();
+                                });
 
-                                            Generator::new_raw(lisp)
-                                        }).unwrap_or_default();
-
-                                        EnemyScriptsInfo{
-                                            on_create,
-                                            on_contents: c(x.on_contents),
-                                            on_equip: c(x.on_equip)
-                                        }
-                                    }).collect()
-                                }
-                            };
-
-                            let x = Server::new(
-                                tilemap,
-                                data_infos,
-                                server_loot,
-                                world_name,
-                                &listen_address,
-                                16
-                            );
-
-                            let (mut game_server, mut server) = match x
+                                waiting_loop(||
+                                {
+                                    crate::frame_time_this!{
+                                        [] -> server_update,
+                                        game_server.update(DELTA_TIME as f32)
+                                    }
+                                });
+                            }).map_or_else(|err|
                             {
-                                Ok(x) => x,
-                                Err(err) => panic!("{err}")
-                            };
+                                eprintln!("failed to start the server thread: {err}");
 
-                            *server_entities.borrow_mut() = game_server.entities();
-                            *server_message_sender.borrow_mut() = Some(game_server.sender());
+                                None
+                            }, Some);
 
-                            let port = server.port();
-                            tx.send(port).unwrap();
-
-                            thread::spawn(move ||
+                            if self.server_handle.is_none()
                             {
-                                server.run();
-                            });
+                                self.exit();
+                                return;
+                            }
 
-                            waiting_loop(||
+                            let port = rx.recv().unwrap();
+
+                            if client_info.online_mode == OnlineMode::Host
                             {
-                                crate::frame_time_this!{
-                                    [] -> server_update,
-                                    game_server.update(DELTA_TIME as f32)
-                                }
-                            });
-                        }).map_or_else(|err|
+                                eprintln!("listening on port {port}");
+                            }
+
+                            format!("127.0.0.1:{port}")
+                        } else
                         {
-                            eprintln!("failed to start the server thread: {err}");
-
-                            None
-                        }, Some);
-
-                        if self.server_handle.is_none()
-                        {
-                            self.exit();
-                            return;
-                        }
-
-                        let port = rx.recv().unwrap();
+                            client_info.address.text
+                        };
 
                         let mut info = partial_info.to_full(&self.client.camera.read());
 
                         let client_info = ClientInfo{
-                            address: client_info.address.unwrap_or_else(|| format!("127.0.0.1:{port}")),
+                            address,
                             name: client_info.name.display_name(),
-                            host: client_info.host,
+                            host: client_info.online_mode != OnlineMode::Client,
                             debug: client_info.debug,
                             mouse_position: x.mouse_position(),
                             controls: x.bindings()
