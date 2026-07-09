@@ -339,7 +339,11 @@ impl ItemInfo
 
             let config = LispConfig{
                 memory,
-                env_variables: vec!["caller-entity".to_owned(), "caller-item-inventory-id".to_owned()],
+                env_variables: vec![
+                    "caller-entity".to_owned(),
+                    "caller-item-inventory-id".to_owned(),
+                    "mouse-entity".to_owned()
+                ],
                 ..Default::default()
             };
 

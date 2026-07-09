@@ -350,19 +350,6 @@
         "texture": "glock"
     },
     {
-        "name": "shinebiimu",
-        "ranged": {
-            "Gun": {
-                "exit_offset": 0.0,
-                "cooldown": 0.01,
-                "damage": 1000000
-            }
-        },
-        "mass": 0.01,
-        "durability": 999999.0,
-        "texture": "bullet"
-    },
-    {
         "name": "bullet",
         "rarity_rolls": false,
         "comfort": 0.5,
@@ -428,5 +415,32 @@
         "mass": 0.4,
         "durability": 0.5,
         "lighting": 2.0
+    },
+    {
+        "name": "tileremover",
+        "mass": 0.01,
+        "durability": 999999.0,
+        "on_use": "(load-once \"items.scm\")(let ((closest (closest-tile (entity->position mouse-entity)))) (if (tile-air? (get-tile closest)) (remove-tile (offset-tile closest '(0 0 -1))) (remove-tile closest)))",
+        "texture": "stick"
+    },
+    {
+        "name": "tilesetter",
+        "mass": 0.01,
+        "durability": 999999.0,
+        "on_use": "(load-once \"items.scm\")(let ((closest (closest-tile (entity->position mouse-entity)))) (if (tile-air? (get-tile closest)) (set-tile closest 'concrete)))",
+        "texture": "stick"
+    },
+    {
+        "name": "shinebiimu",
+        "ranged": {
+            "Gun": {
+                "exit_offset": 0.0,
+                "cooldown": 0.01,
+                "damage": 1000000
+            }
+        },
+        "mass": 0.01,
+        "durability": 999999.0,
+        "texture": "stick"
     }
 ]

@@ -279,6 +279,11 @@ impl Game
                                 with_error(memory.define("caller-entity", entity));
                             }
 
+                            if let Some(entity) = with_error(push_entity(memory, self.info.borrow().mouse_entity))
+                            {
+                                with_error(memory.define("mouse-entity", entity));
+                            }
+
                             with_error(memory.define("caller-item-inventory-id", (item.as_raw() as i32).into()));
                         })
                         {

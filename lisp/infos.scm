@@ -7,8 +7,7 @@
 
 (define (local? x) (car (cdr x)))
 
-(define (transform-position transform)
-    (list-ref transform 0))
+(define transform-position car)
 
 (define (transform-scale transform)
     (list-ref transform 1))
@@ -63,6 +62,10 @@
                         (map
                             (lambda (x) (- (car x) (cdr x)))
                             (zip a-pos b-pos))))))))
+
+(define tile-air? null?)
+
+(define (remove-tile pos) (set-tile pos 'air))
 
 (define (spawn-enemy-clean enemy pos)
     ; remove tiles here

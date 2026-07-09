@@ -94,7 +94,7 @@ pub fn parse_position(value: OutputWrapperRef) -> Result<Vector3<f32>, lisp::Err
 
 pub fn parse_tile_position(value: OutputWrapperRef) -> Result<TilePos, lisp::Error>
 {
-    let LispList{car: tile_pos, cdr: chunk_pos} = value.as_list()?;
+    let LispList{car: chunk_pos, cdr: tile_pos} = value.as_list()?;
 
     Ok(TilePos{
         local: ChunkLocal::from(Pos3::from(parse_position_with(tile_pos, |x| x.as_integer())?.map(|x| x as usize))),
@@ -133,6 +133,33 @@ pub fn push_transform(memory: &mut LispMemory, transform: Transform) -> Result<L
     Ok(transform_list)
 }
 
+fn push_tilepos(memory: &mut LispMemory, tile_pos: TilePos) -> Result<LispValue, lisp::Error>
+{
+    let restore = memory.with_saved_registers([Register::Temporary, Register::Value]);
+
+    {
+        let mut push_position = |target: Register, pos: Pos3<i32>| -> Result<(), lisp::Error>
+        {
+            let lst = memory.cons_list([pos.x, pos.y, pos.z])?;
+
+            memory.set_register(target, lst);
+
+            Ok(())
+        };
+
+        push_position(Register::Temporary, tile_pos.chunk.0)?;
+        push_position(Register::Value, tile_pos.local.pos().map(|x| x as i32))?;
+    }
+
+    memory.cons(Register::Temporary, Register::Temporary, Register::Value)?;
+
+    let tile_pos_pair = memory.get_register(Register::Temporary);
+
+    restore(memory)?;
+
+    Ok(tile_pos_pair)
+}
+
 fn entity_transform_common(entities: &impl AnyEntities, mut args: PrimitiveArgs) -> Result<LispValue, lisp::Error>
 {
     let entity = parse_entity(entities, args.next_value().unwrap())?;
@@ -162,6 +189,37 @@ fn world_set_tile_common(
     Ok(().into())
 }
 
+fn world_get_tile_common(
+    mut args: PrimitiveArgs,
+    handler: impl FnOnce(TilePos) -> Option<Tile>
+) -> Result<LispValue, lisp::Error>
+{
+    let pos = parse_tile_position(args.next_value().unwrap())?;
+
+    handler(pos).map(|tile|
+    {
+        tile.as_lisp_value(args.memory)
+    }).unwrap_or(Ok(LispValue::from(())))
+}
+
+fn add_tile_position_primitives(primitives: &mut Primitives)
+{
+    primitives.add("closest-tile", PrimitiveProcedureInfo::new_simple(1, Effect::PureAllocating, move |mut args|
+    {
+        let pos = parse_position(args.next_value().unwrap())?;
+
+        push_tilepos(args.memory, TilePos::from(pos))
+    }));
+
+    primitives.add("offset-tile", PrimitiveProcedureInfo::new_simple(2, Effect::PureAllocating, move |mut args|
+    {
+        let tile_pos = parse_tile_position(args.next_value().unwrap())?;
+        let offset = parse_position_with(args.next_value().unwrap(), |x| x.as_integer())?;
+
+        push_tilepos(args.memory, tile_pos.offset(offset.into()))
+    }));
+}
+
 type MessageSenderType = Rc<RefCell<Option<Sender<(ConnectionId, Message, Option<Entity>)>>>>;
 
 fn upgraded<T>(
@@ -183,6 +241,8 @@ pub fn server_info_primitives(
 ) -> Primitives
 {
     let mut primitives = Primitives::default();
+
+    add_tile_position_primitives(&mut primitives);
 
     fn with_entities<T>(
         entities: &Rc<RefCell<Weak<RefCell<ServerEntities>>>>,
@@ -258,6 +318,8 @@ pub fn server_info_primitives(
 
 pub fn add_info_primitives(primitives: &mut Primitives, game_state: Rc<RefCell<Weak<RefCell<GameState>>>>)
 {
+    add_tile_position_primitives(primitives);
+
     fn with_game_state<T>(
         game_state: &Rc<RefCell<Weak<RefCell<GameState>>>>,
         f: impl FnOnce(&mut GameState) -> Result<T, lisp::Error>
@@ -367,6 +429,18 @@ pub fn add_info_primitives(primitives: &mut Primitives, game_state: Rc<RefCell<W
                 let tilemap = game_state.world.tilemap_clone();
 
                 world_set_tile_common(&tilemap, args, |pos, id| game_state.world.set_tile_lazy(pos, id))
+            })
+        }));
+    }
+
+    {
+        let game_state = game_state.clone();
+
+        primitives.add("get-tile", PrimitiveProcedureInfo::new_simple(1, Effect::Impure, move |args|
+        {
+            with_game_state(&game_state, |game_state|
+            {
+                world_get_tile_common(args, |pos| game_state.world.tile(pos).cloned())
             })
         }));
     }
