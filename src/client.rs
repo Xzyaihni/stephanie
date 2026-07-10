@@ -34,7 +34,7 @@ use crate::{
     common::{
         some_or_value,
         some_or_return,
-        ClientLoot,
+        ClientScripts,
         DataInfos,
         MessagePasser,
         items_info::ScriptsContainer,
@@ -81,7 +81,7 @@ pub struct ClientInitInfo
     pub tilemap: TileMapWithTextures,
     pub data_infos: DataInfos,
     pub scripts: ScriptsContainer,
-    pub loot: ClientLoot
+    pub client_scripts: ClientScripts
 }
 
 pub struct ClientInfo
@@ -190,7 +190,7 @@ impl Client
             timestamp_query,
             data_infos: client_init_info.data_infos,
             scripts: Rc::new(client_init_info.scripts),
-            loot: Rc::new(client_init_info.loot),
+            client_scripts: Rc::new(client_init_info.client_scripts),
             tiles_factory,
             anatomy_locations,
             common_textures

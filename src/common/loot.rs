@@ -268,7 +268,7 @@ impl DoorGenerator
 }
 
 #[derive(Clone)]
-pub struct ClientLoot
+pub struct ClientScripts
 {
     pub furniture: Vec<ClientFurnitureLootInfo>,
     pub tile: Vec<TileLootInfo>,
@@ -276,7 +276,7 @@ pub struct ClientLoot
     pub door: DoorGenerator
 }
 
-impl ClientLoot
+impl ClientScripts
 {
     pub fn furniture_generator(&self, id: FurnitureId) -> &ClientFurnitureLootInfo
     {

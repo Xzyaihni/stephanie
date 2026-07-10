@@ -36,7 +36,7 @@ use crate::{
         systems::{raycast_system, collider_system, player_system},
         ENTITY_SCALE,
         SCREENSHAKE_DISTANCE,
-        ClientLoot,
+        ClientScripts,
         SpatialGrid,
         EntityInfo,
         Transform,
@@ -59,7 +59,7 @@ const HIGHLIGHT_DURATION: f32 = 0.2;
 fn damage_common_health(
     entities: &ClientEntities,
     textures: &CommonTextures,
-    loot: &ClientLoot,
+    scripts: &ClientScripts,
     do_screenshake: impl FnOnce(f32),
     entity: Entity,
     damage: f32
@@ -106,7 +106,7 @@ fn damage_common_health(
 
             do_screenshake(MEDIUM_SCREENSHAKE * screenshake_factor);
 
-            destroy_entity(entities, textures, loot, entity);
+            destroy_entity(entities, textures, scripts, entity);
         }
 
         true
@@ -119,7 +119,7 @@ fn damage_common_health(
 pub fn fall_damage(
     entities: &ClientEntities,
     textures: &CommonTextures,
-    loot: &ClientLoot,
+    scripts: &ClientScripts,
     entity: Entity,
     damage: f32
 )
@@ -142,7 +142,7 @@ pub fn fall_damage(
         anatomy.fall_damage(damage);
     }
 
-    damage_common_health(entities, textures, loot, |amount|
+    damage_common_health(entities, textures, scripts, |amount|
     {
         screenshook = true;
         screenshake_near(amount)
@@ -180,7 +180,7 @@ fn damager<'a, 'b>(
     world: &'b mut World,
     space: &'a SpatialGrid,
     entities: &'a ClientEntities,
-    loot: &'a ClientLoot,
+    scripts: &'a ClientScripts,
     textures: &'a CommonTextures
 ) -> impl FnMut(DamagingResult) + use<'a, 'b>
 {
@@ -297,7 +297,7 @@ fn damager<'a, 'b>(
                     |weak, angle| ParticlesKind::Dust{direction: Some(ParticleDirection{weak, angle})}
                 };
 
-                damage_entity(entities, textures, loot, entity, result.other_entity, damage);
+                damage_entity(entities, textures, scripts, entity, result.other_entity, damage);
 
                 create_particles(result.damage_entry, true, particle);
                 if let Some(position) = result.damage_exit
@@ -376,8 +376,8 @@ fn damager<'a, 'b>(
                         player.borrow_mut().screenshake.set(MEDIUM_SCREENSHAKE);
                     });
 
-                    destroy_tile_dependent(entities, textures, space, loot, tile_pos);
-                    spawn_items(entities, textures, &transform, &loot.tile_generator(tile_id).on_destroy);
+                    destroy_tile_dependent(entities, textures, space, scripts, tile_pos);
+                    spawn_items(entities, textures, &transform, &scripts.tile_generator(tile_id).on_destroy);
                 }
 
                 create_particles(
@@ -690,7 +690,7 @@ pub fn update(
     entities: &mut ClientEntities,
     space: &SpatialGrid,
     world: &mut World,
-    loot: &ClientLoot,
+    scripts: &ClientScripts,
     passer: &mut ConnectionsHandler,
     textures: &CommonTextures
 )
@@ -716,7 +716,7 @@ pub fn update(
 
     world.verify_empty_lazy();
 
-    damage_entities.into_iter().for_each(damager(world, space, entities, loot, textures));
+    damage_entities.into_iter().for_each(damager(world, space, entities, scripts, textures));
 
     world.apply_lazy_updates(passer);
 }
@@ -865,7 +865,7 @@ fn spawn_items(
     });
 }
 
-fn destroy_entity(entities: &ClientEntities, textures: &CommonTextures, loot: &ClientLoot, entity: Entity)
+fn destroy_entity(entities: &ClientEntities, textures: &CommonTextures, scripts: &ClientScripts, entity: Entity)
 {
     let transform = some_or_return!(entities.transform(entity));
 
@@ -892,10 +892,10 @@ fn destroy_entity(entities: &ClientEntities, textures: &CommonTextures, loot: &C
 
     let generator = if let Some(furniture_id) = entities.furniture(entity)
     {
-        &loot.furniture_generator(*furniture_id).on_destroy
+        &scripts.furniture_generator(*furniture_id).on_destroy
     } else if let Some(door) = entities.door(entity)
     {
-        loot.door.create(&entities.infos().items_info, &door)
+        scripts.door.create(&entities.infos().items_info, &door)
             .into_iter()
             .for_each(|item|
             {
@@ -920,7 +920,7 @@ fn destroy_tile_dependent(
     entities: &ClientEntities,
     textures: &CommonTextures,
     space: &SpatialGrid,
-    loot: &ClientLoot,
+    scripts: &ClientScripts,
     tile_pos: TilePos
 )
 {
@@ -968,7 +968,7 @@ fn destroy_tile_dependent(
 
         if collided
         {
-            destroy_entity(entities, textures, loot, entity);
+            destroy_entity(entities, textures, scripts, entity);
         }
     };
 
@@ -1074,7 +1074,7 @@ fn turn_towards_other(
 pub fn damage_entity(
     entities: &ClientEntities,
     textures: &CommonTextures,
-    loot: &ClientLoot,
+    scripts: &ClientScripts,
     entity: Entity,
     other_entity: Entity,
     damage: Damage
@@ -1097,7 +1097,7 @@ pub fn damage_entity(
 
     let mut screenshook = false;
 
-    damage_common_health(entities, textures, loot, |amount|
+    damage_common_health(entities, textures, scripts, |amount|
     {
         screenshook = true;
         if let Some(mut player) = entities.player_mut_no_change(other_entity)

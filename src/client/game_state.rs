@@ -50,7 +50,7 @@ use crate::{
         particle_creator::*,
         SpatialGrid,
         Sprite,
-        ClientLoot,
+        ClientScripts,
         MessagePasser,
         ClientLight,
         TileMap,
@@ -215,7 +215,7 @@ impl ClientEntitiesContainer
         &mut self,
         world: &mut World,
         passer: &mut ConnectionsHandler,
-        loot: &ClientLoot,
+        scripts: &ClientScripts,
         common_textures: &CommonTextures,
         _is_trusted: bool,
         dt: f32
@@ -279,7 +279,7 @@ impl ClientEntitiesContainer
 
         let contacts = crate::frame_time_this!{
             [update, update_pre] -> collider_system_update,
-            collider_system::update(&mut self.entities, world, space, common_textures, loot)
+            collider_system::update(&mut self.entities, world, space, common_textures, scripts)
         };
 
         crate::frame_time_this!{
@@ -304,7 +304,7 @@ impl ClientEntitiesContainer
 
         crate::frame_time_this!{
             [update, update_pre] -> damaging_system_update,
-            damaging_system::update(&mut self.entities, space, world, loot, passer, common_textures)
+            damaging_system::update(&mut self.entities, space, world, scripts, passer, common_textures)
         };
 
         crate::frame_time_this!{
@@ -605,7 +605,7 @@ pub struct GameStateInfo
     pub timestamp_query: TimestampQuery,
     pub data_infos: DataInfos,
     pub scripts: Rc<ScriptsContainer>,
-    pub loot: Rc<ClientLoot>,
+    pub client_scripts: Rc<ClientScripts>,
     pub tiles_factory: TilesFactory,
     pub anatomy_locations: Rc<RefCell<dyn FnMut(&mut ObjectCreateInfo, &str) -> UiAnatomyLocations>>,
     pub common_textures: CommonTextures
@@ -838,7 +838,7 @@ pub struct GameState
     pub world: World,
     pub mouse_fraction: MouseInfo,
     pub scripts: Rc<ScriptsContainer>,
-    loot: Rc<ClientLoot>,
+    client_scripts: Rc<ClientScripts>,
     screen_object: SolidObject,
     mouse_object: Object,
     ui_camera: Camera,
@@ -1013,7 +1013,7 @@ impl GameState
             shaders: info.shaders,
             world,
             scripts: info.scripts,
-            loot: info.loot,
+            client_scripts: info.client_scripts,
             debug_mode: client_info.debug,
             tilemap,
             camera_scale: 1.0,
@@ -1707,7 +1707,7 @@ impl GameState
             self.entities.update(
                 &mut self.world,
                 &mut self.connections_handler,
-                &self.loot,
+                &self.client_scripts,
                 &self.common_textures,
                 self.is_trusted,
                 dt

@@ -56,7 +56,7 @@ pub use utility::*;
 pub use sides::{Side1d, Side2d, Side3d};
 
 pub use drug::Drug;
-pub use loot::{ClientLoot, ServerScripts};
+pub use loot::{ClientScripts, ServerScripts};
 pub use item::{Item, ItemRarity, ItemBuff};
 pub use items_info::{ItemUsage, ItemInfo, ItemId, ItemTag, ItemsInfo, Ranged};
 pub use crafting::Crafts;

@@ -442,7 +442,7 @@ impl YanyaApp for App
             "textures/tiles/"
         ).unwrap();
 
-        let client_loot = ClientLoot{
+        let client_loot = ClientScripts{
             furniture: client_furniture_loot_info,
             tile: tile_loot_info,
             empty: TileLootInfo::default(),
@@ -486,7 +486,7 @@ impl YanyaApp for App
             tilemap: tilemap.clone(),
             data_infos: data_infos.clone(),
             scripts,
-            loot: client_loot
+            client_scripts: client_loot
         };
 
         DebugConfig::on_start();
