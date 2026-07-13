@@ -14,6 +14,7 @@ use strum::{FromRepr, EnumString, EnumIter, IntoEnumIterator};
 use crate::common::{
     some_or_return,
     short_rotation,
+    SeededRandom,
     TileMap,
     DamageType,
     Side2d,
@@ -418,13 +419,23 @@ impl TileRotation
         }
     }
 
+    pub fn random_with(rng: &mut SeededRandom) -> Self
+    {
+        Self::from_index_fn(|len| rng.next_usize_between(0..len))
+    }
+
     pub fn random() -> Self
+    {
+        Self::from_index_fn(|len| fastrand::usize(0..len))
+    }
+
+    fn from_index_fn(f: impl FnOnce(usize) -> usize) -> Self
     {
         let mut iter = Self::iter();
 
         let len = iter.len();
 
-        iter.nth(fastrand::usize(0..len)).unwrap()
+        iter.nth(f(len)).unwrap()
     }
 }
 

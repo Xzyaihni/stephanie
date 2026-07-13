@@ -531,7 +531,7 @@ fn info_of(
     };
 
     let z = {
-        if let Some(x) = node_z_value(&z_mapper, position.z)
+        if let Some(x) = node_z_value(z_mapper, position.z)
         {
             x
         } else

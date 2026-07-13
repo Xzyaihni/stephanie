@@ -714,8 +714,6 @@ impl GameServer
         {
             Message::SpawnEnemy{id, pos} =>
             {
-                self.world.borrow().as_ref().unwrap().verify_empty_lazy();
-
                 let enemy_info = enemy_creator::create(
                     &self.data_infos.enemies_info,
                     &self.data_infos.characters_info,
@@ -725,9 +723,7 @@ impl GameServer
                     pos
                 );
 
-                self.world.borrow_mut().as_mut().unwrap().apply_lazy_updates();
-
-                let message = self.entities.borrow_mut().push_message(enemy_info).0;
+                let (message, _entity) = self.entities.borrow_mut().push_message(enemy_info);
 
                 self.send_message(message);
             },

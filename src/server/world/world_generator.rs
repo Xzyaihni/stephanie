@@ -890,9 +890,9 @@ impl<S: SaveLoad<WorldChunksBlock>> WorldGenerator<S>
 
         if let Some(local) = OvermapIndexing::<OvermapDimension2>::to_local(global_mapper, GlobalPos::new_2d(0, 0))
         {
-            wave_collapser.generate_single_maybe(local, ||
+            wave_collapser.generate_single_maybe(local, |wave_collapser|
             {
-                let random_rotation = TileRotation::random();
+                let random_rotation = TileRotation::random_with(&mut wave_collapser.rng);
                 self.rules.name_mappings().world_chunk.get(&(random_rotation, "bunker".to_owned())).map(|bunker_id|
                 {
                     WorldChunk::new(*bunker_id, Vec::new())
@@ -1474,6 +1474,7 @@ fn edge_map(pos: Pos2<usize>) -> Pos2<usize>
     pos + Pos2::repeat(ENTROPY_EDGE)
 }
 
+#[allow(clippy::useless_conversion)] // type changes on debug/release builds
 fn chunks_edge_logger(entropies: &Entropies) -> impl Fn(LocalPos<Pos2<usize>>) -> Option<WorldChunkId> + use<'_>
 {
     |local_pos|
@@ -1564,6 +1565,7 @@ impl Entropies
         mins
     }
 
+    #[allow(clippy::useless_conversion)] // type changes on debug/release builds
     fn lowest_entropy(&mut self, rng: &mut SeededRandom) -> Option<(LocalPos<Pos2<usize>>, &mut PossibleStates)>
     {
         let mins = self.lowest_entropies();
@@ -1781,6 +1783,7 @@ impl<'a, 'm> WaveCollapser<'a, 'm>
         &self.entropies
     }
 
+    #[allow(clippy::useless_conversion)] // type changes on debug/release builds
     fn verify_states(
         &self,
         global_mapper: &impl OvermapIndexing<OvermapDimension2>,
@@ -1835,7 +1838,7 @@ impl<'a, 'm> WaveCollapser<'a, 'm>
 
                     assert!(first_neighbors.is_sorted());
 
-                    assert!(other.states().len() > 0);
+                    assert!(!other.states().is_empty());
 
                     if !past_constrain && !other.collapsed()
                     {
@@ -1879,6 +1882,7 @@ impl<'a, 'm> WaveCollapser<'a, 'm>
         }
     }
 
+    #[allow(clippy::useless_conversion)] // type changes on debug/release builds
     fn constrain(&mut self, visited: &mut VisitedTracker, pos: LocalPos<Pos2<usize>>, allow_fallback: bool) -> bool
     {
         let fmt_2d = |p: Pos2<usize>| -> String
@@ -2025,14 +2029,16 @@ impl<'a, 'm> WaveCollapser<'a, 'm>
         chunk: C
     )
     where
-        C: FnOnce() -> WorldChunk
+        C: FnOnce(&mut Self) -> WorldChunk
     {
         if self.world_chunks[local].is_none()
         {
-            self.generate_single(local, chunk(), true);
+            let chunk = chunk(self);
+            self.generate_single(local, chunk, true);
         }
     }
 
+    #[allow(clippy::useless_conversion)] // type changes on debug/release builds
     pub fn generate_single(
         &mut self,
         local: LocalPos<Pos2<usize>>,

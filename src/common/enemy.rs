@@ -317,6 +317,7 @@ fn follow_path(
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Enemy
 {
+    pub on_create_called: bool,
     behavior: EnemyBehavior,
     #[serde(skip)]
     behavior_state: BehaviorState,
@@ -348,6 +349,7 @@ impl Enemy
             seen_timer: 0.0,
             seen_now: false,
             reset_state: false,
+            on_create_called: false,
             id,
             rng
         }
@@ -711,6 +713,11 @@ impl Enemy
     pub fn check_hostiles(&self) -> bool
     {
         !self.is_attacking() && ((self.hostile_check_timer <= 0.0) || self.seen_timer > 0.0)
+    }
+
+    pub fn id(&self) -> EnemyId
+    {
+        self.id
     }
 
     pub fn behavior(&self) -> &EnemyBehavior

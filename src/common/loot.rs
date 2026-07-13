@@ -42,7 +42,7 @@ fn parse_item(items_info: &ItemsInfo, value: OutputWrapperRef) -> Result<Item, l
     Ok(Item::new(items_info, id))
 }
 
-fn create_with_lisp<'a>(items_info: &ItemsInfo, lisp: &Lisp) -> Vec<Item>
+fn create_with_lisp(items_info: &ItemsInfo, lisp: &Lisp) -> Vec<Item>
 {
     let (memory, value) = match lisp.run()
     {
@@ -115,6 +115,11 @@ impl Generator
         Self(lisp)
     }
 
+    pub fn is_empty(&self) -> bool
+    {
+        self.0.is_none()
+    }
+
     pub fn run(&self)
     {
         self.run_with_memory(|_memory| {})
@@ -161,19 +166,17 @@ pub struct ClientFurnitureLootInfo
 }
 
 #[derive(Clone)]
-pub struct EnemyScriptsInfo<T>
+pub struct ServerEnemyScriptsInfo<T>
 {
-    pub on_create: T,
     pub on_contents: T,
     pub on_equip: T
 }
 
-impl<T> EnemyScriptsInfo<T>
+impl<T> ServerEnemyScriptsInfo<T>
 {
-    pub fn map<U>(self, mut f: impl FnMut(T) -> U) -> EnemyScriptsInfo<U>
+    pub fn map<U>(self, mut f: impl FnMut(T) -> U) -> ServerEnemyScriptsInfo<U>
     {
-        EnemyScriptsInfo{
-            on_create: f(self.on_create),
+        ServerEnemyScriptsInfo{
             on_contents: f(self.on_contents),
             on_equip: f(self.on_equip)
         }
@@ -197,14 +200,14 @@ pub struct ServerScriptSingleInfo
 pub struct ServerScriptsInfo
 {
     pub furniture: Vec<ServerFurnitureLootInfo<Option<ServerScriptSingleInfo>>>,
-    pub enemy: Vec<EnemyScriptsInfo<Option<ServerScriptSingleInfo>>>
+    pub enemy: Vec<ServerEnemyScriptsInfo<Option<ServerScriptSingleInfo>>>
 }
 
 #[derive(Clone, Default)]
 pub struct ServerScripts
 {
     pub furniture: Vec<ServerFurnitureLootInfo<Generator>>,
-    pub enemy: Vec<EnemyScriptsInfo<Generator>>
+    pub enemy: Vec<ServerEnemyScriptsInfo<Generator>>
 }
 
 impl ServerScripts
@@ -214,7 +217,7 @@ impl ServerScripts
         &self.furniture[usize::from(id)]
     }
 
-    pub fn enemy_generator(&self, id: EnemyId) -> &EnemyScriptsInfo<Generator>
+    pub fn enemy_generator(&self, id: EnemyId) -> &ServerEnemyScriptsInfo<Generator>
     {
         &self.enemy[usize::from(id)]
     }

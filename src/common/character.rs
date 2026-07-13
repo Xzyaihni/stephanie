@@ -3320,7 +3320,7 @@ impl Character
 
     fn update_anatomy_dependent(&mut self, entities: &ClientEntities, anatomy: &Anatomy)
     {
-        let info = self.info.as_ref().unwrap();
+        let info = some_or_unexpected_return!(self.info.as_ref());
 
         let hands_visibility = match self.sprite_state.value()
         {
@@ -3428,7 +3428,7 @@ impl Character
 
                 lazy.target_local.position.y = animation.apply(*offset) * max_offset;
 
-                *offset = *offset + dt * *speed;
+                *offset += *speed * dt;
 
                 let reset_info = |special: &mut OffsetInfo|
                 {

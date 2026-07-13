@@ -64,11 +64,10 @@ use crate::{
         CharactersInfo,
         Crafts,
         loot::*,
-        lisp::*,
         scripts_container::server_info_primitives,
         tilemap::TileLoot,
         furnitures_info::FurnitureLoot,
-        enemies_info::EnemyLoot,
+        enemies_info::EnemyScripts,
         items_info::{ScriptsContainer, TextureCreator},
         door::{door_scale, door_texture, DoorMaterial},
         sender_loop::{waiting_loop, DELTA_TIME}
@@ -385,12 +384,13 @@ impl YanyaApp for App
 
         let mut characters_info = CharactersInfo::new();
 
-        let mut server_enemy_scripts_info: Vec<EnemyScriptsInfo<Option<ServerScriptSingleInfo>>> = Vec::new();
+        let mut server_enemy_scripts_info: Vec<ServerEnemyScriptsInfo<Option<ServerScriptSingleInfo>>> = Vec::new();
 
         let enemies_info = EnemiesInfo::parse(
-            EnemyLoot{
+            EnemyScripts{
                 server: &mut server_enemy_scripts_info
             },
+            &mut scripts,
             &partial_info.object_info.assets.lock(),
             &mut characters_info,
             &items_info,
@@ -602,7 +602,8 @@ impl YanyaApp for App
                                 let server_message_sender = Rc::new(RefCell::new(None));
 
                                 let server_loot = {
-                                    let enemy_primitives = Rc::new(server_info_primitives(
+                                    // i might use this later for running lisp scripts on server side
+                                    let _enemy_primitives = Rc::new(server_info_primitives(
                                         tilemap.clone(),
                                         server_world.clone(),
                                         server_entities.clone(),
@@ -617,42 +618,9 @@ impl YanyaApp for App
 
                                     ServerScripts{
                                         furniture: server_loot.furniture.into_iter().map(|x| x.map(c)).collect(),
-                                        enemy: server_loot.enemy.into_iter().map(|x| -> EnemyScriptsInfo<Generator>
+                                        enemy: server_loot.enemy.into_iter().map(|x| -> ServerEnemyScriptsInfo<Generator>
                                         {
-                                            let on_create = x.on_create.map(|s|
-                                            {
-                                                let memory = LispMemory::new(enemy_primitives.clone(), 128, 1 << 10);
-
-                                                let config = LispConfig{
-                                                    memory,
-                                                    env_variables: vec!["caller-transform".to_owned()],
-                                                    ..Default::default()
-                                                };
-
-                                                let lisp = match Lisp::new_with_config(config, &[&s.code])
-                                                {
-                                                    Ok(mut lisp) =>
-                                                    {
-                                                        lisp.set_source_name(0, s.name.clone());
-
-                                                        Some(lisp)
-                                                    },
-                                                    Err(err) =>
-                                                    {
-                                                        eprintln!("error parsing on_use for enemy `{}`: {err}", &s.name);
-
-                                                        None
-                                                    }
-                                                };
-
-                                                Generator::new_raw(lisp)
-                                            }).unwrap_or_default();
-
-                                            EnemyScriptsInfo{
-                                                on_create,
-                                                on_contents: c(x.on_contents),
-                                                on_equip: c(x.on_equip)
-                                            }
+                                            x.map(c)
                                         }).collect()
                                     }
                                 };

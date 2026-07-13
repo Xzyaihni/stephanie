@@ -278,7 +278,9 @@ fn parse_rules() -> Option<Rc<ChunkRulesGroup>>
     rules.ok().map(Rc::new)
 }
 
-fn load_prefill() -> Option<(FlatChunksContainer<Option<WorldChunk>>, Vec<(Pos2<i32>, WorldChunkId)>)>
+type PrefillType = (FlatChunksContainer<Option<WorldChunk>>, Vec<(Pos2<i32>, WorldChunkId)>);
+
+fn load_prefill() -> Option<PrefillType>
 {
     let prefill_path: String = some_or_return!(get_env_value("STEPHANIE_PREFILLWORLDCHUNKS"));
 
@@ -577,6 +579,7 @@ impl YanyaApp for ChunkPreviewer
                 let edge_pos = edge_map_raw(pos);
                 let edge_local_pos = LocalPos::new(edge_pos.map(|x| x as usize), entropies.size());
 
+                #[allow(clippy::useless_conversion)] // type changes on debug/release builds
                 edge_local_pos.in_bounds().then(|| entropies.get(edge_local_pos.into()).clone())
             };
 

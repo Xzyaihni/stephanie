@@ -55,7 +55,10 @@ use world_generator::WorldGenerator;
 use server_overmap::ServerOvermap;
 
 pub use world_generator::ParseError;
-pub use marker_tile::{MarkerTile, MarkerKind};
+pub use marker_tile::{
+    MarkerTile,
+    MarkerKind
+};
 
 pub mod world_generator;
 mod server_overmap;
@@ -446,18 +449,6 @@ impl World
         });
     }
 
-    pub fn send_chunk(
-        &mut self,
-        container: &mut ServerEntities,
-        id: ConnectionId,
-        pos: GlobalPos
-    )
-    {
-        let message = self.load_chunk(container, id, pos);
-
-        self.message_handler.lock().send_single(id, message);
-    }
-
     fn create_entities_full(
         container: &mut ServerEntities,
         entities: impl Iterator<Item=FullEntityInfo>
@@ -495,12 +486,12 @@ impl World
         output
     }
 
-    fn load_chunk(
+    pub fn send_chunk(
         &mut self,
         container: &mut ServerEntities,
         id: ConnectionId,
         pos: GlobalPos
-    ) -> Message
+    )
     {
         let entities = self.entities_saver.load(pos).inspect(|_|
         {
@@ -544,7 +535,7 @@ impl World
             chunk
         });
 
-        Message::ChunkSync{pos, chunk, entities}
+        self.message_handler.lock().send_single(id, Message::ChunkSync{pos, chunk, entities});
     }
 
     pub fn collect_to_delete<T, I>(iter: I) -> HashMap<GlobalPos, Vec<T>>

@@ -667,7 +667,7 @@ pub struct ScriptIndex(usize);
 
 pub struct ScriptsContainer
 {
-    pub item_primitives: Rc<Primitives>,
+    pub client_primitives: Rc<Primitives>,
     game_state: Rc<RefCell<Weak<RefCell<GameState>>>>,
     scripts: Vec<Lisp>
 }
@@ -678,7 +678,7 @@ impl ScriptsContainer
     {
         let game_state: Rc<RefCell<Weak<RefCell<GameState>>>> = Rc::new(RefCell::new(Weak::new()));
 
-        let item_primitives = {
+        let client_primitives = {
             let mut primitives = Primitives::default();
 
             add_info_primitives(&mut primitives, game_state.clone());
@@ -687,7 +687,7 @@ impl ScriptsContainer
         };
 
         Self{
-            item_primitives,
+            client_primitives,
             game_state,
             scripts: Vec::new()
         }
@@ -696,7 +696,7 @@ impl ScriptsContainer
     pub fn new_empty() -> Self
     {
         Self{
-            item_primitives: Rc::new(Primitives::default()),
+            client_primitives: Rc::new(Primitives::default()),
             game_state: Rc::new(RefCell::new(Weak::new())),
             scripts: Vec::new()
         }

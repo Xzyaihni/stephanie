@@ -88,7 +88,7 @@ use stephanie::{
         furniture_creator,
         tilemap::TileLoot,
         furnitures_info::FurnitureLoot,
-        enemies_info::EnemyLoot,
+        enemies_info::EnemyScripts,
         items_info::{ScriptsContainer, TextureCreator},
         colors::Lcha,
         world::{
@@ -416,9 +416,10 @@ impl AssetsDependent
         let enemies = {
             let mut characters = CharactersInfo::new();
             let enemies = EnemiesInfo::parse(
-                EnemyLoot{
+                EnemyScripts{
                     server: &mut Vec::new()
                 },
+                &mut ScriptsContainer::new_empty(),
                 &info.assets.lock(),
                 &mut characters,
                 &items,

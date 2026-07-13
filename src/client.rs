@@ -402,8 +402,7 @@ impl Client
                     *CURRENT_INDEX.lock() = 0;
 
                     let averaged = averaged_timings.iter()
-                        .fold(Timings::default(), |acc, x| acc.zip_map(x, &mut |a, b| a + b))
-                        .map(&mut |x| x / AVERAGE_FRAMES as f64);
+                        .fold(Timings::default(), |acc, x| acc.zip_map(x, &mut |a, b| a + b));
 
                     eprintln!("{}", averaged.display(0).unwrap());
                 }

@@ -14,8 +14,10 @@ use crate::common::{
     some_or_value,
     generic_info::*,
     characters_info::*,
+    lisp::*,
     ItemsInfo,
-    loot::{EnemyScriptsInfo, ServerScriptSingleInfo},
+    scripts_container::{ScriptsContainer, ScriptIndex},
+    loot::{ServerEnemyScriptsInfo, ServerScriptSingleInfo},
     anatomy::HumanAnatomyInfo,
     enemy::EnemyBehavior
 };
@@ -87,6 +89,7 @@ pub struct EnemyInfo
     pub name: String,
     pub anatomy: HumanAnatomyInfo,
     pub behavior: EnemyBehavior,
+    pub on_create: Option<ScriptIndex>,
     pub character: CharacterId
 }
 
@@ -101,7 +104,8 @@ impl GenericItem for EnemyInfo
 impl EnemyInfo
 {
     fn from_raw(
-        loot: EnemyLoot,
+        enemy_scripts: EnemyScripts,
+        scripts: &mut ScriptsContainer,
         assets: &Assets,
         characters_info: &mut CharactersInfo,
         items_info: &ItemsInfo,
@@ -144,15 +148,41 @@ impl EnemyInfo
             lying: body_part("lying")
         });
 
-        {
+        let on_create = {
             let f = |code| ServerScriptSingleInfo{name: raw.name.clone(), code};
 
-            loot.server.push(EnemyScriptsInfo{
-                on_create: raw.on_create.map(f),
+            enemy_scripts.server.push(ServerEnemyScriptsInfo{
                 on_contents: raw.on_contents.map(f),
                 on_equip: raw.on_equip.map(f)
             });
-        }
+
+            raw.on_create.and_then(|code|
+            {
+                let memory = LispMemory::new(scripts.client_primitives.clone(), 128, 1 << 10);
+
+                let config = LispConfig{
+                    memory,
+                    env_variables: vec!["caller-entity".to_owned()],
+                    ..Default::default()
+                };
+
+                match Lisp::new_with_config(config, &[&code])
+                {
+                    Ok(mut lisp) =>
+                    {
+                        lisp.set_source_name(0, raw.name.clone());
+
+                        Some(scripts.push(lisp))
+                    },
+                    Err(err) =>
+                    {
+                        eprintln!("error parsing on_use for enemy `{}`: {err}", &raw.name);
+
+                        None
+                    }
+                }
+            })
+        };
 
         Self{
             name: raw.name,
@@ -169,6 +199,7 @@ impl EnemyInfo
                 }
             }).unwrap_or_default(),
             behavior: raw.behavior.unwrap_or(EnemyBehavior::Melee),
+            on_create,
             character
         }
     }
@@ -176,9 +207,9 @@ impl EnemyInfo
 
 pub type EnemiesInfo = GenericInfo<EnemyId, EnemyInfo>;
 
-pub struct EnemyLoot<'a>
+pub struct EnemyScripts<'a>
 {
-    pub server: &'a mut Vec<EnemyScriptsInfo<Option<ServerScriptSingleInfo>>>
+    pub server: &'a mut Vec<ServerEnemyScriptsInfo<Option<ServerScriptSingleInfo>>>
 }
 
 impl EnemiesInfo
@@ -189,7 +220,8 @@ impl EnemiesInfo
     }
 
     pub fn parse(
-        loot: EnemyLoot,
+        enemy_scripts: EnemyScripts,
+        scripts: &mut ScriptsContainer,
         assets: &Assets,
         characters_info: &mut CharactersInfo,
         items_info: &ItemsInfo,
@@ -211,9 +243,10 @@ impl EnemiesInfo
         let enemies: Vec<_> = enemies.into_iter().map(|info_raw|
         {
             EnemyInfo::from_raw(
-                EnemyLoot{
-                    server: loot.server
+                EnemyScripts{
+                    server: enemy_scripts.server
                 },
+                scripts,
                 assets,
                 characters_info,
                 items_info,

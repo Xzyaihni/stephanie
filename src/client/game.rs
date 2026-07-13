@@ -1,6 +1,7 @@
 use std::{
     fs,
     f32,
+    mem,
     sync::Arc,
     ops::ControlFlow,
     rc::{Rc, Weak},
@@ -112,6 +113,7 @@ enum OuterAction
 pub struct Game
 {
     scripts: Rc<ScriptsContainer>,
+    on_create_queue: Rc<RefCell<Vec<(ScriptIndex, Entity)>>>,
     game_state: Weak<RefCell<GameState>>,
     info: Rc<RefCell<PlayerInfo>>
 }
@@ -120,9 +122,15 @@ impl Game
 {
     pub fn new(game_state: Weak<RefCell<GameState>>) -> Self
     {
-        let (scripts, info) = {
+        let scripts;
+        let info;
+        let on_create_queue;
+
+        {
             let game_state = game_state.upgrade().unwrap();
             let mut game_state = game_state.borrow_mut();
+
+            on_create_queue = game_state.on_create_queue.clone();
 
             let entities = game_state.entities_mut();
             let mouse_entity = entities.push_eager(true, EntityInfo{
@@ -139,26 +147,28 @@ impl Game
                 ..Default::default()
             });
 
-            let scripts = game_state.scripts.clone();
+            scripts = game_state.scripts.clone();
 
-            let player_info = PlayerInfo::new(PlayerCreateInfo{
+            info = PlayerInfo::new(PlayerCreateInfo{
                 camera: game_state.entities.camera_entity,
                 entity: game_state.entities.player_entity,
                 mouse_entity
             });
+        }
 
-            (scripts, player_info)
-        };
-
-        let mut this = Self{scripts, info: Rc::new(RefCell::new(info)), game_state};
+        let mut this = Self{scripts, on_create_queue, info: Rc::new(RefCell::new(info)), game_state};
 
         let primitives = this.console_primitives();
 
         {
             let load = |path: &str|
             {
-                fs::read_to_string(path)
-                    .unwrap_or_else(|err| panic!("{path} must exist ({err})"))
+                fs::read_to_string(path).unwrap_or_else(|err|
+                {
+                    eprintln!("{path} doesnt exist ({err})");
+
+                    String::new()
+                })
             };
 
             let mut infos = this.info.borrow_mut();
@@ -303,6 +313,26 @@ impl Game
                 game_state.update(info, dt)
             };
         });
+
+        {
+            mem::take(&mut *self.on_create_queue.borrow_mut()).into_iter().for_each(|(id, entity)|
+            {
+                let script = self.scripts.get(id);
+
+                if let Err(err) = script.run_with(move |memory|
+                {
+                    let entity_value = some_or_return!(with_error(push_entity(memory, entity)));
+
+                    if let Err(err) = memory.define("caller-entity", entity_value)
+                    {
+                        eprintln!("error defining caller-entity: {err}");
+                    }
+                })
+                {
+                    eprintln!("error running on_create (in {}): {err}", script.get_source(err.position.source));
+                }
+            });
+        }
 
         self.player_container(|mut x|
         {

@@ -1263,9 +1263,8 @@ impl<Id: Idable> TreeElement<Id>
         Id: Idable
     {
         let is_resolved = trees[index].deferred.resolved();
-        if !is_resolved && parent_index.is_some()
+        if let (Some(parent_index), false) = (parent_index, is_resolved)
         {
-            let parent_index = parent_index.unwrap();
             let (this, parent, previous) = if let Some(previous) = previous
             {
                 let [this, parent, previous] = trees.get_disjoint_mut([index, parent_index, previous]).unwrap();
@@ -1947,7 +1946,7 @@ impl<Id: Idable> Controller<Id>
 
                 shared.elements.retain(|x, _|
                 {
-                    keep_ids.contains(&x)
+                    keep_ids.contains(x)
                 });
             }
         }
@@ -1987,7 +1986,7 @@ impl<Id: Idable> Controller<Id>
                                 if element.element.animation.position.is_none() && element.element.animation.reposition_while_closing
                                 {
                                     if let Some(resolved_position) = element.deferred.resolve_position(
-                                        &mut HashMap::new(),
+                                        &HashMap::new(),
                                         &element.element,
                                         previous.as_ref().map(|x| &x.deferred),
                                         &parent.deferred,

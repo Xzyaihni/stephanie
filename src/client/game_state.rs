@@ -65,6 +65,7 @@ use crate::{
         OccludingCaster,
         OnChangeInfo,
         OnConnectInfo,
+        scripts_container::ScriptIndex,
         items_info::ScriptsContainer,
         sender_loop::BufferSender,
         message::Message,
@@ -838,6 +839,7 @@ pub struct GameState
     pub world: World,
     pub mouse_fraction: MouseInfo,
     pub scripts: Rc<ScriptsContainer>,
+    pub on_create_queue: Rc<RefCell<Vec<(ScriptIndex, Entity)>>>,
     client_scripts: Rc<ClientScripts>,
     screen_object: SolidObject,
     mouse_object: Object,
@@ -1013,6 +1015,7 @@ impl GameState
             shaders: info.shaders,
             world,
             scripts: info.scripts,
+            on_create_queue: Rc::new(RefCell::new(Vec::new())),
             client_scripts: info.client_scripts,
             debug_mode: client_info.debug,
             tilemap,
@@ -1366,10 +1369,43 @@ impl GameState
             25
         };
 
-        let message = crate::frame_time_this!{
+        let mut message = crate::frame_time_this!{
             [update, game_state_update, process_messages] -> world_handle_message,
             some_or_value!{self.world.handle_message(&mut self.delayed_messages, entity_sets_max, self.is_trusted, message), true}
         };
+
+        {
+            let process_entity = |entity: Entity, info: &mut EntityInfo|
+            {
+                if let Some(enemy) = info.enemy.as_mut()
+                {
+                    if !enemy.on_create_called
+                    {
+                        let enemy_info = self.data_infos.enemies_info.get(enemy.id());
+
+                        if let Some(script_index) = enemy_info.on_create
+                        {
+                            self.on_create_queue.borrow_mut().push((script_index, entity));
+                        }
+
+                        enemy.on_create_called = true;
+                    }
+                }
+            };
+
+            match &mut message
+            {
+                Message::EntitySet{entity, info} =>
+                {
+                    process_entity(*entity, info);
+                },
+                Message::EntitySetMany{entities} =>
+                {
+                    entities.iter_mut().for_each(|(entity, info)| process_entity(*entity, info));
+                },
+                _ => ()
+            }
+        }
 
         let message = some_or_value!{
             self.entities.handle_message(&mut self.connections_handler, create_info, message, self.is_trusted),

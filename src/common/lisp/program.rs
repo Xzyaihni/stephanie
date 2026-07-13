@@ -783,6 +783,14 @@ impl Default for Primitives
 
 impl Primitives
 {
+    pub fn empty() -> Self
+    {
+        Self{
+            indices: HashMap::new(),
+            primitives: Vec::new()
+        }
+    }
+
     pub fn add(&mut self, name: impl Into<String>, procedure: PrimitiveProcedureInfo)
     {
         let name = name.into();
@@ -1629,7 +1637,7 @@ impl InterReprPos
                     {
                         if (this_lookup == *load_symbol) || (this_lookup == *load_once_symbol)
                         {
-                            let filename_repr = if let Some(x) = args.iter().next()
+                            let filename_repr = if let Some(x) = args.first()
                             {
                                 x.clone()
                             } else

@@ -457,7 +457,7 @@ impl ChunkRuleTag
 enum ChunkWeight
 {
     Value(f64),
-    Lisp(Program)
+    Lisp(Box<Program>)
 }
 
 #[derive(Debug, Clone)]
@@ -507,7 +507,7 @@ impl ChunkRule
                     neighbor
                 }).collect::<Vec<_>>();
 
-                neighbors.sort_unstable();
+                neighbors.sort();
 
                 neighbors
             };
@@ -567,7 +567,7 @@ impl ChunkRule
                         &[&code]
                     )
                     {
-                        Ok(program) => Some(ChunkWeight::Lisp(program)),
+                        Ok(program) => Some(ChunkWeight::Lisp(Box::new(program))),
                         Err(err) =>
                         {
                             eprintln!("in `{}` error evaluating program: {err}", &rule.name);
@@ -634,7 +634,7 @@ impl ChunkRule
 
             let mut neighbors = neighbors.into_iter().map(rotate).collect::<Vec<_>>();
 
-            neighbors.sort_unstable();
+            neighbors.sort();
 
             neighbors
         });
@@ -1338,7 +1338,7 @@ impl ChunkRules
 
                     match neighbor_symmetry
                     {
-                        Symmetry::None | Symmetry::Horizontal | Symmetry::Vertical => return,
+                        Symmetry::None | Symmetry::Horizontal | Symmetry::Vertical => (),
                         Symmetry::Both => for_rotation(TileRotation::Down),
                         Symmetry::All => [TileRotation::Right, TileRotation::Down, TileRotation::Left].into_iter().for_each(for_rotation)
                     }

@@ -335,7 +335,7 @@ impl ItemInfo
 
         let on_use = raw.on_use.and_then(|x|
         {
-            let memory = LispMemory::new(scripts.item_primitives.clone(), 128, 1 << 10);
+            let memory = LispMemory::new(scripts.client_primitives.clone(), 128, 1 << 10);
 
             let config = LispConfig{
                 memory,

@@ -254,13 +254,7 @@ macro_rules! tool_time_this
             {
                 let (time, value) = $crate::get_time_this!($($tt)*);
 
-                let formatted_time = if time < 100.0
-                {
-                    format!("{time:.2} us")
-                } else
-                {
-                    format!("{:.2} ms", time / 1000.0)
-                };
+                let formatted_time = $crate::common::format_us_time(time);
 
                 eprintln!("{} took {formatted_time}", $name);
 
@@ -300,6 +294,17 @@ macro_rules! time_this_additive
     }
 }
 
+pub fn format_us_time(time: f64) -> String
+{
+    if time < 100.0
+    {
+        format!("{time:.2} us")
+    } else
+    {
+        format!("{:.2} ms", time / 1000.0)
+    }
+}
+
 #[derive(Default, Clone)]
 pub struct TimingField<T>
 {
@@ -326,15 +331,9 @@ pub trait TimingsTrait
 
 impl TimingsTrait for ()
 {
-    fn zip_map(&self, _other: &Self, _f: &mut impl FnMut(f64, f64) -> f64) -> Self
-    {
-        self.clone()
-    }
+    fn zip_map(&self, _other: &Self, _f: &mut impl FnMut(f64, f64) -> f64) -> Self { *self }
 
-    fn map(&self, _f: &mut impl FnMut(f64) -> f64) -> Self
-    {
-        self.clone()
-    }
+    fn map(&self, _f: &mut impl FnMut(f64) -> f64) -> Self { *self }
 
     fn display(&self, _depth: usize) -> Option<String> { None }
 }
@@ -414,15 +413,18 @@ macro_rules! define_timings
 
                     let time = self.$field.total.map(|time|
                     {
+                        let time_us = time * 1000.0;
+                        let time_s = format_us_time(time * time_us);
+
                         if self.$field.times > 1
                         {
                             let times = self.$field.times;
-                            let time_per_run = time / times as f64 * 1000.0;
+                            let time_per_run = format_us_time(time_us / times as f64);
 
-                            format!("took {time:.2} ms total, ran {times} times ({time_per_run:.2} us per run)")
+                            format!("took {time_s} total, ran {times} times ({time_per_run} per run)")
                         } else
                         {
-                            format!("took {time:.2} ms")
+                            format!("took {time_s}")
                         }
                     }).unwrap_or_else(||
                     {
