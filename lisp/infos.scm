@@ -68,5 +68,5 @@
 (define (remove-tile pos) (set-tile pos 'air))
 
 (define (spawn-enemy-clean enemy pos)
-    ; remove tiles here
+    (remove-tile (closest-tile pos))
     (spawn-enemy enemy pos))

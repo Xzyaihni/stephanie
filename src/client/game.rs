@@ -110,6 +110,22 @@ enum OuterAction
     Use{script_index: ScriptIndex, entity: Entity, item: InventoryItem}
 }
 
+struct ScriptDefiner<'a>
+{
+    memory: &'a mut LispMemory
+}
+
+impl ScriptDefiner<'_>
+{
+    fn define(&mut self, name: &str, value: Result<LispValue, lisp::Error>)
+    {
+        if let Err(err) = self.memory.define(name, some_or_return!(with_error(value)))
+        {
+            eprintln!("error defining {name}: {err}");
+        }
+    }
+}
+
 pub struct Game
 {
     scripts: Rc<ScriptsContainer>,
@@ -279,28 +295,24 @@ impl Game
                 {
                     OuterAction::Use{script_index, entity, item} =>
                     {
-                        with_game_state(&self.game_state, |game_state| game_state.world.verify_empty_lazy());
-
-                        let script = self.scripts.get(script_index);
-                        if let Err(err) = script.run_with(|memory|
-                        {
-                            if let Some(entity) = with_error(push_entity(memory, entity))
+                        self.call_script(
+                            script_index,
+                            "on_use",
+                            |mut definer|
                             {
-                                with_error(memory.define("caller-entity", entity));
+                                {
+                                    let value = push_entity(definer.memory, entity);
+                                    definer.define("caller-entity", value);
+                                }
+
+                                {
+                                    let value = push_entity(definer.memory, self.info.borrow().mouse_entity);
+                                    definer.define("mouse-entity", value);
+                                }
+
+                                definer.define("caller-item-inventory-id", Ok(LispValue::from(item.as_raw() as i32)));
                             }
-
-                            if let Some(entity) = with_error(push_entity(memory, self.info.borrow().mouse_entity))
-                            {
-                                with_error(memory.define("mouse-entity", entity));
-                            }
-
-                            with_error(memory.define("caller-item-inventory-id", (item.as_raw() as i32).into()));
-                        })
-                        {
-                            eprintln!("error running on_use (in {}): {err}", script.get_source(err.position.source));
-                        }
-
-                        with_game_state(&self.game_state, |game_state| game_state.world_apply_lazy_updates());
+                        );
                     }
                 }
             });
@@ -317,20 +329,15 @@ impl Game
         {
             mem::take(&mut *self.on_create_queue.borrow_mut()).into_iter().for_each(|(id, entity)|
             {
-                let script = self.scripts.get(id);
-
-                if let Err(err) = script.run_with(move |memory|
-                {
-                    let entity_value = some_or_return!(with_error(push_entity(memory, entity)));
-
-                    if let Err(err) = memory.define("caller-entity", entity_value)
+                self.call_script(
+                    id,
+                    "on_create",
+                    |mut definer|
                     {
-                        eprintln!("error defining caller-entity: {err}");
+                        let value = push_entity(definer.memory, entity);
+                        definer.define("caller-entity", value);
                     }
-                })
-                {
-                    eprintln!("error running on_create (in {}): {err}", script.get_source(err.position.source));
-                }
+                );
             });
         }
 
@@ -343,6 +350,27 @@ impl Game
         });
 
         true
+    }
+
+    fn call_script(
+        &self,
+        script_index: ScriptIndex,
+        name: &str,
+        defines: impl FnOnce(ScriptDefiner)
+    )
+    {
+        with_game_state(&self.game_state, |game_state| game_state.world.verify_empty_lazy());
+
+        let script = self.scripts.get(script_index);
+        if let Err(err) = script.run_with(|memory|
+        {
+            defines(ScriptDefiner{memory})
+        })
+        {
+            eprintln!("error running {name} (in {}): {err}", script.get_source(err.position.source));
+        }
+
+        with_game_state(&self.game_state, |game_state| game_state.world_apply_lazy_updates());
     }
 
     fn maybe_format_component(
