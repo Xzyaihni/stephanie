@@ -11,6 +11,7 @@ use crate::{
     server::world::World as ServerWorld,
     common::{
         some_or_value,
+        some_or_unexpected_return,
         lisp::{self, *},
         Pos3,
         Transform,
@@ -22,6 +23,7 @@ use crate::{
         ConnectionId,
         DataInfos,
         TileMap,
+        damaging_system::on_destroy_tile,
         world::{TilePos, GlobalPos, ChunkLocal, Tile},
         entity::{ServerEntities, ClientEntities},
         inventory::{inventory_remove_item, InventoryItem}
@@ -428,7 +430,27 @@ pub fn add_info_primitives(primitives: &mut Primitives, game_state: Rc<RefCell<W
             {
                 let tilemap = game_state.world.tilemap_clone();
 
-                world_set_tile_common(&tilemap, args, |pos, id| game_state.world.set_tile_lazy(pos, id))
+                world_set_tile_common(&tilemap, args, |pos, id|
+                {
+                    let world = &mut game_state.world;
+
+                    let was_tile = world.tile(pos).cloned().unwrap_or_default();
+                    let is_destroyed = !was_tile.is_none() && id.is_none();
+
+                    world.set_tile_lazy(pos, id);
+
+                    if is_destroyed
+                    {
+                        on_destroy_tile(
+                            some_or_unexpected_return!(game_state.entities.space.as_ref()),
+                            &game_state.entities.entities,
+                            &game_state.common_textures,
+                            &game_state.client_scripts,
+                            pos,
+                            was_tile
+                        );
+                    }
+                })
             })
         }));
     }

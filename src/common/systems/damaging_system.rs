@@ -49,7 +49,7 @@ use crate::{
         player::{WEAK_SCREENSHAKE, MEDIUM_SCREENSHAKE, MEDIUM_KICK, StatId},
         enemy_creator::ENEMY_MASS,
         entity::{iterate_components_with, ClientEntities},
-        world::{TILE_SIZE, TilePos}
+        world::{TILE_SIZE, TilePos, Tile}
     }
 };
 
@@ -114,6 +114,24 @@ fn damage_common_health(
     {
         false
     }
+}
+
+pub fn on_destroy_tile(
+    space: &SpatialGrid,
+    entities: &ClientEntities,
+    textures: &CommonTextures,
+    scripts: &ClientScripts,
+    tile_pos: TilePos,
+    tile_id: Tile
+)
+{
+    player_system::players_near(entities, tile_pos.entity_position(), SCREENSHAKE_DISTANCE).for_each(|(_, player)|
+    {
+        player.borrow_mut().screenshake.set(MEDIUM_SCREENSHAKE);
+    });
+
+    destroy_tile_dependent(entities, textures, space, scripts, tile_pos);
+    spawn_items(entities, textures, &tile_pos.tile_transform(), &scripts.tile_generator(tile_id).on_destroy);
 }
 
 pub fn fall_damage(
@@ -358,11 +376,7 @@ fn damager<'a, 'b>(
                     tile.damage(tilemap, damage.data).then_some(previous_tile)
                 }).unwrap_or_default();
 
-                let transform = Transform{
-                    position: tile_pos.entity_position(),
-                    scale: Vector3::repeat(TILE_SIZE),
-                    ..Default::default()
-                };
+                let transform = tile_pos.tile_transform();
 
                 if let Some(mut player) = entities.player_mut_no_change(result.other_entity)
                 {
@@ -371,13 +385,7 @@ fn damager<'a, 'b>(
 
                 if let Some(tile_id) = destroyed
                 {
-                    player_system::players_near(entities, tile_pos.entity_position(), SCREENSHAKE_DISTANCE).for_each(|(_, player)|
-                    {
-                        player.borrow_mut().screenshake.set(MEDIUM_SCREENSHAKE);
-                    });
-
-                    destroy_tile_dependent(entities, textures, space, scripts, tile_pos);
-                    spawn_items(entities, textures, &transform, &scripts.tile_generator(tile_id).on_destroy);
+                    on_destroy_tile(space, entities, textures, scripts, tile_pos, tile_id);
                 }
 
                 create_particles(

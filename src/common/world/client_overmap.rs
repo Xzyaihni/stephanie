@@ -293,6 +293,15 @@ impl TilePos
         }
     }
 
+    pub fn tile_transform(&self) -> Transform
+    {
+        Transform{
+            position: self.entity_position(),
+            scale: Vector3::repeat(TILE_SIZE),
+            ..Default::default()
+        }
+    }
+
     pub fn entity_position(&self) -> Vector3<f32>
     {
         self.center_position().into()
