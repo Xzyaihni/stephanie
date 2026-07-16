@@ -74,7 +74,7 @@
             "strength": 2.0
         },
         "lying_face_offset": [-3, 0],
-        "on_create": "(load-once \"infos.scm\")(for-each (lambda (offset) (spawn-enemy-clean \"bb\" (position-add (entity->position caller-entity) offset))) (list (list tile-size 0 0) (list (* tile-size -1) 0 0) (list 0 tile-size 0) (list 0 (* tile-size -1) 0)))",
+        "on_create": "(load-once \"infos.scm\")(for-each (lambda (offset) (spawn-enemy-clean \"bb\" (position-add (entity->position caller-entity) offset) (list (cons 'shield caller-entity)))) (list (list tile-size 0 0) (list (* tile-size -1) 0 0) (list 0 tile-size 0) (list 0 (* tile-size -1) 0)))",
         "on_contents": "'(diamond_hairpin) ; squid game looking mfer"
     },
     {

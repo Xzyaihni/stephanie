@@ -1041,7 +1041,7 @@ impl YanyaApp for ChunkPreviewer
 
                         let (texture, scale, rotation) = match marker.kind
                         {
-                            MarkerKind::Enemy{name} =>
+                            MarkerKind::Enemy{name, ..} =>
                             {
                                 let enemies = &self.assets_dependent.enemies;
                                 let texture = enemies.1.get_id(&name.replace('_', "")).map(|id|

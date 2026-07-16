@@ -23,6 +23,7 @@ use crate::{
         ConnectionId,
         DataInfos,
         TileMap,
+        SpawnEnemyParam,
         damaging_system::on_destroy_tile,
         world::{TilePos, GlobalPos, ChunkLocal, Tile},
         entity::{ServerEntities, ClientEntities},
@@ -31,7 +32,7 @@ use crate::{
 };
 
 
-fn parse_symbol_or_string(value: OutputWrapperRef) -> Result<String, lisp::Error>
+pub fn parse_symbol_or_string(value: OutputWrapperRef) -> Result<String, lisp::Error>
 {
     let s = if let Ok(x) = value.as_symbol()
     {
@@ -309,7 +310,7 @@ pub fn server_info_primitives(
                 lisp::Error::Custom(format!("enemy named `{name}` not found"))
             })?;
 
-            messager(Message::SpawnEnemy{id, pos});
+            messager(Message::SpawnEnemy{id, pos, params: Vec::new()});
 
             Ok(().into())
         }));
@@ -402,19 +403,27 @@ pub fn add_info_primitives(primitives: &mut Primitives, game_state: Rc<RefCell<W
     {
         let game_state = game_state.clone();
 
-        primitives.add("spawn-enemy", PrimitiveProcedureInfo::new_simple(2, Effect::Impure, move |mut args|
+        primitives.add("spawn-enemy", PrimitiveProcedureInfo::new_simple(2..=3, Effect::Impure, move |mut args|
         {
             with_game_state(&game_state, |game_state|
             {
                 let name = parse_symbol_or_string(args.next_value().unwrap())?;
                 let pos = parse_position(args.next_value().unwrap())?;
 
+                let params: Vec<SpawnEnemyParam> = args.next_value().map(|extra_values| -> Result<Vec<_>, lisp::Error>
+                {
+                    extra_values.as_pairs_list()?
+                        .into_iter()
+                        .map(|x| SpawnEnemyParam::parse(Some(&game_state.entities.entities), x))
+                        .collect()
+                }).unwrap_or_else(|| Ok(Vec::new()))?;
+
                 let id = game_state.data_infos.enemies_info.get_id(&name).ok_or_else(||
                 {
                     lisp::Error::Custom(format!("enemy named `{name}` not found"))
                 })?;
 
-                game_state.send_message(Message::SpawnEnemy{id, pos});
+                game_state.send_message(Message::SpawnEnemy{id, pos, params});
 
                 Ok(().into())
             })

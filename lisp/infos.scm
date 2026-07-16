@@ -67,6 +67,10 @@
 
 (define (remove-tile pos) (set-tile pos 'air))
 
-(define (spawn-enemy-clean enemy pos)
-    (remove-tile (closest-tile pos))
-    (spawn-enemy enemy pos))
+(define spawn-enemy-clean (lambda args
+    (let ((enemy (car args)) (pos (car (cdr args))) (rest (cdr (cdr args))))
+        (begin
+            (remove-tile (closest-tile pos))
+            (if (null? rest)
+                (spawn-enemy enemy pos)
+                (spawn-enemy enemy pos (car rest)))))))

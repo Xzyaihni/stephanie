@@ -162,7 +162,7 @@ impl EnemyInfo
 
                 let config = LispConfig{
                     memory,
-                    env_variables: vec!["caller-entity".to_owned()],
+                    env_variables: vec!["caller-entity".to_owned(), "player-entity".to_owned()],
                     ..Default::default()
                 };
 

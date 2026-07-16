@@ -342,7 +342,8 @@ impl ItemInfo
                 env_variables: vec![
                     "caller-entity".to_owned(),
                     "caller-item-inventory-id".to_owned(),
-                    "mouse-entity".to_owned()
+                    "mouse-entity".to_owned(),
+                    "player-entity".to_owned()
                 ],
                 ..Default::default()
             };

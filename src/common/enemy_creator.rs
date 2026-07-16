@@ -2,6 +2,8 @@ use std::f32;
 
 use nalgebra::Vector3;
 
+use serde::{Serialize, Deserialize};
+
 use yanyaengine::Transform;
 
 use crate::common::{
@@ -9,7 +11,9 @@ use crate::common::{
     random_rotation,
     render_info::*,
     physics::*,
+    lisp::{self, *},
     ENTITY_SCALE,
+    AnyEntities,
     ServerScripts,
     Inventory,
     Anatomy,
@@ -19,15 +23,47 @@ use crate::common::{
     Enemy,
     EnemyId,
     EnemiesInfo,
+    Entity,
     CharactersInfo,
     ItemsInfo,
     EntityInfo,
+    enemy::BehaviorState,
     inventory::BASE_INVENTORY_LIMIT,
+    scripts_container::{parse_symbol_or_string, parse_entity},
     lazy_transform::*
 };
 
 
 pub const ENEMY_MASS: f32 = 50.0;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum SpawnEnemyParam
+{
+    Aggro(Entity),
+    Shield(Entity)
+}
+
+impl SpawnEnemyParam
+{
+    pub fn parse(
+        entities: Option<&impl AnyEntities>,
+        value: OutputWrapperRef
+    ) -> Result<Self, lisp::Error>
+    {
+        let LispList{car, cdr} = value.as_list()?;
+
+        let name = parse_symbol_or_string(car)?;
+
+        let output = match (entities, name.as_ref())
+        {
+            (Some(entities), "aggro") => Self::Aggro(parse_entity(entities, cdr)?),
+            (Some(entities), "shield") => Self::Shield(parse_entity(entities, cdr)?),
+            (_, x) => return Err(lisp::Error::Custom(format!("{x} is not an enemy param")))
+        };
+
+        Ok(output)
+    }
+}
 
 pub fn create(
     enemies_info: &EnemiesInfo,
@@ -35,7 +71,8 @@ pub fn create(
     items_info: &ItemsInfo,
     scripts: &ServerScripts,
     id: EnemyId,
-    pos: Vector3<f32>
+    pos: Vector3<f32>,
+    params: Vec<SpawnEnemyParam>
 ) -> EntityInfo
 {
     let info = enemies_info.get(id);
@@ -81,6 +118,13 @@ pub fn create(
         });
     }
 
+    let mut enemy = Enemy::new(enemies_info, id);
+
+    if let Some(SpawnEnemyParam::Aggro(attack_target)) = params.iter().find(|param| matches!(param, SpawnEnemyParam::Aggro(_)))
+    {
+        enemy.set_attacking(*attack_target);
+    }
+
     EntityInfo{
         lazy_transform: Some(LazyTransformInfo{
             rotation: Rotation::EaseOut(
@@ -107,7 +151,7 @@ pub fn create(
         anatomy: Some(anatomy),
         character: Some(character),
         named: Some(name),
-        enemy: Some(Enemy::new(enemies_info, id)),
+        enemy: Some(enemy),
         saveable: Some(()),
         ..Default::default()
     }

@@ -712,7 +712,7 @@ impl GameServer
 
         match message
         {
-            Message::SpawnEnemy{id, pos} =>
+            Message::SpawnEnemy{id, pos, params} =>
             {
                 let enemy_info = enemy_creator::create(
                     &self.data_infos.enemies_info,
@@ -720,7 +720,8 @@ impl GameServer
                     &self.data_infos.items_info,
                     &self.server_scripts,
                     id,
-                    pos
+                    pos,
+                    params
                 );
 
                 let (message, _entity) = self.entities.borrow_mut().push_message(enemy_info);

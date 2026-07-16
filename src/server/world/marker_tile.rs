@@ -21,6 +21,8 @@ use crate::{
         EntityInfo,
         Light,
         Health,
+        SpawnEnemyParam,
+        entity::ServerEntities,
         lisp::{self, *},
         world::{
             TILE_SIZE,
@@ -75,7 +77,7 @@ impl MarkerTile
 
         match self.kind
         {
-            MarkerKind::Enemy{name} =>
+            MarkerKind::Enemy{name, params} =>
             {
                 if DebugConfig::is_enabled(DebugTool::NoEnemySpawns) { return None; }
 
@@ -94,7 +96,8 @@ impl MarkerTile
                     items_info,
                     server_scripts,
                     id,
-                    position
+                    position,
+                    params
                 ))
             },
             MarkerKind::Furniture{name, rotation, offset} =>
@@ -193,7 +196,7 @@ impl OffsetKind
 #[derive(Debug, Clone)]
 pub enum MarkerKind
 {
-    Enemy{name: String},
+    Enemy{name: String, params: Vec<SpawnEnemyParam>},
     Furniture{name: String, rotation: TileRotation, offset: OffsetKind},
     Door{rotation: TileRotation, material: DoorMaterial, width: u32},
     Light{strength: f32, offset: Vector3<f32>}
@@ -284,8 +287,12 @@ impl MarkerKind
             "enemy" =>
             {
                 let name = next_value("name")?.as_symbol()?;
+                let params = next_value("").ok().map(|params| -> Result<Vec<_>, lisp::Error>
+                {
+                    params.as_pairs_list()?.into_iter().map(|x| SpawnEnemyParam::parse(None::<&ServerEntities>, x)).collect()
+                }).unwrap_or_else(|| Ok(Vec::new()))?;
 
-                Ok(Self::Enemy{name})
+                Ok(Self::Enemy{name, params})
             },
             "furniture" =>
             {

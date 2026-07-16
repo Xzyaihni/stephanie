@@ -310,6 +310,11 @@ impl Game
                                     definer.define("mouse-entity", value);
                                 }
 
+                                {
+                                    let value = push_entity(definer.memory, self.info.borrow().entity);
+                                    definer.define("player-entity", value);
+                                }
+
                                 definer.define("caller-item-inventory-id", Ok(LispValue::from(item.as_raw() as i32)));
                             }
                         );
@@ -334,8 +339,15 @@ impl Game
                     "on_create",
                     |mut definer|
                     {
-                        let value = push_entity(definer.memory, entity);
-                        definer.define("caller-entity", value);
+                        {
+                            let value = push_entity(definer.memory, entity);
+                            definer.define("caller-entity", value);
+                        }
+
+                        {
+                            let value = push_entity(definer.memory, self.info.borrow().entity);
+                            definer.define("player-entity", value);
+                        }
                     }
                 );
             });

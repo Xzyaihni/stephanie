@@ -81,6 +81,7 @@ pub use player::{Player, OnConnectInfo};
 
 pub use enemy::{EnemyBehavior, Enemy};
 pub use enemies_info::{EnemyId, EnemyInfo, EnemiesInfo};
+pub use enemy_creator::SpawnEnemyParam;
 
 pub use generic_info::Sprite;
 

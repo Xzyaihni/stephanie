@@ -5,7 +5,7 @@ use std::{
     io::{self, Write},
     fmt::{self, Debug, Display},
     collections::{VecDeque, HashMap},
-    ops::{RangeInclusive, Add, Sub, Mul, Div, Rem, Index, IndexMut}
+    ops::{RangeInclusive, RangeFrom, Add, Sub, Mul, Div, Rem, Index, IndexMut}
 };
 
 use strum::{EnumCount, FromRepr};
@@ -73,6 +73,14 @@ impl From<RangeInclusive<usize>> for ArgsCount
     fn from(value: RangeInclusive<usize>) -> Self
     {
         Self::Between{start: *value.start(), end_inclusive: *value.end()}
+    }
+}
+
+impl From<RangeFrom<usize>> for ArgsCount
+{
+    fn from(value: RangeFrom<usize>) -> Self
+    {
+        Self::Min(value.start)
     }
 }
 
@@ -274,7 +282,7 @@ impl Default for Primitives
         {
             ($name:literal, $f:expr) =>
             {
-                ($name, PrimitiveProcedureInfo::new_simple(ArgsCount::Min(2), Effect::Pure, |mut args|
+                ($name, PrimitiveProcedureInfo::new_simple(2.., Effect::Pure, |mut args|
                 {
                     let start = args.next().expect("must have 2 or more args");
                     args.try_fold((true, start), |(state, acc), x|
@@ -345,7 +353,7 @@ impl Default for Primitives
 
         let (indices, primitives): (HashMap<String, _>, Vec<_>) = [
             (BEGIN_PRIMITIVE,
-                PrimitiveProcedureInfo::new_eval(ArgsCount::Min(1), Rc::new(|interpret_state, memory, args|
+                PrimitiveProcedureInfo::new_eval(1.., Rc::new(|interpret_state, memory, args|
                 {
                     Ok(InterRepr::Sequence(InterReprPos::parse_args(interpret_state, memory, args)?))
                 }))),
@@ -366,7 +374,7 @@ impl Default for Primitives
                     InterRepr::parse_if(interpret_state, memory, args)
                 }))),
             ("cond",
-                PrimitiveProcedureInfo::new_eval(ArgsCount::Min(2), Rc::new(|interpret_state, memory, args|
+                PrimitiveProcedureInfo::new_eval(2.., Rc::new(|interpret_state, memory, args|
                 {
                     fn parse_clause(interpret_state: &mut InterpretState, memory: &mut LispMemory, clause: AstPos) -> Result<(InterReprPos, InterReprPos), ErrorPos>
                     {
@@ -475,10 +483,10 @@ impl Default for Primitives
 
                     Ok(().into())
                 })),
-            ("+", PrimitiveProcedureInfo::new_simple(ArgsCount::Min(2), Effect::Pure, do_op!(add, checked_add))),
-            ("-", PrimitiveProcedureInfo::new_simple(ArgsCount::Min(2), Effect::Pure, do_op!(sub, checked_sub))),
-            ("*", PrimitiveProcedureInfo::new_simple(ArgsCount::Min(2), Effect::Pure, do_op!(mul, checked_mul))),
-            ("/", PrimitiveProcedureInfo::new_simple(ArgsCount::Min(2), Effect::Pure, do_op!(div, checked_div))),
+            ("+", PrimitiveProcedureInfo::new_simple(2.., Effect::Pure, do_op!(add, checked_add))),
+            ("-", PrimitiveProcedureInfo::new_simple(2.., Effect::Pure, do_op!(sub, checked_sub))),
+            ("*", PrimitiveProcedureInfo::new_simple(2.., Effect::Pure, do_op!(mul, checked_mul))),
+            ("/", PrimitiveProcedureInfo::new_simple(2.., Effect::Pure, do_op!(div, checked_div))),
             ("remainder", PrimitiveProcedureInfo::new_simple(2, Effect::Pure, do_op_simple!(rem))),
             do_cond!("=", |a, b| a == b),
             do_cond!(">", |a, b| a > b),
@@ -514,12 +522,12 @@ impl Default for Primitives
                 Ok(is_equal.into())
             })),
             ("lambda",
-                PrimitiveProcedureInfo::new_eval(ArgsCount::Min(2), Rc::new(|interpret_state, memory, args|
+                PrimitiveProcedureInfo::new_eval(2.., Rc::new(|interpret_state, memory, args|
                 {
                     InterRepr::parse_lambda(interpret_state, memory, "<lambda>".to_owned(), args)
                 }))),
             ("define",
-                PrimitiveProcedureInfo::new_eval(ArgsCount::Min(2), Rc::new(|interpret_state, memory, args: AstPos|
+                PrimitiveProcedureInfo::new_eval(2.., Rc::new(|interpret_state, memory, args: AstPos|
                 {
                     let first = args.car();
 

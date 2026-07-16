@@ -37,6 +37,7 @@ use crate::{
 const PATH_NEAR: f32 = TILE_SIZE * 0.1;
 const RECALCULATE_PATH: f32 = TILE_SIZE * 0.5;
 const HOSTILE_CHECK: f32 = 0.5;
+const ATTACKING_TIMER_START: f32 = 0.5;
 
 pub fn sees(
     entities: &ClientEntities,
@@ -319,7 +320,6 @@ pub struct Enemy
 {
     pub on_create_called: bool,
     behavior: EnemyBehavior,
-    #[serde(skip)]
     behavior_state: BehaviorState,
     current_state_left: Option<f32>,
     hostile_check_timer: f32,
@@ -566,7 +566,7 @@ impl Enemy
 
                             if sees
                             {
-                                self.attacking_timer = 0.5;
+                                self.attacking_timer = ATTACKING_TIMER_START;
                                 return;
                             }
                         }
@@ -666,6 +666,11 @@ impl Enemy
 
     fn set_state(&mut self, state: BehaviorState)
     {
+        if let BehaviorState::Attack(..) = &state
+        {
+            self.attacking_timer = ATTACKING_TIMER_START;
+        }
+
         self.behavior_state = state;
 
         self.current_state_left = self.behavior.duration_of(
