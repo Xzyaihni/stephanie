@@ -1,4 +1,7 @@
-use std::f32;
+use std::{
+    f32,
+    ops::ControlFlow
+};
 
 use serde::{Serialize, Deserialize};
 
@@ -167,10 +170,11 @@ pub fn sees(
     Some((false, visibility * angle_fraction * distance_fraction))
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum EnemyBehavior
 {
-    Melee
+    Melee,
+    Flee
 }
 
 impl EnemyBehavior
@@ -179,7 +183,8 @@ impl EnemyBehavior
     {
         match self
         {
-            Self::Melee => BehaviorState::Wait
+            Self::Melee => BehaviorState::Wait,
+            Self::Flee => BehaviorState::SearchHostile
         }
     }
 
@@ -187,11 +192,13 @@ impl EnemyBehavior
     {
         let range = match self
         {
-            Self::Melee =>
+            Self::Melee | Self::Flee =>
             {
                 match state
                 {
+                    BehaviorState::Wait if *self == EnemyBehavior::Flee => 0.5..=0.8,
                     BehaviorState::Wait => 10.0..=20.0,
+                    BehaviorState::SearchHostile => return None,
                     BehaviorState::Rotate(_) => return None,
                     BehaviorState::MoveDirection(_) => 0.8..=2.0,
                     BehaviorState::MoveTo(_, _) => return None,
@@ -208,6 +215,7 @@ impl EnemyBehavior
 pub enum BehaviorState
 {
     Wait,
+    SearchHostile,
     Rotate(f32),
     MoveDirection(Unit<Vector3<f32>>),
     MoveTo(ContinuousPathfind, Transform),
@@ -326,7 +334,7 @@ pub struct Enemy
     attacking_timer: f32,
     seen_timer: f32,
     seen_now: bool,
-    reset_state: bool,
+    next_state: Option<BehaviorState>,
     id: EnemyId,
     rng: SeededRandom
 }
@@ -348,7 +356,7 @@ impl Enemy
             attacking_timer: 0.0,
             seen_timer: 0.0,
             seen_now: false,
-            reset_state: false,
+            next_state: None,
             on_create_called: false,
             id,
             rng
@@ -364,16 +372,17 @@ impl Enemy
     {
         match &self.behavior
         {
-            EnemyBehavior::Melee =>
+            EnemyBehavior::Melee | EnemyBehavior::Flee =>
             {
                 match &self.behavior_state
                 {
+                    BehaviorState::Wait if self.behavior == EnemyBehavior::Flee => BehaviorState::SearchHostile,
                     BehaviorState::Wait =>
                     {
                         let x = fastrand::f32() * 2.0 - 1.0;
                         let y = fastrand::f32() * 2.0 - 1.0;
 
-                        let direction = Unit::new_normalize(Vector3::new(x, y, 0.0));
+                        let direction = some_or_value!(Unit::try_new(Vector3::new(x, y, 0.0), 0.0001), BehaviorState::Wait);
 
                         let this_transform = some_or_value!(entities.transform(this_entity), BehaviorState::Wait);
 
@@ -393,6 +402,7 @@ impl Enemy
                             BehaviorState::Rotate(random_rotation())
                         }
                     },
+                    BehaviorState::SearchHostile => BehaviorState::Wait,
                     BehaviorState::Rotate(_) => BehaviorState::Wait,
                     BehaviorState::MoveDirection(_) => BehaviorState::Wait,
                     BehaviorState::MoveTo(_, _) => BehaviorState::Wait,
@@ -476,7 +486,7 @@ impl Enemy
                     Self::look_direction(&mut character, angle_to_direction_3d(*rotation));
                 }
 
-                self.reset_state = true;
+                self.reset_state(entities, pathfinder, entity);
             },
             BehaviorState::MoveDirection(direction) =>
             {
@@ -497,7 +507,7 @@ impl Enemy
                     }
                 }
 
-                self.reset_state = true;
+                self.reset_state(entities, pathfinder, entity);
             },
             BehaviorState::Attack(path, other_entity) =>
             {
@@ -506,8 +516,7 @@ impl Enemy
                 if entity == other_entity
                 {
                     eprintln!("{entity:?} tried to attack itself");
-                    self.reset_state = true;
-                    return;
+                    return self.reset_state(entities, pathfinder, entity);
                 }
 
                 if let Some(other_transform) = entities.transform(other_entity)
@@ -578,8 +587,35 @@ impl Enemy
                     self.attacking_timer -= dt;
                 } else
                 {
-                    self.reset_state = true;
                     self.seen_timer = 0.0;
+                    self.reset_state(entities, pathfinder, entity);
+                }
+            },
+            BehaviorState::SearchHostile =>
+            {
+                let transform = some_or_return!(entities.transform(entity));
+                let z = some_or_return!(pathfinder.space.z_of(transform.position.z));
+
+                let found_hostile = pathfinder.space.z_nodes[z]
+                    .try_possible_collisions_with(transform.position.xy(), transform.scale.xy() * 0.5, |info|
+                    {
+                        if sees(entities, pathfinder.space, pathfinder.world, entity, info.entity).is_some()
+                        {
+                            let away_direction = Unit::try_new(with_z(transform.position.xy() - info.position, 0.0), 0.0001);
+
+                            ControlFlow::Break(some_or_value!(away_direction, ControlFlow::Continue(())))
+                        } else
+                        {
+                            ControlFlow::Continue(())
+                        }
+                    });
+
+                if let ControlFlow::Break(away_direction) = found_hostile
+                {
+                    self.next_state = Some(BehaviorState::MoveDirection(away_direction));
+                } else
+                {
+                    self.reset_state(entities, pathfinder, entity);
                 }
             },
             BehaviorState::Wait => ()
@@ -630,28 +666,21 @@ impl Enemy
 
         self.seen_now = false;
 
-        let mut changed = if let Some(current_state_left) = self.current_state_left.as_mut()
+        if let Some(current_state_left) = self.current_state_left.as_mut()
         {
             *current_state_left -= dt;
 
-            let changed_state = *current_state_left <= 0.0;
-            if changed_state
+            if *current_state_left <= 0.0
             {
-                self.set_next_state(entities, pathfinder, entity);
+                self.reset_state(entities, pathfinder, entity);
             }
-
-            changed_state
-        } else
-        {
-            false
         };
 
-        if self.reset_state
-        {
-            self.reset_state = false;
+        let changed = self.next_state.is_some();
 
-            changed = true;
-            self.set_next_state(entities, pathfinder, entity);
+        if let Some(next_state) = self.next_state.take()
+        {
+            self.set_state(next_state);
         }
 
         self.do_behavior(entities, pathfinder, entity, dt);
@@ -659,9 +688,9 @@ impl Enemy
         changed
     }
 
-    fn set_next_state(&mut self, entities: &ClientEntities, pathfinder: Pathfinder, entity: Entity)
+    fn reset_state(&mut self, entities: &ClientEntities, pathfinder: Pathfinder, entity: Entity)
     {
-        self.set_state(self.next_state(entities, pathfinder, entity));
+        self.next_state = Some(self.next_state(entities, pathfinder, entity));
     }
 
     fn set_state(&mut self, state: BehaviorState)
@@ -706,6 +735,15 @@ impl Enemy
         self.set_state(BehaviorState::Attack(None, entity));
     }
 
+    pub fn is_hostile_behavior(&self) -> bool
+    {
+        match self.behavior
+        {
+            EnemyBehavior::Flee => false,
+            _ => true
+        }
+    }
+
     pub fn is_attacking(&self) -> bool
     {
         match self.behavior_state
@@ -717,7 +755,7 @@ impl Enemy
 
     pub fn check_hostiles(&self) -> bool
     {
-        !self.is_attacking() && ((self.hostile_check_timer <= 0.0) || self.seen_timer > 0.0)
+        self.is_hostile_behavior() && !self.is_attacking() && ((self.hostile_check_timer <= 0.0) || self.seen_timer > 0.0)
     }
 
     pub fn id(&self) -> EnemyId

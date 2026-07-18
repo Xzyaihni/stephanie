@@ -85,7 +85,8 @@
             "speed": 1.5,
             "strength": 1.7
         },
-        "lying_face_offset": [-3, 0]
+        "lying_face_offset": [-3, 0],
+        "behavior": "Flee"
     },
     {
         "name": "me",
@@ -120,6 +121,7 @@
         "body": "../player",
         "face": "../player",
         "lying_face_offset": [-5, 0],
+        "behavior": "Flee",
         "on_contents": "'(heal_pills)"
     }
 ]

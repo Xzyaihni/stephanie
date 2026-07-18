@@ -27,7 +27,6 @@ use crate::common::{
     CharactersInfo,
     ItemsInfo,
     EntityInfo,
-    enemy::BehaviorState,
     inventory::BASE_INVENTORY_LIMIT,
     scripts_container::{parse_symbol_or_string, parse_entity},
     lazy_transform::*

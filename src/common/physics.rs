@@ -308,6 +308,7 @@ impl Physical
 
     pub fn set_velocity_raw(&mut self, velocity: Vector3<f32>)
     {
+        debug_assert!(!velocity.iter().any(|x| x.is_nan()));
         self.velocity = velocity;
     }
 
@@ -323,21 +324,25 @@ impl Physical
 
     pub fn add_velocity_raw(&mut self, velocity: Vector3<f32>)
     {
+        debug_assert!(!velocity.iter().any(|x| x.is_nan()));
         self.velocity += velocity;
     }
 
     pub fn add_angular_velocity_raw(&mut self, velocity: f32)
     {
+        debug_assert!(!velocity.is_nan());
         self.angular_velocity += velocity;
     }
 
     pub fn add_force(&mut self, force: Vector3<f32>)
     {
+        debug_assert!(!force.iter().any(|x| x.is_nan()));
         self.force += force;
     }
 
     pub fn add_torque(&mut self, torque: f32)
     {
+        debug_assert!(!torque.is_nan());
         self.torque += torque;
     }
 

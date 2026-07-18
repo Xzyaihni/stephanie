@@ -1,9 +1,10 @@
 use std::{
+    num::FpCategory,
     ops::Range,
     cmp::Ordering
 };
 
-use nalgebra::{Unit, Vector3, ArrayStorage, Rotation3};
+use nalgebra::{vector, Unit, Vector3, ArrayStorage};
 
 use serde::{Serialize, Deserialize};
 
@@ -139,7 +140,15 @@ fn swept_aabb_world_inner<'a, const EXCLUDE_BEFORE: bool>(
 
     let limit = direction.magnitude();
 
-    let direction = Unit::new_normalize(direction);
+    let direction = Unit::try_new(direction, 0.000001).unwrap_or_else(||
+    {
+        let max_index = direction.iamax();
+
+        let mut v = Vector3::zeros();
+        v[max_index] = direction[max_index].signum();
+
+        Unit::new_unchecked(v)
+    });
 
     let half_size = this.scale * 0.5;
 
@@ -150,6 +159,11 @@ fn swept_aabb_world_inner<'a, const EXCLUDE_BEFORE: bool>(
 
     top_left.tiles_between(bottom_right).filter_map(move |pos|
     {
+        if limit.classify() == FpCategory::Zero
+        {
+            return None;
+        }
+
         let tile = world.tile(pos);
 
         let is_colliding = tile.map(|tile| tilemap[*tile].colliding).unwrap_or(false);
@@ -362,22 +376,18 @@ fn line_rectangle_intersections(
 {
     let point = start - position;
 
-    let rotation_matrix = Rotation3::from_axis_angle(
-        &Vector3::z_axis(),
-        rotation
-    );
-
-    let rotation_matrix = rotation_matrix.matrix();
-
-    let at_axis = |i: usize|
+    let at_axis = |axis: Unit<Vector3<f32>>, i: usize|
     {
-        let axis: Vector3<f32> = rotation_matrix.column(i).into();
-        let axis = Unit::new_unchecked(axis);
-
         ray_slab_interval(point, direction, &axis, scale[i])
     };
 
-    Vector3::new(at_axis(0), at_axis(1), at_axis(2))
+    let (asin, acos) = rotation.sin_cos();
+
+    vector![
+        at_axis(Unit::new_unchecked(vector![acos, -asin, 0.0]), 0),
+        at_axis(Unit::new_unchecked(vector![asin, acos, 0.0]), 1),
+        at_axis(Unit::new_unchecked(vector![0.0, 0.0, 1.0]), 2)
+    ]
 }
 
 fn line_rectangle_intersections_aabb(
