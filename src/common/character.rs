@@ -372,10 +372,17 @@ impl BlinkingInfo
 }
 
 #[derive(Debug, Clone)]
+struct HairAccessoryInfo
+{
+    offset: Vector2<f32>,
+    sprite: Sprite
+}
+
+#[derive(Debug, Clone)]
 struct HairInfo
 {
     base: Option<Entity>,
-    other: Vec<(BaseHair<Vector2<f32>>, Entity)>
+    other: Vec<(BaseHair<HairAccessoryInfo>, Entity)>
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -658,44 +665,32 @@ impl Character
 
             let other = hairstyle.accessory.map(|accessory|
             {
-                fn create_accessory(
-                    f: impl FnOnce(Vector3<f32>) -> Entity,
-                    (state, offset): (SpriteState, BaseHair<Vector2<f32>>)
-                ) -> (BaseHair<Vector2<f32>>, Entity)
+                let create_accessory = |hair: BaseHair<HairSprite<Sprite>>| -> (BaseHair<HairAccessoryInfo>, Entity)
                 {
-                    let this_offset = match state
+                    let (current, offset) = self.hair_size_select(character_info, &hair, |x| x.sprite.scale);
+                    let entity = inserter(pon(current.sprite, with_z(offset, 0.0)));
+
+                    let hair_info = hair.zip(BaseHair{
+                        base: character_info.normal,
+                        crawling: character_info.crawling,
+                        lying: character_info.lying
+                    }).map(|(accessory, character_hair)|
                     {
-                        SpriteState::Normal => offset.base,
-                        SpriteState::Crawling => offset.crawling,
-                        SpriteState::Lying => offset.lying
-                    };
+                        let pixel_offset = (accessory.sprite.scale - character_hair.scale) * 0.5;
 
-                    (offset, f(with_z(this_offset, 0.0)))
-                }
+                        HairAccessoryInfo{
+                            offset: hair_offset_of(accessory.offset, pixel_offset).xy(),
+                            sprite: accessory.sprite
+                        }
+                    });
 
-                let get_offset = |offset: BaseHair<Vector2<i8>>, texture: Sprite| -> (SpriteState, BaseHair<Vector2<f32>>)
-                {
-                    let f = |a: Vector2<i8>, b: Sprite| -> Vector2<f32>
-                    {
-                        hair_offset_of(a, (texture.scale - b.scale) * 0.5).xy()
-                    };
-
-                    let offsets = BaseHair{
-                        base: f(offset.base, character_info.normal),
-                        crawling: f(offset.crawling, character_info.crawling),
-                        lying: f(offset.lying, character_info.lying)
-                    };
-
-                    (*self.sprite_state.value(), offsets)
+                    (hair_info, entity)
                 };
 
                 match accessory
                 {
-                    HairAccessory::Pons{left, right, value: texture} => {
-                        vec![
-                            create_accessory(|p| inserter(pon(texture, p)), get_offset(left, texture)),
-                            create_accessory(|p| inserter(pon(texture, p)), get_offset(right, texture))
-                        ]
+                    HairAccessory::Pons{left, right} => {
+                        vec![create_accessory(left), create_accessory(right)]
                     }
                 }
             }).unwrap_or_default();
@@ -3226,9 +3221,13 @@ impl Character
         {
             entities.set_z_level(*accessory, accessory_hair_z(*self.sprite_state.value(), is_player));
 
+            let current = self.hair_select(positions);
+
+            set_sprite(*accessory, current.sprite);
+
             if let Some(mut target) = entities.target(*accessory)
             {
-                target.position = with_z(*self.hair_select(positions), 0.0);
+                target.position = with_z(current.offset, 0.0);
             }
         });
 

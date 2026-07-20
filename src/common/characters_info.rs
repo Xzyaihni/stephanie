@@ -67,12 +67,30 @@ impl Default for CharacterSprites<&'static str>
 
 impl<T> CharacterSprites<T>
 {
+    pub fn as_ref(&self) -> CharacterSprites<&T>
+    {
+        CharacterSprites{
+            base: &self.base,
+            crawling: &self.crawling,
+            lying: &self.lying
+        }
+    }
+
     pub fn map<U>(self, mut f: impl FnMut(T) -> U) -> CharacterSprites<U>
     {
         CharacterSprites{
             base: f(self.base),
             crawling: f(self.crawling),
             lying: f(self.lying)
+        }
+    }
+
+    pub fn zip<U>(self, other: CharacterSprites<U>) -> CharacterSprites<(T, U)>
+    {
+        CharacterSprites{
+            base: (self.base, other.base),
+            crawling: (self.crawling, other.crawling),
+            lying: (self.lying, other.lying)
         }
     }
 }
@@ -82,7 +100,7 @@ pub type BaseHair<T> = CharacterSprites<T>;
 #[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
 pub enum HairAccessory<T=Sprite>
 {
-    Pons{left: BaseHair<Vector2<i8>>, right: BaseHair<Vector2<i8>>, value: T}
+    Pons{left: BaseHair<HairSprite<T>>, right: BaseHair<HairSprite<T>>}
 }
 
 impl<T> HairAccessory<T>
@@ -91,7 +109,7 @@ impl<T> HairAccessory<T>
     {
         match self
         {
-            Self::Pons{left, right, value} => HairAccessory::Pons{left, right, value: f(value)}
+            Self::Pons{left, right} => HairAccessory::Pons{left: left.map(|x| x.map(&mut f)), right: right.map(|x| x.map(&mut f))}
         }
     }
 }

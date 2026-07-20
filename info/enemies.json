@@ -99,28 +99,27 @@
         "hairstyle": {
             "base": {
                 "base": {"sprite": "../player/hair"},
-                "crawling": {"sprite": "../player/hair_crawling", "offset": [8, -3]},
+                "crawling": {"sprite": "../player/hair_crawling", "offset": [1, -2]},
                 "lying": {"sprite": "../player/hair_lying", "offset": [-6, -3]}
             },
             "accessory": {
                 "Pons": {
                     "left": {
-                        "base": [-1, -1],
-                        "crawling": [41, -4],
-                        "lying": [-3, -4]
+                        "base": {"sprite": "../player/pon_left", "offset": [-1, -1]},
+                        "crawling": {"sprite": "../player/pon_left_crawling", "offset": [41, -4]},
+                        "lying": {"sprite": "../player/pon_left_lying", "offset": [-3, -4]}
                     },
                     "right": {
-                        "base": [-1, 22],
-                        "crawling": [41, 20],
-                        "lying": [-3, 20]
-                    },
-                    "value": "../player/pon"
+                        "base": {"sprite": "../player/pon_right", "offset": [-1, 22]},
+                        "crawling": {"sprite": "../player/pon_right_crawling", "offset": [41, 20]},
+                        "lying": {"sprite": "../player/pon_right_lying", "offset": [-3, 20]}
+                    }
                 }
             }
         },
         "body": "../player",
         "face": "../player",
-        "lying_face_offset": [-5, 0],
+        "lying_face_offset": [-7, 0],
         "behavior": "Flee",
         "on_contents": "'(heal_pills)"
     }
