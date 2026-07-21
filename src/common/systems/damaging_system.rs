@@ -791,7 +791,17 @@ fn flash_damage_single(
 {
     if let Some(mut mix_color) = entities.mix_color_target(entity)
     {
-        *mix_color = Some(MixColor{color: [r, g, b, 1.0], amount: 0.8, ..Default::default()});
+        let flash_color = [r, g, b, 1.0];
+        let flash_amount = 0.8;
+
+        if let Some(mix) = &mut *mix_color
+        {
+            mix.color = flash_color;
+            mix.amount = flash_amount;
+        } else
+        {
+            *mix_color = Some(MixColor{color: flash_color, amount: flash_amount, ..Default::default()});
+        }
 
         entities.add_watcher(entity, Watcher{
             kind: WatcherType::Lifetime(HIGHLIGHT_DURATION.into()),
@@ -799,7 +809,16 @@ fn flash_damage_single(
             {
                 if let Some(mut render) = entities.render_mut(entity)
                 {
-                    render.mix = None;
+                    if let Some(mix) = render.mix.as_mut()
+                    {
+                        if mix.palette.is_some()
+                        {
+                            mix.amount = 0.0;
+                        } else
+                        {
+                            render.mix.take();
+                        }
+                    }
                 }
             }),
             ..Default::default()

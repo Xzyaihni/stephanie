@@ -735,6 +735,11 @@ impl Enemy
         self.set_state(BehaviorState::Attack(None, entity));
     }
 
+    pub fn prepare_for_save(&mut self)
+    {
+        self.behavior_state = BehaviorState::Wait;
+    }
+
     pub fn is_hostile_behavior(&self) -> bool
     {
         match self.behavior

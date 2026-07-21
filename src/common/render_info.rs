@@ -129,7 +129,8 @@ pub struct OutlinedInfo
 pub enum ColorPalette
 {
     Pink = 0,
-    Aqua
+    Aqua,
+    Green
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]

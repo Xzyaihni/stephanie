@@ -528,7 +528,12 @@ impl EntityInfo
         this: Entity
     ) -> FullEntityInfo
     {
-        let info = entities.info(this);
+        let mut info = entities.info(this);
+
+        if let Some(enemy) = info.enemy.as_mut()
+        {
+            enemy.prepare_for_save();
+        }
 
         let children: Vec<_> = entities.children_of(this).filter_map(|child|
         {
