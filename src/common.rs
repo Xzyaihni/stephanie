@@ -77,7 +77,7 @@ pub use furnitures_info::{FurnitureId, FurnitureInfo, FurnituresInfo};
 pub use character::{EquipState, CharacterSyncInfo, Character, Faction};
 pub use characters_info::{Hairstyle, CharacterId, CharactersInfo, CharacterInfo};
 
-pub use player::{Player, OnConnectInfo};
+pub use player::{Player, CustomizationInfo, OnConnectInfo};
 
 pub use enemy::{EnemyBehavior, Enemy};
 pub use enemies_info::{EnemyId, EnemyInfo, EnemiesInfo};

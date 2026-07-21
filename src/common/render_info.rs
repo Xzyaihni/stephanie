@@ -5,7 +5,7 @@ use std::{
     borrow::Cow
 };
 
-use strum::{EnumString, FromRepr};
+use strum::{EnumString, EnumIter, IntoEnumIterator, FromRepr};
 
 use parking_lot::{Mutex, RwLock};
 
@@ -123,7 +123,7 @@ pub struct OutlinedInfo
     palette: u32
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, EnumString, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, EnumString, EnumIter, Serialize, Deserialize)]
 #[strum(ascii_case_insensitive)]
 #[repr(u8)]
 pub enum ColorPalette
@@ -131,6 +131,16 @@ pub enum ColorPalette
     Pink = 0,
     Aqua,
     Green
+}
+
+impl ColorPalette
+{
+    pub fn random() -> Self
+    {
+        let len = Self::iter().count();
+
+        Self::iter().nth(fastrand::usize(0..len)).unwrap()
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -256,7 +266,8 @@ pub struct UiOutlinedInfo
 {
     other_color: [f32; 4],
     other_mix: f32,
-    flags: u32
+    flags: u32,
+    palette: u32
 }
 
 impl UiOutlinedInfo
@@ -270,7 +281,8 @@ impl UiOutlinedInfo
         Self{
             other_color: other_color.other_color,
             other_mix: other_color.other_mix,
-            flags: other_color.flags
+            flags: other_color.flags,
+            palette: other_color.palette
         }
     }
 }

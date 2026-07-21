@@ -31,6 +31,7 @@ use crate::common::{
     FurnitureId,
     Item,
     Health,
+    ColorPalette,
     entity::{EntityRemoveMany, EntityRemove},
     world::{Pos3, TilePos, Tile, Chunk, GlobalPos}
 };
@@ -90,7 +91,7 @@ pub enum Message
     SyncCamera{position: Pos3<f32>},
     SyncWorldTime{time: f64},
     SpawnEnemy{id: EnemyId, pos: Vector3<f32>, params: Vec<SpawnEnemyParam>},
-    PlayerConnect{name: String, host: bool},
+    PlayerConnect{name: String, palette: ColorPalette, host: bool},
     PlayerOnConnect(OnConnectInfo),
     PlayerFullyConnected,
     PlayerDisconnect{time: Option<f64>, restart: bool, host: bool},

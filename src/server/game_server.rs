@@ -21,6 +21,7 @@ use nalgebra::Vector3;
 use yanyaengine::Transform;
 
 use super::{
+    ServerInfo,
     ConnectionsHandler,
     connections_handler::PlayerInfo,
     world::World
@@ -60,6 +61,7 @@ use crate::{
         ConnectionId,
         OnConnectInfo,
         ServerScripts,
+        CustomizationInfo,
         entity::ServerEntities,
         inventory::BASE_INVENTORY_LIMIT,
         character::SpriteState,
@@ -171,22 +173,20 @@ impl GameServer
     pub fn new(
         tilemap: Rc<TileMap>,
         data_infos: DataInfos,
-        server_scripts: ServerScripts,
-        world_name: String,
-        limit: usize
+        server_info: ServerInfo
     ) -> Result<(Sender<TcpStream>, Self), ParseError>
     {
-        let server_scripts = Rc::new(server_scripts);
+        let server_scripts = Rc::new(server_info.server_scripts);
 
         let entities = Rc::new(RefCell::new(Entities::new(data_infos.clone())));
-        let connection_handler = Arc::new(Mutex::new(ConnectionsHandler::new(limit)));
+        let connection_handler = Arc::new(Mutex::new(ConnectionsHandler::new(server_info.connections_limit)));
 
         let world = Rc::new(RefCell::new(Some(World::new(
             connection_handler.clone(),
             tilemap.clone(),
             data_infos.clone(),
             server_scripts.clone(),
-            world_name.clone()
+            server_info.world_name.clone()
         )?)));
 
         let _sender_handle = sender_loop(connection_handler.clone());
@@ -201,7 +201,7 @@ impl GameServer
             tilemap,
             server_scripts,
             world,
-            world_name,
+            world_name: server_info.world_name,
             sender,
             receiver,
             connection_receiver,
@@ -403,7 +403,7 @@ impl GameServer
         load_world_file(format!("player `{player_name}`"), &path, json_loader())
     }
 
-    fn create_new_player(&self, name: String) -> EntityInfo
+    fn create_new_player(&self, customization: CustomizationInfo) -> EntityInfo
     {
         let transform = {
             let scale = Vector3::repeat(ENTITY_SCALE);
@@ -429,9 +429,17 @@ impl GameServer
             ..Default::default()
         }));
 
+        let player = {
+            let mut player = Player::default();
+
+            player.palette = customization.palette;
+
+            player
+        };
+
         EntityInfo{
-            player: Some(Player::default()),
-            named: Some(name),
+            player: Some(player),
+            named: Some(customization.name.clone()),
             lazy_transform: Some(LazyTransformInfo{
                 transform: transform.clone(),
                 ..Default::default()
@@ -461,9 +469,9 @@ impl GameServer
     {
         let mut player_info = self.player_info(stream)?;
 
-        let info = self.load_player_info(&player_info.name).unwrap_or_else(||
+        let info = self.load_player_info(&player_info.customization.name).unwrap_or_else(||
         {
-            self.create_new_player(player_info.name.clone())
+            self.create_new_player(player_info.customization.clone())
         });
 
         let player_position = info.transform.as_ref().map(|x| x.position).or_else(||
@@ -493,11 +501,20 @@ impl GameServer
 
         match message_passer.receive_one()?
         {
-            Some(Message::PlayerConnect{name, host}) =>
+            Some(Message::PlayerConnect{name, palette, host}) =>
             {
                 println!("{}player \"{name}\" connected", if host { "host " } else { "" });
 
-                Ok(PlayerInfo{message_buffer: MessageBuffer::new(), message_passer, entity: None, name, host})
+                Ok(PlayerInfo{
+                    message_buffer: MessageBuffer::new(),
+                    message_passer,
+                    entity: None,
+                    customization: CustomizationInfo{
+                        name,
+                        palette
+                    },
+                    host
+                })
             },
             _ =>
             {

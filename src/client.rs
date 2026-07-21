@@ -37,6 +37,7 @@ use crate::{
         ClientScripts,
         DataInfos,
         MessagePasser,
+        CustomizationInfo,
         items_info::ScriptsContainer,
         tilemap::TileMapWithTextures
     }
@@ -87,7 +88,7 @@ pub struct ClientInitInfo
 pub struct ClientInfo
 {
     pub address: String,
-    pub name: String,
+    pub customization: CustomizationInfo,
     pub host: bool,
     pub debug: bool,
     pub mouse_position: Vector2<f32>,

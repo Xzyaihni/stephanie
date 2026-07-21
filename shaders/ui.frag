@@ -10,14 +10,15 @@ layout(push_constant) uniform OutlineInfo{
     vec4 other_color;
     float other_mix;
     int flags;
+    int palette;
 } info;
 
-#include "with_mix_simple.glsl"
+#include "with_mix.glsl"
 
 
 void main()
 {
     vec4 color = texture(tex, tex_coords);
 
-    f_color = with_mix_simple(color);
+    f_color = with_mix(color);
 }

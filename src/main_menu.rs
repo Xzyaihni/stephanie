@@ -176,9 +176,19 @@ enum WorldCreatePartId
     PanelInner,
     Message,
     Textbox(TextboxPartId),
+    MessageColor,
+    ColorsPanel,
+    ColorsPanelColor(usize, ColorIconPart),
     Buttons,
     Confirm(ButtonPartId),
     Back(ButtonPartId)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum ColorIconPart
+{
+    Panel,
+    Color
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -314,6 +324,7 @@ pub struct MenuClientInfo
 {
     pub address: TextboxInfo,
     pub name: NameInfo,
+    pub palette: ColorPalette,
     pub online_mode: OnlineMode,
     pub debug: bool
 }
@@ -411,6 +422,7 @@ impl MainMenu
         let info = MenuClientInfo{
             address: TextboxInfo::new(String::new()),
             name: NameInfo::new(TextboxInfo::new_with_limit("stephanie".to_owned(), 30)),
+            palette: ColorPalette::random(),
             online_mode: OnlineMode::Off,
             debug: cfg!(debug_assertions)
         };
@@ -1392,7 +1404,96 @@ impl MainMenu
             &mut ui_info.info.name.info
         );
 
-        add_padding_vertical(panel, 0.01.into());
+        add_padding_vertical(panel, 0.012.into());
+
+        panel.update(id(WorldCreatePartId::MessageColor), UiElement{
+            texture: UiTexture::Text(TextInfo::new_simple(font_size, "my fav color is")),
+            mix: Some(MixColorLch::color(ACCENT_COLOR)),
+            ..UiElement::fit_content()
+        });
+
+        add_padding_vertical(panel, 0.008.into());
+
+        let colors_panel = panel.update(id(WorldCreatePartId::ColorsPanel), UiElement{
+            width: UiSize::Rest(1.0).into(),
+            ..Default::default()
+        });
+
+        add_padding_horizontal(colors_panel, UiSize::Rest(1.0).into());
+
+        ColorPalette::iter().enumerate().for_each(|(index, color)|
+        {
+            if index != 0
+            {
+                add_padding_horizontal(colors_panel, UiSize::Rest(0.4).into());
+            }
+
+            let size = 0.03;
+
+            let panel_id = id(WorldCreatePartId::ColorsPanelColor(index, ColorIconPart::Panel));
+
+            let is_hovered = panel.input_of(&panel_id).is_mouse_inside();
+
+            if is_hovered && ui_info.controls.take_click_down()
+            {
+                ui_info.info.palette = color;
+            }
+
+            let is_selected = color == ui_info.info.palette;
+
+            let panel_color = if is_selected
+            {
+                if is_hovered
+                {
+                    Lcha{l: 95.0, c: 0.0, h: 0.0, a: 1.0}
+                } else
+                {
+                    Lcha{l: 100.0, c: 0.0, h: 0.0, a: 1.0}
+                }
+            } else
+            {
+                if is_hovered
+                {
+                    Lcha{l: 50.0, c: 0.0, h: 0.0, a: 1.0}
+                } else
+                {
+                    Lcha{l: 30.0, c: 0.0, h: 0.0, a: 1.0}
+                }
+            };
+
+            let panel = colors_panel.update(panel_id, UiElement{
+                texture: UiTexture::Sliced(ui_info.sliced_textures["rounded"]),
+                mix: Some(MixColorLch::color(panel_color)),
+                children_layout: UiLayout::Vertical,
+                width: size.into(),
+                height: size.into(),
+                animation: Animation{
+                    mix: Some(MixAnimation{
+                        start_decay: MixDecay::all(BUTTON_DECAY_SPEED),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+                ..Default::default()
+            });
+
+            add_padding_vertical(panel, UiSize::Rest(0.1).into());
+
+            let color_id = id(WorldCreatePartId::ColorsPanelColor(index, ColorIconPart::Color));
+            panel.update(color_id.clone(), UiElement{
+                texture: UiTexture::Custom("ui/palette_color.png".into()),
+                mix: Some(MixColorLch{palette: Some(color), ..Default::default()}),
+                width: UiSize::CopyElement(UiDirection::Vertical, 1.0, color_id).into(),
+                height: UiSize::Rest(1.0).into(),
+                ..Default::default()
+            });
+
+            add_padding_vertical(panel, UiSize::Rest(0.1).into());
+        });
+
+        add_padding_horizontal(colors_panel, UiSize::Rest(1.0).into());
+
+        add_padding_vertical(panel, 0.015.into());
 
         let buttons = panel.update(id(WorldCreatePartId::Buttons), UiElement::default());
 

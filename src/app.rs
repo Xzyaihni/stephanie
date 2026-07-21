@@ -44,7 +44,7 @@ use crate::{
     LONGEST_FRAME,
     debug_config::*,
     main_menu::{OnlineMode, MainMenu, MenuAction},
-    server::Server,
+    server::{Server, ServerInfo},
     client::{
         Client,
         ClientInfo,
@@ -63,6 +63,7 @@ use crate::{
         FurnituresInfo,
         CharactersInfo,
         Crafts,
+        CustomizationInfo,
         loot::*,
         scripts_container::server_info_primitives,
         tilemap::TileLoot,
@@ -628,10 +629,12 @@ impl YanyaApp for App
                                 let x = Server::new(
                                     tilemap,
                                     data_infos,
-                                    server_loot,
-                                    world_name,
-                                    &listen_address,
-                                    16
+                                    ServerInfo{
+                                        server_scripts: server_loot,
+                                        world_name,
+                                        connections_limit: 16
+                                    },
+                                    &listen_address
                                 );
 
                                 let (mut game_server, mut server) = match x
@@ -689,7 +692,10 @@ impl YanyaApp for App
 
                         let client_info = ClientInfo{
                             address,
-                            name: client_info.name.display_name(),
+                            customization: CustomizationInfo{
+                                name: client_info.name.display_name(),
+                                palette: client_info.palette
+                            },
                             host: client_info.online_mode != OnlineMode::Client,
                             debug: client_info.debug,
                             mouse_position: x.mouse_position(),

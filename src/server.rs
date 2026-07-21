@@ -21,6 +21,13 @@ pub mod connections_handler;
 pub mod world;
 
 
+pub struct ServerInfo
+{
+    pub server_scripts: ServerScripts,
+    pub world_name: String,
+    pub connections_limit: usize
+}
+
 pub struct Server
 {
     listener: TcpListener,
@@ -32,10 +39,8 @@ impl Server
     pub fn new(
         tilemap: Rc<TileMap>,
         data_infos: DataInfos,
-        server_scripts: ServerScripts,
-        world_name: String,
-        address: &str,
-        connections_limit: usize
+        server_info: ServerInfo,
+        address: &str
     ) -> Result<(GameServer, Self), ParseError>
     {
         let listener = TcpListener::bind(address)?;
@@ -43,9 +48,7 @@ impl Server
         let (connector, game_server) = GameServer::new(
             tilemap,
             data_infos,
-            server_scripts,
-            world_name,
-            connections_limit
+            server_info
         )?;
 
         Ok((game_server, Self{

@@ -17,6 +17,8 @@ pub use yanyaengine::{TextInfo, TextBlocks, TextInfoBlock, TextOutline};
 pub use crate::common::lazy_transform::{Scaling, Connection, ValueAnimation};
 
 
+pub const BUTTON_DECAY_SPEED: f32 = 10.0;
+
 // i wanted to do this with FlatChunksContainer but i dont like how i made that one
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UiElementShapeMask
@@ -978,7 +980,7 @@ impl Animation
                 ..Default::default()
             }),
             mix: Some(MixAnimation{
-                start_decay: MixDecay::all(10.0),
+                start_decay: MixDecay::all(BUTTON_DECAY_SPEED),
                 ..Default::default()
             }),
             ..Default::default()

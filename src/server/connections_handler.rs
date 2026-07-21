@@ -6,6 +6,7 @@ use crate::common::{
     EntityPasser,
     MessagePasser,
     ConnectionId,
+    CustomizationInfo,
     message::{Message, MessageBuffer}
 };
 
@@ -16,7 +17,7 @@ pub struct PlayerInfo
     pub message_buffer: MessageBuffer,
     pub message_passer: MessagePasser,
     pub entity: Option<Entity>,
-    pub name: String,
+    pub customization: CustomizationInfo,
     pub host: bool
 }
 
@@ -24,7 +25,7 @@ impl PlayerInfo
 {
     pub fn name(&self) -> &str
     {
-        &self.name
+        &self.customization.name
     }
 
     pub fn set_message(&mut self, message: Message)

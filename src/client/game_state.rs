@@ -65,6 +65,7 @@ use crate::{
         OccludingCaster,
         OnChangeInfo,
         OnConnectInfo,
+        CustomizationInfo,
         scripts_container::ScriptIndex,
         items_info::ScriptsContainer,
         sender_loop::BufferSender,
@@ -918,7 +919,7 @@ impl GameState
 
         let OnConnectInfo{player_entity, player_position, time} = Self::connect_to_server(
             &mut handler,
-            &client_info.name,
+            client_info.customization.clone(),
             client_info.host
         );
 
@@ -1196,11 +1197,11 @@ impl GameState
 
     fn connect_to_server(
         handler: &mut ConnectionsHandler,
-        name: &str,
+        info: CustomizationInfo,
         host: bool
     ) -> OnConnectInfo
     {
-        let message = Message::PlayerConnect{name: name.to_owned(), host};
+        let message = Message::PlayerConnect{name: info.name, palette: info.palette, host};
         if let Err(x) = handler.send_blocking(&message)
         {
             panic!("error connecting to server: {x}");

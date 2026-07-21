@@ -20,6 +20,13 @@ pub const MEDIUM_KICK: f32 = 0.1;
 const OFFSET_MAX: f32 = 0.2;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CustomizationInfo
+{
+    pub name: String,
+    pub palette: ColorPalette
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OnConnectInfo
 {
     pub player_entity: Entity,
