@@ -1,5 +1,9 @@
 (load-once "infos.scm")
 
+(define (set-character-palette palette)
+    (set-palette (player-entity) palette)
+    (for-each (lambda (x) (set-palette x palette)) (children-of (player-entity))))
+
 (define (fold-entities f start)
     (define query (all-entities-query))
     (define (rest-entities state)

@@ -6,7 +6,7 @@ use serde::{Serialize, Deserialize};
 
 use strum::{EnumIter, EnumCount};
 
-use crate::common::{Entity, Pos3};
+use crate::common::{ColorPalette, Entity, Pos3};
 
 
 pub const WEAKER_SCREENSHAKE: f32 = 0.04;
@@ -230,6 +230,7 @@ pub struct Player
     pub screenshake: Screenshake,
     pub kills: u32,
     pub stats: [StatLevel; StatId::COUNT],
+    pub palette: ColorPalette,
     leveled_up: Vec<StatId>
 }
 
@@ -241,6 +242,7 @@ impl Default for Player
             screenshake: Screenshake::default(),
             kills: 0,
             stats: [StatLevel::default(); StatId::COUNT],
+            palette: ColorPalette::Pink,
             leveled_up: Vec::new()
         }
     }

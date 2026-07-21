@@ -69,7 +69,8 @@ impl LazyMix
             color,
             amount,
             only_alpha: current.only_alpha,
-            keep_transparency: current.keep_transparency
+            keep_transparency: current.keep_transparency,
+            palette: current.palette
         }
     }
 }

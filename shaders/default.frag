@@ -13,19 +13,15 @@ layout(push_constant) uniform OutlineInfo{
     float animation;
     float outlined;
     int flags;
-} outline;
+    int palette;
+} info;
 
 const vec3 BACKGROUND_COLOR = vec3(0.831, 0.941, 0.988);
 
 const float LINE_WIDTH = 0.5;
 
-vec4 with_mix(vec4 color)
-{
-    vec4 target_mix = ((outline.flags >> 1) & 1) == 1 ? vec4(color.rgb, outline.other_color.a) : outline.other_color;
-    vec4 other_color = (outline.flags & 1) == 1 ? vec4(target_mix.rgb, min(color.a, target_mix.a)) : target_mix;
+#include "with_mix.glsl"
 
-    return mix(color, other_color, outline.other_mix);
-}
 
 void main()
 {
@@ -34,9 +30,9 @@ void main()
     color = with_mix(color);
 
     float coord = gl_FragCoord.x + gl_FragCoord.y;
-    float outline_lines = mod(coord * 0.02 + outline.animation * 0.5, LINE_WIDTH);
+    float outline_lines = mod(coord * 0.02 + info.animation * 0.5, LINE_WIDTH);
     float outline_mask = outline_lines > (LINE_WIDTH * 0.5) ? 0.5 : 0.0;
-    color = mix(color, vec4(vec3(outline_mask), color.a), outline.outlined * 0.5);
+    color = mix(color, vec4(vec3(outline_mask), color.a), info.outlined * 0.5);
 
     f_color = vec4(mix(color.xyz, BACKGROUND_COLOR, depth), color.w);
 }

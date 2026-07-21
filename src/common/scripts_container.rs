@@ -1,4 +1,6 @@
 use std::{
+    any::type_name,
+    str::FromStr,
     rc::{Weak, Rc},
     cell::RefCell,
     sync::mpsc::Sender
@@ -24,6 +26,7 @@ use crate::{
         DataInfos,
         TileMap,
         SpawnEnemyParam,
+        ColorPalette,
         damaging_system::on_destroy_tile,
         world::{TilePos, GlobalPos, ChunkLocal, Tile},
         entity::{ServerEntities, ClientEntities},
@@ -31,6 +34,12 @@ use crate::{
     }
 };
 
+
+pub fn parse_enum<T: FromStr<Err=strum::ParseError>>(value: OutputWrapperRef) -> Result<T, lisp::Error>
+{
+    let name = parse_symbol_or_string(value)?.to_lowercase();
+    T::from_str(&name).map_err(|err| lisp::Error::Custom(format!("{} parse error: {err}", type_name::<T>())))
+}
 
 pub fn parse_symbol_or_string(value: OutputWrapperRef) -> Result<String, lisp::Error>
 {
@@ -394,6 +403,31 @@ pub fn add_info_primitives(primitives: &mut Primitives, game_state: Rc<RefCell<W
 
                 let items_info = &game_state.data_infos.items_info;
                 inventory.push(items_info, Item::new(items_info, id));
+
+                Ok(().into())
+            })
+        }));
+    }
+
+    {
+        let game_state = game_state.clone();
+
+        primitives.add("set-palette", PrimitiveProcedureInfo::new_simple(2, Effect::Impure, move |mut args|
+        {
+            with_game_state(&game_state, |game_state|
+            {
+                let entities = game_state.entities();
+
+                let entity = parse_entity(entities, args.next_value().unwrap())?;
+
+                let palette: ColorPalette = parse_enum(args.next_value().unwrap())?;
+
+                let mut render = entities.render_mut(entity).ok_or_else(||
+                {
+                    lisp::Error::Custom("entity doesnt have a render".to_owned())
+                })?;
+
+                render.mix.get_or_insert_default().palette = Some(palette);
 
                 Ok(().into())
             })

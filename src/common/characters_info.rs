@@ -9,6 +9,7 @@ use yanyaengine::TextureId;
 use crate::common::{
     lazy_transform::*,
     ItemId,
+    ColorPalette,
     generic_info::{define_info_id, Sprite}
 };
 
@@ -207,6 +208,7 @@ pub struct CharacterInfo
     pub hand: ItemId,
     pub hairstyle: Hairstyle,
     pub face: CharacterFace,
+    pub palette: Option<ColorPalette>,
     pub lying_face_offset: Vector2<i8>,
     pub normal: Sprite,
     pub crawling: Sprite,

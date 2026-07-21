@@ -96,7 +96,7 @@ pub use occluding_plane::{
     OccludingCaster
 };
 
-pub use render_info::RenderInfo;
+pub use render_info::{ColorPalette, RenderInfo};
 
 pub use saveable::Saveable;
 

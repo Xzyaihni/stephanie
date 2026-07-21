@@ -1,8 +1,4 @@
-use std::{
-    f32,
-    any::type_name,
-    str::FromStr
-};
+use std::f32;
 
 use nalgebra::Vector3;
 
@@ -22,6 +18,7 @@ use crate::{
         Light,
         Health,
         SpawnEnemyParam,
+        scripts_container::parse_enum,
         entity::ServerEntities,
         lisp::{self, *},
         world::{
@@ -34,12 +31,6 @@ use crate::{
     }
 };
 
-
-fn parse_enum<T: FromStr<Err=strum::ParseError>>(value: OutputWrapperRef) -> Result<T, lisp::Error>
-{
-    let name = value.as_symbol()?.to_lowercase();
-    T::from_str(&name).map_err(|err| lisp::Error::Custom(format!("{} parse error: {err}", type_name::<T>())))
-}
 
 pub struct CreateInfos<'a>
 {

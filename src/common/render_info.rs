@@ -5,7 +5,7 @@ use std::{
     borrow::Cow
 };
 
-use strum::FromRepr;
+use strum::{EnumString, FromRepr};
 
 use parking_lot::{Mutex, RwLock};
 
@@ -88,6 +88,7 @@ pub struct CharacterShaderInfoRaw
     eyes_offset: [f32; 2],
     other_mix: f32,
     flags: u32,
+    palette: u32,
     animation: f32,
     outlined: f32
 }
@@ -103,6 +104,7 @@ impl CharacterShaderInfoRaw
             eyes_offset: info.eyes_offset,
             other_mix: outline.other_mix,
             flags: (to_flags([info.draw_eyes, info.left_closed, info.right_closed]) << 2) | outline.flags,
+            palette: outline.palette,
             outlined: outline.outlined,
             animation: outline.animation
         }
@@ -117,7 +119,17 @@ pub struct OutlinedInfo
     other_mix: f32,
     animation: f32,
     outlined: f32,
-    flags: u32
+    flags: u32,
+    palette: u32
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, EnumString, Serialize, Deserialize)]
+#[strum(ascii_case_insensitive)]
+#[repr(u8)]
+pub enum ColorPalette
+{
+    Pink = 0,
+    Aqua
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -126,7 +138,8 @@ pub struct MixColorGeneric<T>
     pub color: T,
     pub amount: f32,
     pub only_alpha: bool,
-    pub keep_transparency: bool
+    pub keep_transparency: bool,
+    pub palette: Option<ColorPalette>
 }
 
 impl<T: Default> Default for MixColorGeneric<T>
@@ -137,7 +150,8 @@ impl<T: Default> Default for MixColorGeneric<T>
             color: T::default(),
             amount: 0.0,
             only_alpha: false,
-            keep_transparency: true
+            keep_transparency: true,
+            palette: None
         }
     }
 }
@@ -146,7 +160,7 @@ impl<T> MixColorGeneric<T>
 {
     pub fn color(color: T) -> Self
     {
-        Self{color, amount: 1.0, only_alpha: false, keep_transparency: true}
+        Self{color, amount: 1.0, only_alpha: false, keep_transparency: true, palette: None}
     }
 
     pub fn alpha_only() -> Self
@@ -168,7 +182,8 @@ impl From<MixColorLch> for MixColor
             color: color.color.into(),
             amount: color.amount,
             only_alpha: color.only_alpha,
-            keep_transparency: color.keep_transparency
+            keep_transparency: color.keep_transparency,
+            palette: color.palette
         }
     }
 }
@@ -177,6 +192,7 @@ struct RawMixColor
 {
     other_color: [f32; 4],
     other_mix: f32,
+    palette: u32,
     flags: u32
 }
 
@@ -197,14 +213,16 @@ impl From<Option<MixColor>> for RawMixColor
             Self{
                 other_color: [new_r, new_g, new_b, a],
                 other_mix: color.amount,
-                flags: flags(color.only_alpha, color.keep_transparency)
+                flags: flags(color.only_alpha, color.keep_transparency),
+                palette: color.palette.map(|x| x as u8 + 1).unwrap_or(0) as u32
             }
         } else
         {
             Self{
                 other_color: [0.0; 4],
                 other_mix: 0.0,
-                flags: flags(false, true)
+                flags: flags(false, true),
+                palette: 0
             }
         }
     }
@@ -225,7 +243,8 @@ impl OutlinedInfo
             other_mix: other_color.other_mix,
             animation,
             outlined: if outlined { 1.0 } else { 0.0 },
-            flags: other_color.flags
+            flags: other_color.flags,
+            palette: other_color.palette
         }
     }
 }

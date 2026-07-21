@@ -10,19 +10,14 @@ layout(push_constant) uniform OutlineInfo{
     vec4 other_color;
     float other_mix;
     int flags;
-} outline;
+} info;
 
-vec4 with_mix(vec4 color)
-{
-    vec4 target_mix = ((outline.flags >> 1) & 1) == 1 ? vec4(color.rgb, outline.other_color.a) : outline.other_color;
-    vec4 other_color = (outline.flags & 1) == 1 ? vec4(target_mix.rgb, min(color.a, target_mix.a)) : target_mix;
+#include "with_mix_simple.glsl"
 
-    return mix(color, other_color, outline.other_mix);
-}
 
 void main()
 {
     vec4 color = texture(tex, tex_coords);
 
-    f_color = with_mix(color);
+    f_color = with_mix_simple(color);
 }

@@ -13,7 +13,8 @@ layout(push_constant) uniform OutlineInfo{
     float animation;
     float outlined;
     int flags;
-} outline;
+    int palette;
+} info;
 
 layout(constant_id = 0) const float DARKEN = 0.0;
 layout(constant_id = 1) const float BLEND_RED = 0.0;
@@ -22,13 +23,8 @@ layout(constant_id = 3) const float BLEND_BLUE = 0.0;
 
 const vec3 background_color = vec3(0.831, 0.941, 0.988);
 
-vec4 with_mix(vec4 color)
-{
-    vec4 target_mix = ((outline.flags >> 1) & 1) == 1 ? vec4(color.rgb, outline.other_color.a) : outline.other_color;
-    vec4 other_color = (outline.flags & 1) == 1 ? vec4(target_mix.rgb, min(color.a, target_mix.a)) : target_mix;
+#include "with_mix.glsl"
 
-    return mix(color, other_color, outline.other_mix);
-}
 
 void main()
 {

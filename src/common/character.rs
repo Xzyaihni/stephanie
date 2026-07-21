@@ -54,6 +54,7 @@ use crate::{
         item::*,
         anatomy::*,
         clothing::EquipSlot,
+        ColorPalette,
         Stateful,
         Sprite,
         Side1d,
@@ -161,6 +162,7 @@ fn heldlike_item_entity(
     hand_item: &ItemInfo,
     is_player: bool,
     parent: Option<Entity>,
+    palette: Option<ColorPalette>,
     flip: bool
 ) -> EntityInfo
 {
@@ -190,6 +192,7 @@ fn heldlike_item_entity(
             z_level: if held { ZLevel::Held } else { if flip { ZLevel::HandHigh } else { ZLevel::HandLow } },
             visible: !held,
             shadow_visible: is_player,
+            mix: Some(MixColor{palette, ..Default::default()}),
             ..Default::default()
         }),
         parent: Some(Parent::new(character)),
@@ -227,7 +230,7 @@ fn held_item_entity(
     parent: Entity
 ) -> EntityInfo
 {
-    heldlike_item_entity(character, hand_item, is_player, Some(parent), false)
+    heldlike_item_entity(character, hand_item, is_player, Some(parent), None, false)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -568,9 +571,17 @@ impl Character
 
         let hand_item = data_infos.items_info.get(character_info.hand);
 
-        let held_item = |flip: bool|
+        let palette: Option<ColorPalette> = if let Some(player) = entities.player(entity)
         {
-            heldlike_item_entity(entity, hand_item, is_player, None, flip)
+            Some(player.palette)
+        } else
+        {
+            character_info.palette
+        };
+
+        let hand_item_entity = |flip: bool|
+        {
+            heldlike_item_entity(entity, hand_item, is_player, None, palette, flip)
         };
 
         let base_hair = |(hair_sprite, pixel_offset): (HairSprite<Sprite>, Vector2<f32>)|
@@ -596,6 +607,7 @@ impl Character
                     }.into()),
                     z_level: base_hair_z(*self.sprite_state.value(), is_player),
                     shadow_visible: is_player,
+                    mix: Some(MixColor{palette, ..Default::default()}),
                     ..Default::default()
                 }),
                 ..Default::default()
@@ -649,6 +661,7 @@ impl Character
                     }.into()),
                     z_level: accessory_hair_z(*self.sprite_state.value(), is_player),
                     shadow_visible: is_player,
+                    mix: Some(MixColor{palette, ..Default::default()}),
                     ..Default::default()
                 }),
                 ..Default::default()
@@ -701,12 +714,12 @@ impl Character
             }
         };
 
-        let hand_left = inserter(held_item(true));
+        let hand_left = inserter(hand_item_entity(true));
 
         let info = AfterInfo{
             this: entity,
             hand_left,
-            hand_right: inserter(held_item(false)),
+            hand_right: inserter(hand_item_entity(false)),
             holding: is_player.then(|| HoldingInfo{entity: inserter(held_item_entity(entity, hand_item, is_player, hand_left)), special: None}),
             hair,
             clothing: CharacterEquips::default(),
@@ -722,6 +735,14 @@ impl Character
             buffered_actions: None,
             buffered: [0.0; BufferedAction::COUNT]
         };
+
+        if palette.is_some()
+        {
+            if let Some(mut mix) = entities.mix_color_target(entity)
+            {
+                mix.get_or_insert_default().palette = palette;
+            }
+        }
 
         if let Some(holding) = info.holding
         {

@@ -4,6 +4,9 @@ import Data.Maybe
 import Data.List
 
 
+showFloatN :: Int -> Float -> String
+showFloatN places x = showFFloat (Just places) x ""
+
 hexChars :: [Char]
 hexChars = (map intToDigit [0..9]) ++ ['a'..'f']
 
@@ -28,12 +31,24 @@ grayscalesCountStep count = floor $ 255.0 / (fromIntegral (count - 1))
 grayscalesCount :: Int -> [String]
 grayscalesCount count = map (\x -> toHexColor [x, x, x]) $ map (\x -> (grayscalesCountStep count) * x) [0..(count - 1)]
 
+paletteToGlsl :: [String] -> String
+paletteToGlsl colors =
+      foldr1 (\acc x -> acc ++ ", " ++ x)
+      $ map (\(r : g : b : []) -> "vec3(" ++ r ++ ", " ++ g ++ ", " ++ b ++ ")")
+      $ map ((map (showFloatN 3)) . srgbIntToLinear . fromHexColor) colors
+
 radToDeg = (* 360.0) . (/ (pi * 2.0))
 degToRad = (* (pi * 2.0)) . (/ 360.0)
 
 srgbToLinear x = if x <= 0.04045 then x / 12.92 else ((x + 0.055) / 1.055) ** 2.4
 
+srgbColorToLinear :: [Float] -> [Float]
+srgbColorToLinear = map srgbToLinear 
+
+srgbIntToLinear :: [Int] -> [Float]
+srgbIntToLinear = srgbColorToLinear . (map ((/255.0) . fromIntegral))
+
 commaStrings :: [String] -> String
 commaStrings = foldr1 (\x acc -> x ++ ", " ++ acc)
 
-color c = (putStr "(") >> (putStr $ commaStrings $ map (\x -> showFFloat (Just 3) x "") $ map srgbToLinear c) >> putStrLn ")"
+color c = (putStr "(") >> (putStr $ commaStrings $ map (showFloatN 3) $ map srgbToLinear c) >> putStrLn ")"

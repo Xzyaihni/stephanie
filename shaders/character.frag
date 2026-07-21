@@ -18,6 +18,7 @@ layout(push_constant) uniform CharacterShaderInfoRaw{
     vec2 eyes_offset;
     float other_mix;
     int flags;
+    int palette;
     float animation;
     float outlined;
 } info;
@@ -26,13 +27,8 @@ const vec3 BACKGROUND_COLOR = vec3(0.831, 0.941, 0.988);
 
 const float LINE_WIDTH = 0.5;
 
-vec4 with_mix(vec4 color)
-{
-    vec4 target_mix = ((info.flags >> 1) & 1) == 1 ? vec4(color.rgb, info.other_color.a) : info.other_color;
-    vec4 other_color = (info.flags & 1) == 1 ? vec4(target_mix.rgb, min(color.a, target_mix.a)) : target_mix;
+#include "with_mix.glsl"
 
-    return mix(color, other_color, info.other_mix);
-}
 
 vec4 blend(vec4 src, vec4 color)
 {
