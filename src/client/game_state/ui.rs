@@ -55,6 +55,7 @@ use crate::{
         Side1d,
         Sprite,
         Item,
+        ItemId,
         ItemRarity,
         InventoryItem,
         InventorySorter,
@@ -269,9 +270,13 @@ enum CraftsPart
 enum CraftPanelPart
 {
     Panel,
+    ProducesListPanel,
+    ProducesList(UiListPart),
     ProducesText,
     SeparatorProduces(SeparatorPart),
     RequiresTextPanel,
+    RequiresListPanel,
+    RequiresList(UiListPart),
     RequiresText,
     SeparatorRequires(SeparatorPart),
     CraftItem(u32, CraftItemPart),
@@ -706,18 +711,37 @@ impl UiInventory
     }
 }
 
+struct CraftInfo
+{
+    id: CraftId,
+    produces_list: UiList<ItemId>,
+    requires_list: UiList<CraftRequire>
+}
+
 struct UiCrafts
 {
-    list: UiList<CraftId>
+    list: UiList<CraftInfo>
 }
 
 impl UiCrafts
 {
     fn new(items_info: &ItemsInfo, crafts: &Crafts) -> Self
     {
-        let mut list = UiList::from(crafts.ids().collect::<Vec<CraftId>>());
+        let mut list = UiList::from(crafts.ids().map(|id|
+        {
+            let craft = crafts.get(id);
 
-        list.items.sort_by_key(|x| crafts.get(*x).name(items_info));
+            let produces_list = UiList::from(craft.produces.clone());
+            let requires_list = UiList::from(craft.requires.clone());
+
+            CraftInfo{
+                id,
+                produces_list,
+                requires_list
+            }
+        }).collect::<Vec<_>>());
+
+        list.items.sort_by_key(|x| crafts.get(x.id).name(items_info));
 
         Self{list}
     }
@@ -725,7 +749,7 @@ impl UiCrafts
 
 struct UiCraftsInfo
 {
-    selected: Option<CraftId>
+    selected: Option<usize>
 }
 
 enum WindowKind
@@ -1378,8 +1402,9 @@ impl WindowKind
                 let item_font_size = SMALLEST_TEXT_SIZE;
                 let craft_item_height = info.fonts.text_height(item_font_size, body.screen_size().max());
 
-                if let Some(craft_id) = crafts_info.selected
+                if let Some(craft_index) = crafts_info.selected
                 {
+                    let craft_id = info.ui_crafts.list.items[craft_index].id;
                     let craft = info.crafts.get(craft_id);
 
                     let id = |part|
@@ -1435,53 +1460,86 @@ impl WindowKind
                         id(CraftPanelPart::CraftItem(index as u32, part))
                     };
 
-                    let update_craft_item = |index: usize, icon: Option<Sprite>, text: TextInfo<'static>|
-                    {
-                        let panel = left_panel.update(ui_craft_id(CraftItemPart::Panel, index), UiElement{
-                            width: UiElementSize{
-                                minimum_size: Some(UiMinimumSize::FitChildren),
-                                size: UiSize::Rest(1.0)
-                            },
-                            ..Default::default()
-                        });
-
-                        add_padding_horizontal(panel, UiSize::Pixels(BODY_PADDING).into());
-
-                        if let Some(texture) = icon
+                    let update_craft_item = {
+                        fn constrain<F>(f: F) -> F
+                        where
+                            F: for<'a> Fn(UiParentElement<'a>, Option<Sprite>, TextInfo<'static>) -> UiParentElement<'a>
                         {
-                            draw_item_image(
-                                panel,
-                                texture,
-                                |part| ui_craft_id(CraftItemPart::Icon(part), index),
-                                craft_item_height.into(),
-                                None
-                            );
-
-                            add_padding_horizontal(panel, UiSize::Pixels(SMALL_PADDING).into());
+                            f
                         }
 
-                        panel.update(ui_craft_id(CraftItemPart::Text, index), UiElement{
-                            texture: UiTexture::Text(text),
-                            ..UiElement::fit_content()
-                        });
+                        constrain(move |parent, icon, text|
+                        {
+                            let index = parent.consecutive();
 
-                        panel
+                            let panel = parent.update(ui_craft_id(CraftItemPart::Panel, index), UiElement{
+                                width: UiElementSize{
+                                    minimum_size: Some(UiMinimumSize::FitChildren),
+                                    size: UiSize::Rest(1.0)
+                                },
+                                ..Default::default()
+                            });
+
+                            add_padding_horizontal(panel, UiSize::Pixels(BODY_PADDING).into());
+
+                            if let Some(texture) = icon
+                            {
+                                draw_item_image(
+                                    panel,
+                                    texture,
+                                    |part| ui_craft_id(CraftItemPart::Icon(part), index),
+                                    craft_item_height.into(),
+                                    None
+                                );
+
+                                add_padding_horizontal(panel, UiSize::Pixels(SMALL_PADDING).into());
+                            }
+
+                            panel.update(ui_craft_id(CraftItemPart::Text, index), UiElement{
+                                texture: UiTexture::Text(text),
+                                ..UiElement::fit_content()
+                            });
+
+                            panel
+                        })
                     };
 
-                    craft.produces.iter().enumerate().for_each(|(index, produces)|
-                    {
-                        let item = info.items_info.get(*produces);
-
-                        let text = TextInfo{
-                            font_size: item_font_size,
-                            text: TextBlocks::single(ACCENT_COLOR.into(), item.name.clone().into()),
-                            ..Default::default()
-                        };
-
-                        update_craft_item(index, Some(item.texture), text);
+                    let produces_list_panel = left_panel.update(id(CraftPanelPart::ProducesListPanel), UiElement{
+                        width: UiSize::Rest(1.0).into(),
+                        height: UiSize::Rest(0.5).into(),
+                        children_layout: UiLayout::Horizontal,
+                        ..Default::default()
                     });
 
-                    add_padding_vertical(left_panel, UiSize::Rest(1.0).into());
+                    let produces_list_info = UiListInfo{
+                        controls: info.controls,
+                        mouse_taken: info.mouse_taken,
+                        item_height: craft_item_height,
+                        padding: 0.0,
+                        outer_width: UiSize::Rest(1.0).into(),
+                        outer_height: UiSize::Rest(1.0).into(),
+                        dt: info.dt
+                    };
+
+                    info.ui_crafts.list.items[craft_index].produces_list.update(
+                        produces_list_panel,
+                        |part| id(CraftPanelPart::ProducesList(part)),
+                        produces_list_info,
+                        |_info, parent, item, _is_selected|
+                        {
+                            let item = info.items_info.get(*item);
+
+                            let text = TextInfo{
+                                font_size: item_font_size,
+                                text: TextBlocks::single(ACCENT_COLOR.into(), item.name.clone().into()),
+                                ..Default::default()
+                            };
+
+                            update_craft_item(parent, Some(item.texture), text);
+                        }
+                    );
+
+                    add_padding_vertical(left_panel, UiSize::Pixels(SMALL_PADDING).into());
 
                     {
                         let text_panel = left_panel.update(id(CraftPanelPart::RequiresTextPanel), UiElement::default());
@@ -1502,6 +1560,13 @@ impl WindowKind
 
                     horizontal_separator(CraftPanelPart::SeparatorRequires);
 
+                    let requires_list_panel = left_panel.update(id(CraftPanelPart::RequiresListPanel), UiElement{
+                        width: UiSize::Rest(1.0).into(),
+                        height: UiSize::Rest(1.0).into(),
+                        children_layout: UiLayout::Horizontal,
+                        ..Default::default()
+                    });
+
                     let craft = info.crafts.get(craft_id);
 
                     let craft_items = info.entities.inventory(info.player).map(|inventory|
@@ -1509,7 +1574,7 @@ impl WindowKind
                         craft.takes_items(info.items_info, &inventory)
                     }).unwrap_or(None);
 
-                    let available_items = if craft_items.is_some()
+                    let mut available_items = if craft_items.is_some()
                     {
                         Vec::new()
                     } else
@@ -1517,74 +1582,87 @@ impl WindowKind
                         info.entities.inventory(info.player).map(|x| x.items().map(|x| x.id).collect()).unwrap_or_default()
                     };
 
-                    craft.requires.iter().enumerate().fold(available_items, |mut available_items, (index, requires)|
-                    {
-                        let is_active = if craft_items.is_some()
-                        {
-                            true
-                        } else
-                        {
-                            let fit = available_items.iter().position(|id| requires.item.fits(info.items_info, *id));
+                    let requires_list_info = UiListInfo{
+                        controls: info.controls,
+                        mouse_taken: info.mouse_taken,
+                        item_height: craft_item_height,
+                        padding: 0.0,
+                        outer_width: UiSize::Rest(1.0).into(),
+                        outer_height: UiSize::Rest(1.0).into(),
+                        dt: info.dt
+                    };
 
-                            if let Some(index) = fit
+                    info.ui_crafts.list.items[craft_index].requires_list.update(
+                        requires_list_panel,
+                        |part| id(CraftPanelPart::RequiresList(part)),
+                        requires_list_info,
+                        |_info, parent, requires, _is_selected|
+                        {
+                            let is_active = if craft_items.is_some()
                             {
-                                available_items.swap_remove(index);
+                                true
+                            } else
+                            {
+                                let fit = available_items.iter().position(|id| requires.item.fits(info.items_info, *id));
+
+                                if let Some(index) = fit
+                                {
+                                    available_items.swap_remove(index);
+                                }
+
+                                fit.is_some()
+                            };
+
+                            let text_color = if is_active { ACCENT_COLOR } else { ACCENT_COLOR_FADED };
+                            let highlighted_color = if is_active
+                            {
+                                YELLOW_COLOR
+                            } else
+                            {
+                                YELLOW_COLOR.with_added_lightness(10.0).with_added_chroma(-30.0)
+                            };
+
+                            let craft_parent = parent;
+
+                            let body = match &requires.item
+                            {
+                                CraftRequireItem::Item(x) =>
+                                {
+                                    let item = info.items_info.get(*x);
+
+                                    let text = TextInfo{
+                                        font_size: item_font_size,
+                                        text: TextBlocks::single(text_color.into(), item.name.clone().into()),
+                                        ..Default::default()
+                                    };
+
+                                    update_craft_item(craft_parent, Some(item.texture), text)
+                                },
+                                CraftRequireItem::WithTag(x) =>
+                                {
+                                    let text = TextInfo{
+                                        font_size: item_font_size,
+                                        text: TextBlocks(vec![
+                                            TextInfoBlock{color: text_color.into(), text: "anything ".into()},
+                                            TextInfoBlock{color: highlighted_color.into(), text: info.items_info.tag_name(*x).to_owned().into()}
+                                        ].into()),
+                                        ..Default::default()
+                                    };
+
+                                    update_craft_item(craft_parent, None, text)
+                                }
+                            };
+
+                            if !requires.consume
+                            {
+                                body.update(ui_craft_id(CraftItemPart::ExtraText, body.consecutive()), UiElement{
+                                    texture: UiTexture::Text(TextInfo::new_simple(item_font_size, " (kept after craft)".to_owned())),
+                                    mix: Some(MixColorLch::color(text_color)),
+                                    ..UiElement::fit_content()
+                                });
                             }
-
-                            fit.is_some()
-                        };
-
-                        let index = index + craft.produces.len();
-
-                        let text_color = if is_active { ACCENT_COLOR } else { ACCENT_COLOR_FADED };
-                        let highlighted_color = if is_active
-                        {
-                            YELLOW_COLOR
-                        } else
-                        {
-                            YELLOW_COLOR.with_added_lightness(10.0).with_added_chroma(-30.0)
-                        };
-
-                        let body = match &requires.item
-                        {
-                            CraftRequireItem::Item(x) =>
-                            {
-                                let item = info.items_info.get(*x);
-
-                                let text = TextInfo{
-                                    font_size: item_font_size,
-                                    text: TextBlocks::single(text_color.into(), item.name.clone().into()),
-                                    ..Default::default()
-                                };
-
-                                update_craft_item(index, Some(item.texture), text)
-                            },
-                            CraftRequireItem::WithTag(x) =>
-                            {
-                                let text = TextInfo{
-                                    font_size: item_font_size,
-                                    text: TextBlocks(vec![
-                                        TextInfoBlock{color: text_color.into(), text: "anything ".into()},
-                                        TextInfoBlock{color: highlighted_color.into(), text: info.items_info.tag_name(*x).to_owned().into()}
-                                    ].into()),
-                                    ..Default::default()
-                                };
-
-                                update_craft_item(index, None, text)
-                            }
-                        };
-
-                        if !requires.consume
-                        {
-                            body.update(ui_craft_id(CraftItemPart::ExtraText, index), UiElement{
-                                texture: UiTexture::Text(TextInfo::new_simple(item_font_size, " (kept after craft)".to_owned())),
-                                mix: Some(MixColorLch::color(text_color)),
-                                ..UiElement::fit_content()
-                            });
                         }
-
-                        available_items
-                    });
+                    );
 
                     add_padding_vertical(left_panel, UiSize::Pixels(SMALL_PADDING).into());
 
@@ -1643,7 +1721,7 @@ impl WindowKind
 
                 let right_panel = body.update(id(CraftsPart::RightPanel), UiElement{
                     width: UiSize::Pixels(SCROLLBAR_HEIGHT * 2.0).into(),
-                    height: UiSize::Pixels(SCROLLBAR_HEIGHT * 1.25).into(),
+                    height: UiSize::Pixels(SCROLLBAR_HEIGHT * 1.5).into(),
                     ..Default::default()
                 });
 
@@ -1662,7 +1740,7 @@ impl WindowKind
                 {
                     let id = |part|
                     {
-                        id(CraftsPart::Craft(*item, part))
+                        id(CraftsPart::Craft(item.id, part))
                     };
 
                     let animation = Animation{
@@ -1673,7 +1751,7 @@ impl WindowKind
                     let colors_invert = is_selected;
                     let is_craftable = info.entities.inventory(info.player).map(|inventory|
                     {
-                        info.crafts.get(*item).is_craftable(info.items_info, &inventory)
+                        info.crafts.get(item.id).is_craftable(info.items_info, &inventory)
                     }).unwrap_or(false);
 
                     let (primary_color, secondary_color) = {
@@ -1703,7 +1781,7 @@ impl WindowKind
                         ..Default::default()
                     });
 
-                    let produces = &info.crafts.get(*item).produces;
+                    let produces = &info.crafts.get(item.id).produces;
 
                     produces.iter().enumerate().for_each(|(index, item)|
                     {
@@ -1718,7 +1796,7 @@ impl WindowKind
 
                     add_padding_horizontal(panel, UiSize::Pixels(SMALL_PADDING).into());
 
-                    let name = info.crafts.get(*item).name(info.items_info).to_owned();
+                    let name = info.crafts.get(item.id).name(info.items_info).to_owned();
 
                     panel.update(id(CraftsCraftPart::Text), UiElement{
                         texture: UiTexture::Text(TextInfo::new_simple(font_size, name)),
@@ -1732,9 +1810,7 @@ impl WindowKind
                 {
                     if info.controls.take_click_down()
                     {
-                        let craft_id = info.ui_crafts.list.items[index];
-
-                        crafts_info.selected = Some(craft_id);
+                        crafts_info.selected = Some(index);
                     }
                 }
             },

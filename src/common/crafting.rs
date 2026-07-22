@@ -132,7 +132,7 @@ pub struct CraftComponent
     pub consume: bool
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum CraftRequireItem
 {
     WithTag(ItemTag),
@@ -151,14 +151,14 @@ impl CraftRequireItem
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct CraftRequire
 {
     pub item: CraftRequireItem,
     pub consume: bool
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Craft
 {
     pub name: Option<String>,
