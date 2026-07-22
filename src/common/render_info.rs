@@ -130,7 +130,9 @@ pub enum ColorPalette
 {
     Pink = 0,
     Aqua,
-    Green
+    Green,
+    Red,
+    Blue
 }
 
 impl ColorPalette
