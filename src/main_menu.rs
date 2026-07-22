@@ -11,7 +11,7 @@ use std::{
 
 use nalgebra::{vector, Vector2, Matrix4};
 
-use strum::IntoEnumIterator;
+use strum::{EnumCount, IntoEnumIterator};
 
 use vulkano::buffer::BufferContents;
 
@@ -177,7 +177,7 @@ enum WorldCreatePartId
     Message,
     Textbox(TextboxPartId),
     MessageColor,
-    ColorsPanel,
+    ColorsPanel(usize),
     ColorsPanelColor(usize, ColorIconPart),
     Buttons,
     Confirm(ButtonPartId),
@@ -1414,18 +1414,22 @@ impl MainMenu
 
         add_padding_vertical(panel, 0.008.into());
 
-        let colors_panel = panel.update(id(WorldCreatePartId::ColorsPanel), UiElement{
-            width: UiSize::Rest(1.0).into(),
-            ..Default::default()
-        });
+        let per_row = 5;
 
-        add_padding_horizontal(colors_panel, UiSize::Rest(1.0).into());
-
-        ColorPalette::iter().enumerate().for_each(|(index, color)|
+        let mut palette_panel = panel;
+        ColorPalette::sorted_iter().enumerate().for_each(|(index, color)|
         {
-            if index != 0
+            if (index % per_row) == 0
             {
-                add_padding_horizontal(colors_panel, UiSize::Rest(0.4).into());
+                palette_panel = panel.update(id(WorldCreatePartId::ColorsPanel(index)), UiElement{
+                    width: UiSize::Rest(1.0).into(),
+                    ..Default::default()
+                });
+
+                add_padding_horizontal(palette_panel, UiSize::Rest(1.0).into());
+            } else
+            {
+                add_padding_horizontal(palette_panel, UiSize::Rest(1.0 / per_row as f32).into());
             }
 
             let size = 0.03;
@@ -1461,7 +1465,7 @@ impl MainMenu
                 }
             };
 
-            let panel = colors_panel.update(panel_id, UiElement{
+            let panel = palette_panel.update(panel_id, UiElement{
                 texture: UiTexture::Sliced(ui_info.sliced_textures["rounded"]),
                 mix: Some(MixColorLch::color(panel_color)),
                 children_layout: UiLayout::Vertical,
@@ -1489,9 +1493,12 @@ impl MainMenu
             });
 
             add_padding_vertical(panel, UiSize::Rest(0.1).into());
-        });
 
-        add_padding_horizontal(colors_panel, UiSize::Rest(1.0).into());
+            if ((index % per_row) == (per_row - 1)) || ((index + 1) == ColorPalette::COUNT)
+            {
+                add_padding_horizontal(palette_panel, UiSize::Rest(1.0).into());
+            }
+        });
 
         add_padding_vertical(panel, 0.015.into());
 

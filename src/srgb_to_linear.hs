@@ -33,9 +33,12 @@ grayscalesCount count = map (\x -> toHexColor [x, x, x]) $ map (\x -> (grayscale
 
 paletteToGlsl :: [String] -> String
 paletteToGlsl colors =
-      foldr1 (\acc x -> acc ++ ", " ++ x)
+      foldr1 (\x acc -> x ++ ", " ++ acc)
       $ map (\(r : g : b : []) -> "vec3(" ++ r ++ ", " ++ g ++ ", " ++ b ++ ")")
       $ map ((map (showFloatN 3)) . srgbIntToLinear . fromHexColor) colors
+
+hexToScheme :: [String] -> String
+hexToScheme colors = "'(" ++ (foldr1 (\x acc -> x ++ " " ++ acc) $ map (\color -> "\"#" ++ color ++ "\"") colors) ++ ")"
 
 radToDeg = (* 360.0) . (/ (pi * 2.0))
 degToRad = (* (pi * 2.0)) . (/ 360.0)

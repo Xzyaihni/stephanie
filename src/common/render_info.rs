@@ -5,7 +5,7 @@ use std::{
     borrow::Cow
 };
 
-use strum::{EnumString, EnumIter, IntoEnumIterator, FromRepr};
+use strum::{EnumString, EnumIter, EnumCount, IntoEnumIterator, FromRepr};
 
 use parking_lot::{Mutex, RwLock};
 
@@ -123,7 +123,7 @@ pub struct OutlinedInfo
     palette: u32
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, EnumString, EnumIter, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, EnumString, EnumIter, EnumCount, Serialize, Deserialize)]
 #[strum(ascii_case_insensitive)]
 #[repr(u8)]
 pub enum ColorPalette
@@ -132,7 +132,10 @@ pub enum ColorPalette
     Aqua,
     Green,
     Red,
-    Blue
+    Blue,
+    Rose,
+    LightRed,
+    Purple
 }
 
 impl ColorPalette
@@ -142,6 +145,24 @@ impl ColorPalette
         let len = Self::iter().count();
 
         Self::iter().nth(fastrand::usize(0..len)).unwrap()
+    }
+
+    pub fn sorted_iter() -> impl Iterator<Item=Self>
+    {
+        let sorted = [
+            Self::Red,
+            Self::LightRed,
+            Self::Rose,
+            Self::Pink,
+            Self::Purple,
+            Self::Blue,
+            Self::Aqua,
+            Self::Green
+        ];
+
+        debug_assert!(Self::COUNT == sorted.len());
+
+        sorted.into_iter()
     }
 }
 
