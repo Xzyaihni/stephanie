@@ -46,7 +46,16 @@ use crate::{
         World,
         Health,
         spatial::SpatialInfo,
-        player::{WEAK_SCREENSHAKE, MEDIUM_SCREENSHAKE, MEDIUM_KICK, StatId},
+        player::{
+            MEDIUM_KICK,
+            DAMAGE_SCREENSHAKE,
+            FALL_SCREENSHAKE,
+            DESTROY_SCREENSHAKE,
+            TILE_DESTROY_SCREENSHAKE,
+            TILE_DAMAGE_SCREENSHAKE,
+            PLAYER_DAMAGE_SCREENSHAKE,
+            StatId
+        },
         enemy_creator::ENEMY_MASS,
         entity::{iterate_components_with, ClientEntities},
         world::{TILE_SIZE, TilePos, Tile}
@@ -104,7 +113,7 @@ fn damage_common_health(
                 entities.infos().furnitures_info.get(*id).hardness
             }).unwrap_or(1.0);
 
-            do_screenshake(MEDIUM_SCREENSHAKE * screenshake_factor);
+            do_screenshake(DESTROY_SCREENSHAKE * screenshake_factor);
 
             destroy_entity(entities, textures, scripts, entity);
         }
@@ -127,7 +136,7 @@ pub fn on_destroy_tile(
 {
     player_system::players_near(entities, tile_pos.entity_position(), SCREENSHAKE_DISTANCE).for_each(|(_, player)|
     {
-        player.borrow_mut().screenshake.set(MEDIUM_SCREENSHAKE);
+        player.borrow_mut().screenshake.set(TILE_DESTROY_SCREENSHAKE);
     });
 
     destroy_tile_dependent(entities, textures, space, scripts, tile_pos);
@@ -168,7 +177,7 @@ pub fn fall_damage(
 
     if !screenshook
     {
-        screenshake_near(WEAK_SCREENSHAKE);
+        screenshake_near(FALL_SCREENSHAKE);
     }
 }
 
@@ -380,7 +389,7 @@ fn damager<'a, 'b>(
 
                 if let Some(mut player) = entities.player_mut_no_change(result.other_entity)
                 {
-                    player.screenshake.set(WEAK_SCREENSHAKE);
+                    player.screenshake.set(TILE_DAMAGE_SCREENSHAKE);
                 }
 
                 if let Some(tile_id) = destroyed
@@ -1109,7 +1118,7 @@ pub fn damage_entity(
 {
     if let Some(mut player) = entities.player_mut_no_change(entity)
     {
-        player.screenshake.set(MEDIUM_SCREENSHAKE);
+        player.screenshake.set(PLAYER_DAMAGE_SCREENSHAKE);
 
         if let Some(direction) = entities.transform(other_entity).zip(entities.transform(entity)).and_then(|(other, this)|
         {
@@ -1142,7 +1151,7 @@ pub fn damage_entity(
     {
         if let Some(mut player) = entities.player_mut_no_change(other_entity)
         {
-            player.screenshake.set(WEAK_SCREENSHAKE);
+            player.screenshake.set(DAMAGE_SCREENSHAKE);
         }
     }
 }
