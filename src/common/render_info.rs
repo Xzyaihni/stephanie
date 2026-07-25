@@ -135,7 +135,13 @@ pub enum ColorPalette
     Blue,
     Rose,
     LightRed,
-    Purple
+    Purple,
+    Yellow,
+    Orange,
+    Blonde,
+    LightBrown,
+    Brown,
+    DarkBrown
 }
 
 impl ColorPalette
@@ -157,7 +163,13 @@ impl ColorPalette
             Self::Purple,
             Self::Blue,
             Self::Aqua,
-            Self::Green
+            Self::Green,
+            Self::Yellow,
+            Self::Orange,
+            Self::Blonde,
+            Self::LightBrown,
+            Self::Brown,
+            Self::DarkBrown
         ];
 
         debug_assert!(Self::COUNT == sorted.len());
