@@ -16,7 +16,7 @@ use nalgebra::Vector2;
 
 use message::Message;
 
-pub use yanyaengine::{Transform, TransformContainer, object::Texture};
+pub use yanyaengine::{Assets, Transform, TransformContainer, TextureId, DefaultTexture, object::Texture};
 
 pub use objects_store::ObjectsStore;
 
@@ -657,7 +657,41 @@ pub struct DataInfos
     pub furnitures_info: Arc<FurnituresInfo>,
     pub characters_info: Arc<CharactersInfo>,
     pub crafts: Arc<Crafts>,
+    pub common_textures: Arc<CommonTextures>,
     pub player_character: CharacterId
+}
+
+#[derive(Clone)]
+pub struct CommonTextures
+{
+    pub dust: Sprite,
+    pub blood: Sprite,
+    pub health: Sprite,
+    pub level_up: Sprite,
+    pub muzzleflash: Sprite,
+    pub shield: Sprite,
+    pub solid: TextureId
+}
+
+impl CommonTextures
+{
+    pub fn new(assets: &Assets) -> Self
+    {
+        let named = |name|
+        {
+            Sprite::new(assets, assets.texture_id(name))
+        };
+
+        Self{
+            dust: named("decals/dust.png"),
+            blood: named("decals/blood.png"),
+            health: named("decals/health.png"),
+            level_up: named("decals/level_up.png"),
+            muzzleflash: named("decals/muzzleflash.png"),
+            shield: named("enemy/shield.png"),
+            solid: assets.default_texture(DefaultTexture::Solid)
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

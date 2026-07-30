@@ -487,7 +487,7 @@ pub fn add_info_primitives(primitives: &mut Primitives, game_state: Rc<RefCell<W
                         on_destroy_tile(
                             some_or_unexpected_return!(game_state.entities.space.as_ref()),
                             &game_state.entities.entities,
-                            &game_state.common_textures,
+                            &game_state.data_infos.common_textures,
                             &game_state.client_scripts,
                             pos,
                             was_tile

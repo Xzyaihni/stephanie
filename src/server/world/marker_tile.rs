@@ -18,6 +18,7 @@ use crate::{
         Light,
         Health,
         SpawnEnemyParam,
+        Entity,
         scripts_container::parse_enum,
         entity::ServerEntities,
         lisp::{self, *},
@@ -49,17 +50,17 @@ impl MarkerTile
     pub fn create(
         self,
         CreateInfos{
-            infos: DataInfos{
+            infos: data_infos @ DataInfos{
                 enemies_info,
-                characters_info,
                 furnitures_info,
                 items_info,
                 ..
             }
         }: CreateInfos,
         server_scripts: &ServerScripts,
-        chunk_pos: Pos3<f32>
-    ) -> Option<EntityInfo>
+        chunk_pos: Pos3<f32>,
+        mut create_entity: impl FnMut(EntityInfo) -> Entity
+    )
     {
         let pos = chunk_pos + self.pos.pos().map(|x| x as f32 * TILE_SIZE);
 
@@ -70,59 +71,56 @@ impl MarkerTile
         {
             MarkerKind::Enemy{name, params} =>
             {
-                if DebugConfig::is_enabled(DebugTool::NoEnemySpawns) { return None; }
+                if DebugConfig::is_enabled(DebugTool::NoEnemySpawns) { return; }
 
                 let id = if let Some(x) = enemies_info.get_id(&name.replace('_', " "))
                 {
                     x
                 } else
                 {
-                    eprintln!("cant find enemy named `{name}`");
-                    return None;
+                    return eprintln!("cant find enemy named `{name}`");
                 };
 
-                Some(enemy_creator::create(
-                    enemies_info,
-                    characters_info,
-                    items_info,
+                enemy_creator::create(
+                    &data_infos,
                     server_scripts,
                     id,
                     position,
-                    params
-                ))
+                    params,
+                    create_entity
+                );
             },
             MarkerKind::Furniture{name, rotation, offset} =>
             {
-                if DebugConfig::is_enabled(DebugTool::NoFurnitureSpawns) { return None; }
+                if DebugConfig::is_enabled(DebugTool::NoFurnitureSpawns) { return; }
 
                 let id = if let Some(x) = furnitures_info.get_id(&name.replace('_', " "))
                 {
                     x
                 } else
                 {
-                    eprintln!("cant find furniture named `{name}`");
-                    return None;
+                    return eprintln!("cant find furniture named `{name}`");
                 };
 
-                Some(furniture_creator::create(
+                create_entity(furniture_creator::create(
                     furnitures_info,
                     items_info,
                     server_scripts,
                     id,
                     rotation,
                     position + offset.get(rotation)
-                ))
+                ));
             },
             MarkerKind::Light{strength, offset} =>
             {
-                if DebugConfig::is_enabled(DebugTool::NoLightSpawns) { return None; }
+                if DebugConfig::is_enabled(DebugTool::NoLightSpawns) { return; }
 
                 if strength <= 0.0
                 {
-                    return None;
+                    return;
                 }
 
-                Some(EntityInfo{
+                create_entity(EntityInfo{
                     transform: Some(Transform{
                         position: position + offset,
                         scale: Vector3::repeat(TILE_SIZE),
@@ -131,11 +129,11 @@ impl MarkerTile
                     light: Some(Light{source: None, strength}),
                     saveable: Some(()),
                     ..Default::default()
-                })
+                });
             },
             MarkerKind::Door{rotation, material, width} =>
             {
-                if DebugConfig::is_enabled(DebugTool::NoDoorSpawns) { return None; }
+                if DebugConfig::is_enabled(DebugTool::NoDoorSpawns) { return; }
 
                 let door = Door::new(position, rotation, material, width);
 
@@ -143,7 +141,7 @@ impl MarkerTile
 
                 let scale = door.parent_scale();
 
-                Some(EntityInfo{
+                create_entity(EntityInfo{
                     transform: Some(Transform{
                         position: transform.position,
                         scale,
@@ -159,7 +157,7 @@ impl MarkerTile
                     health: Some(Health::Normal(width as f32 * material.health())),
                     saveable: Some(()),
                     ..Default::default()
-                })
+                });
             }
         }
     }

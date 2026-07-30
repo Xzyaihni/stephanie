@@ -7,7 +7,6 @@ use serde::{Serialize, Deserialize};
 use yanyaengine::Transform;
 
 use crate::{
-    client::CommonTextures,
     common::{
         with_z,
         random_rotation,
@@ -19,6 +18,7 @@ use crate::{
         watcher::*,
         render_info::*,
         physics::*,
+        CommonTextures,
         EntityInfo,
         entity::ClientEntitiesPush
     }

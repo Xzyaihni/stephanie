@@ -513,11 +513,13 @@ impl World
                         infos: &self.data_infos
                     };
 
-                    if let Some(info) = marker.create(create_infos, &self.server_scripts, chunk_pos)
+                    marker.create(create_infos, &self.server_scripts, chunk_pos, |info|
                     {
                         let entity = container.push_eager(false, info.clone());
                         chunk_entities.push((entity, info));
-                    }
+
+                        entity
+                    });
                 });
 
             entities.extend(chunk_entities);

@@ -20,7 +20,6 @@ use yanyaengine::{Assets, Transform};
 
 use crate::{
     client::{
-        CommonTextures,
         ConnectionsHandler,
         ui_common::WHITE_COLOR
     },
@@ -54,6 +53,7 @@ use crate::{
         item::*,
         anatomy::*,
         clothing::EquipSlot,
+        CommonTextures,
         ColorPalette,
         Stateful,
         Sprite,

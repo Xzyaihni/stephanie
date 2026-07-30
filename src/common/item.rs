@@ -10,10 +10,7 @@ use serde::{Serialize, Deserialize};
 use strum::{IntoEnumIterator, EnumIter, FromRepr, EnumCount};
 
 use crate::{
-    client::{
-        CommonTextures,
-        ui_common::{RED_COLOR, GREEN_COLOR, BLUE_COLOR, ACCENT_COLOR}
-    },
+    client::ui_common::{RED_COLOR, GREEN_COLOR, BLUE_COLOR, ACCENT_COLOR},
     common::{
         random_f32,
         watcher::*,
@@ -22,6 +19,7 @@ use crate::{
         physics::*,
         particle_creator::*,
         TILE_SIZE,
+        CommonTextures,
         SimpleF32,
         Transform,
         ItemInfo,

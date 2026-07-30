@@ -10,7 +10,7 @@ use serde::{Serialize, Deserialize};
 
 use crate::{
     debug_config::*,
-    client::{ConnectionsHandler, CommonTextures},
+    client::ConnectionsHandler,
     common::{
         with_z,
         some_or_value,
@@ -36,6 +36,7 @@ use crate::{
         systems::{raycast_system, collider_system, player_system},
         ENTITY_SCALE,
         SCREENSHAKE_DISTANCE,
+        CommonTextures,
         ClientScripts,
         SpatialGrid,
         EntityInfo,
@@ -803,8 +804,12 @@ fn flash_damage_single(
         let flash_color = [r, g, b, 1.0];
         let flash_amount = 0.8;
 
+        let mut previous_mix = MixColor::default();
+
         if let Some(mix) = &mut *mix_color
         {
+            previous_mix = mix.clone();
+
             mix.color = flash_color;
             mix.amount = flash_amount;
         } else
@@ -814,7 +819,7 @@ fn flash_damage_single(
 
         entities.add_watcher(entity, Watcher{
             kind: WatcherType::Lifetime(HIGHLIGHT_DURATION.into()),
-            action: Box::new(|entities, entity|
+            action: Box::new(move |entities, entity|
             {
                 if let Some(mut render) = entities.render_mut(entity)
                 {
@@ -822,7 +827,7 @@ fn flash_damage_single(
                     {
                         if mix.palette.is_some()
                         {
-                            mix.amount = 0.0;
+                            *mix = previous_mix;
                         } else
                         {
                             render.mix.take();

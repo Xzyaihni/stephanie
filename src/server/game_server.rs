@@ -731,19 +731,21 @@ impl GameServer
         {
             Message::SpawnEnemy{id, pos, params} =>
             {
-                let enemy_info = enemy_creator::create(
-                    &self.data_infos.enemies_info,
-                    &self.data_infos.characters_info,
-                    &self.data_infos.items_info,
+                enemy_creator::create(
+                    &self.data_infos,
                     &self.server_scripts,
                     id,
                     pos,
-                    params
+                    params,
+                    |entity_info|
+                    {
+                        let (message, entity) = self.entities.borrow_mut().push_message(entity_info);
+
+                        self.connection_handler.lock().send_message(message);
+
+                        entity
+                    }
                 );
-
-                let (message, _entity) = self.entities.borrow_mut().push_message(enemy_info);
-
-                self.send_message(message);
             },
             Message::PlayerDisconnect{time, restart, host} =>
             {

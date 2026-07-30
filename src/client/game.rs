@@ -1409,7 +1409,7 @@ impl<'a> PlayerContainer<'a>
 
                         let heal_particles = ||
                         {
-                            let info = ParticlesKind::Heal.create(&self.game_state.common_textures);
+                            let info = ParticlesKind::Heal.create(&self.game_state.data_infos.common_textures);
                             create_particles(
                                 self.game_state.entities(),
                                 info.info,
@@ -1494,7 +1494,7 @@ impl<'a> PlayerContainer<'a>
                     {
                         spawn_item(
                             self.game_state.entities(),
-                            &self.game_state.common_textures,
+                            &self.game_state.data_infos.common_textures,
                             player_transform,
                             &dropped_item
                         );

@@ -141,7 +141,10 @@ pub enum ColorPalette
     Blonde,
     LightBrown,
     Brown,
-    DarkBrown
+    DarkBrown,
+    Black,
+    Gray,
+    White
 }
 
 impl ColorPalette
@@ -169,7 +172,10 @@ impl ColorPalette
             Self::Blonde,
             Self::LightBrown,
             Self::Brown,
-            Self::DarkBrown
+            Self::DarkBrown,
+            Self::Black,
+            Self::Gray,
+            Self::White
         ];
 
         debug_assert!(Self::COUNT == sorted.len());
@@ -755,6 +761,7 @@ pub enum ZLevel
     PlayerHair,
     PlayerHairAccessory,
     PlayerHat,
+    Shield,
     AboveParticle,
     Door
 }

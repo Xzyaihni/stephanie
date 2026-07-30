@@ -9,7 +9,6 @@ use yanyaengine::Transform;
 
 use crate::{
     debug_config::*,
-    client::CommonTextures,
     common::{
         line_info,
         some_or_return,
@@ -17,6 +16,7 @@ use crate::{
         render_info::*,
         watcher::*,
         ENTITY_SCALE,
+        CommonTextures,
         Entity,
         SpatialGrid,
         Joint,

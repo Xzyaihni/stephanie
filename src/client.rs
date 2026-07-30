@@ -51,7 +51,6 @@ pub use game_state::{
     ControlState,
     KeyMapping,
     ChangedKey,
-    CommonTextures,
     ui::element::{UiElement, UiElementShapeMask}
 };
 
@@ -182,8 +181,6 @@ impl Client
             }))
         };
 
-        let common_textures = CommonTextures::new(&mut assets.lock());
-
         let info = GameStateInfo{
             shaders: client_init_info.app_info.shaders,
             sliced_textures: client_init_info.sliced_textures,
@@ -193,8 +190,7 @@ impl Client
             scripts: Rc::new(client_init_info.scripts),
             client_scripts: Rc::new(client_init_info.client_scripts),
             tiles_factory,
-            anatomy_locations,
-            common_textures
+            anatomy_locations
         };
 
         Ok(Self{

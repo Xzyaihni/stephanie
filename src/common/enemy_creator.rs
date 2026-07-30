@@ -13,6 +13,7 @@ use crate::common::{
     physics::*,
     lisp::{self, *},
     ENTITY_SCALE,
+    DataInfos,
     AnyEntities,
     ServerScripts,
     Inventory,
@@ -22,11 +23,10 @@ use crate::common::{
     Character,
     Enemy,
     EnemyId,
-    EnemiesInfo,
     Entity,
-    CharactersInfo,
-    ItemsInfo,
     EntityInfo,
+    Health,
+    Parent,
     inventory::BASE_INVENTORY_LIMIT,
     scripts_container::{parse_symbol_or_string, parse_entity},
     lazy_transform::*
@@ -65,16 +65,15 @@ impl SpawnEnemyParam
 }
 
 pub fn create(
-    enemies_info: &EnemiesInfo,
-    characters_info: &CharactersInfo,
-    items_info: &ItemsInfo,
+    infos: &DataInfos,
     scripts: &ServerScripts,
     id: EnemyId,
     pos: Vector3<f32>,
-    params: Vec<SpawnEnemyParam>
-) -> EntityInfo
+    params: Vec<SpawnEnemyParam>,
+    mut create_entity: impl FnMut(EntityInfo) -> Entity
+)
 {
-    let info = enemies_info.get(id);
+    let info = infos.enemies_info.get(id);
 
     let name = info.name.clone();
 
@@ -83,7 +82,7 @@ pub fn create(
     let mut inventory = Inventory::new(BASE_INVENTORY_LIMIT);
     let mut character = Character::new(info.character, Faction::Zob);
 
-    let scale = characters_info.get(info.character).normal.scale;
+    let scale = infos.characters_info.get(info.character).normal.scale;
 
     let transform = Transform{
         position: pos,
@@ -95,19 +94,19 @@ pub fn create(
     {
         let scripts = scripts.enemy_generator(id);
 
-        scripts.on_contents.create(items_info)
+        scripts.on_contents.create(&infos.items_info)
             .into_iter()
-            .for_each(|item| { inventory.push(items_info, item); });
+            .for_each(|item| { inventory.push(&infos.items_info, item); });
 
-        scripts.on_equip.create(items_info).into_iter().for_each(|item|
+        scripts.on_equip.create(&infos.items_info).into_iter().for_each(|item|
         {
-            let item_info = items_info.get(item.id);
+            let item_info = infos.items_info.get(item.id);
 
             if let Some(clothing) = item_info.clothing.as_ref()
             {
                 let slot = clothing.slot;
 
-                let id = inventory.push(items_info, item);
+                let id = inventory.push(&infos.items_info, item);
 
                 character.set_equip(slot, Some(id));
             } else
@@ -117,14 +116,22 @@ pub fn create(
         });
     }
 
-    let mut enemy = Enemy::new(enemies_info, id);
+    let mut enemy = Enemy::new(&infos.enemies_info, id);
 
-    if let Some(SpawnEnemyParam::Aggro(attack_target)) = params.iter().find(|param| matches!(param, SpawnEnemyParam::Aggro(_)))
+    params.iter().any(|param|
     {
-        enemy.set_attacking(*attack_target);
-    }
+        if let SpawnEnemyParam::Aggro(attack_target) = param
+        {
+            enemy.set_attacking(*attack_target);
 
-    EntityInfo{
+            true
+        } else
+        {
+            false
+        }
+    });
+
+    create_entity(EntityInfo{
         lazy_transform: Some(LazyTransformInfo{
             rotation: Rotation::EaseOut(
                 EaseOutRotation{
@@ -153,5 +160,41 @@ pub fn create(
         enemy: Some(enemy),
         saveable: Some(()),
         ..Default::default()
-    }
+    });
+
+    params.iter().any(|param|
+    {
+        if let SpawnEnemyParam::Shield(shield_target) = param
+        {
+            let shield_sprite = infos.common_textures.shield;
+
+            create_entity(EntityInfo{
+                lazy_transform: Some(LazyTransformInfo{
+                    inherit_scale: false,
+                    transform: Transform{
+                        scale: with_z(shield_sprite.scale, ENTITY_SCALE),
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                }.into()),
+                parent: Some(Parent::new(*shield_target)),
+                render: Some(RenderInfo{
+                    object: Some(RenderObject{
+                        kind: RenderObjectKind::TextureId{id: shield_sprite.id}
+                    }),
+                    z_level: ZLevel::Shield,
+                    mix: Some(MixColor{color: [0.0; 4], amount: 0.6, palette: Some(ColorPalette::Purple), only_alpha: true, ..Default::default()}),
+                    ..Default::default()
+                }),
+                health: Some(Health::Normal(1.0)),
+                saveable: Some(()),
+                ..Default::default()
+            });
+
+            true
+        } else
+        {
+            false
+        }
+    });
 }

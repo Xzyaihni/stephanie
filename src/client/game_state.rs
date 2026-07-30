@@ -23,11 +23,9 @@ use yanyaengine::{
     Assets,
     ObjectFactory,
     Transform,
-    TextureId,
     SolidObject,
     Object,
     ObjectInfo,
-    DefaultTexture,
     DefaultModel,
     TransformContainer,
     camera::Camera,
@@ -48,8 +46,8 @@ use crate::{
         render_info::*,
         lazy_transform::*,
         particle_creator::*,
+        CommonTextures,
         SpatialGrid,
-        Sprite,
         ClientScripts,
         MessagePasser,
         ClientLight,
@@ -609,8 +607,7 @@ pub struct GameStateInfo
     pub scripts: Rc<ScriptsContainer>,
     pub client_scripts: Rc<ClientScripts>,
     pub tiles_factory: TilesFactory,
-    pub anatomy_locations: Rc<RefCell<dyn FnMut(&mut ObjectCreateInfo, &str) -> UiAnatomyLocations>>,
-    pub common_textures: CommonTextures
+    pub anatomy_locations: Rc<RefCell<dyn FnMut(&mut ObjectCreateInfo, &str) -> UiAnatomyLocations>>
 }
 
 #[derive(Clone)]
@@ -687,32 +684,6 @@ impl UiReceiver
     pub fn consume(&mut self) -> impl Iterator<Item=UiEvent>
     {
         mem::take(&mut self.events).into_iter()
-    }
-}
-
-#[derive(Clone)]
-pub struct CommonTextures
-{
-    pub dust: Sprite,
-    pub blood: Sprite,
-    pub health: Sprite,
-    pub level_up: Sprite,
-    pub muzzleflash: Sprite,
-    pub solid: TextureId
-}
-
-impl CommonTextures
-{
-    pub fn new(assets: &mut Assets) -> Self
-    {
-        Self{
-            dust: Sprite::new(assets, assets.texture_id("decals/dust.png")),
-            blood: Sprite::new(assets, assets.texture_id("decals/blood.png")),
-            health: Sprite::new(assets, assets.texture_id("decals/health.png")),
-            level_up: Sprite::new(assets, assets.texture_id("decals/level_up.png")),
-            muzzleflash: Sprite::new(assets, assets.texture_id("decals/muzzleflash.png")),
-            solid: assets.default_texture(DefaultTexture::Solid)
-        }
     }
 }
 
@@ -835,7 +806,6 @@ pub struct GameState
     pub data_infos: DataInfos,
     pub user_receiver: Rc<RefCell<UiReceiver>>,
     pub ui: Rc<RefCell<Ui>>,
-    pub common_textures: Rc<CommonTextures>,
     pub connected_and_ready: bool,
     pub world: World,
     pub mouse_fraction: MouseInfo,
@@ -1026,7 +996,6 @@ impl GameState
             rare_timer: 0.0,
             dt: None,
             ui,
-            common_textures: Rc::new(info.common_textures),
             connected_and_ready: false,
             host: client_info.host,
             is_restart: false,
@@ -1130,7 +1099,7 @@ impl GameState
         }));
 
         {
-            let textures = self.common_textures.clone();
+            let textures = self.data_infos.common_textures.clone();
             self.entities.entities.on_player(Box::new(move |OnChangeInfo{entities, entity, ..}|
             {
                 let mut player = some_or_return!(entities.player_mut_no_change(entity));
@@ -1745,7 +1714,7 @@ impl GameState
                 &mut self.world,
                 &mut self.connections_handler,
                 &self.client_scripts,
-                &self.common_textures,
+                &self.data_infos.common_textures,
                 self.is_trusted,
                 dt
             );
@@ -1802,7 +1771,7 @@ impl GameState
                 world: &self.world,
                 assets: &assets,
                 passer: &self.connections_handler,
-                common_textures: &self.common_textures,
+                common_textures: &self.data_infos.common_textures,
                 characters_info: &self.data_infos.characters_info,
                 items_info: &self.data_infos.items_info
             };

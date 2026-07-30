@@ -55,6 +55,7 @@ use crate::{
     common::{
         ENTITY_SCALE,
         ENTITY_PIXEL_SCALE,
+        CommonTextures,
         TileMap,
         TileMapWithTextures,
         DataInfos,
@@ -424,12 +425,15 @@ impl YanyaApp for App
 
         let crafts = Crafts::parse(&items_info, "info/crafts.json".into());
 
+        let common_textures = Arc::new(CommonTextures::new(&partial_info.object_info.assets.lock()));
+
         let data_infos = DataInfos{
             items_info,
             enemies_info: Arc::new(enemies_info),
             furnitures_info: Arc::new(furnitures_info),
             characters_info: Arc::new(characters_info),
             crafts: Arc::new(crafts),
+            common_textures,
             player_character
         };
 
