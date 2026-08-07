@@ -27,8 +27,9 @@ use crate::common::{
     EntityInfo,
     Health,
     Parent,
+    ColorPalette,
     inventory::BASE_INVENTORY_LIMIT,
-    scripts_container::{parse_symbol_or_string, parse_entity},
+    scripts_container::{parse_symbol_or_string, parse_entity, parse_color_palette},
     lazy_transform::*
 };
 
@@ -39,7 +40,7 @@ pub const ENEMY_MASS: f32 = 50.0;
 pub enum SpawnEnemyParam
 {
     Aggro(Entity),
-    Shield(Entity)
+    Shield{target: Entity, palette: ColorPalette, amount: f32}
 }
 
 impl SpawnEnemyParam
@@ -53,10 +54,35 @@ impl SpawnEnemyParam
 
         let name = parse_symbol_or_string(car)?;
 
+        let mut get_next = {
+            let mut index = 0;
+
+            move |x: Option<_>| -> Result<_, lisp::Error>
+            {
+                let output = x.ok_or_else(||
+                {
+                    lisp::Error::Custom(format!("expected more than {index} arguments for the param"))
+                });
+
+                index += 1;
+
+                output
+            }
+        };
+
         let output = match (entities, name.as_ref())
         {
             (Some(entities), "aggro") => Self::Aggro(parse_entity(entities, cdr)?),
-            (Some(entities), "shield") => Self::Shield(parse_entity(entities, cdr)?),
+            (Some(entities), "shield") =>
+            {
+                let mut shield_params = cdr.as_pairs_list()?.into_iter();
+
+                let target = parse_entity(entities, get_next(shield_params.next())?)?;
+                let palette = parse_color_palette(get_next(shield_params.next())?)?;
+                let amount = get_next(shield_params.next())?.as_float()?;
+
+                Self::Shield{target, palette, amount}
+            },
             (_, x) => return Err(lisp::Error::Custom(format!("{x} is not an enemy param")))
         };
 
@@ -164,8 +190,10 @@ pub fn create(
 
     params.iter().any(|param|
     {
-        if let SpawnEnemyParam::Shield(shield_target) = param
+        if let SpawnEnemyParam::Shield{target: shield_target, palette: shield_palette, amount: shield_amount} = param
         {
+            let mix = MixColor{color: [0.0; 4], amount: 0.6, palette: Some(*shield_palette), only_alpha: true, ..Default::default()};
+
             let shield_sprite = infos.common_textures.shield;
 
             create_entity(EntityInfo{
@@ -183,10 +211,11 @@ pub fn create(
                         kind: RenderObjectKind::TextureId{id: shield_sprite.id}
                     }),
                     z_level: ZLevel::Shield,
-                    mix: Some(MixColor{color: [0.0; 4], amount: 0.6, palette: Some(ColorPalette::Purple), only_alpha: true, ..Default::default()}),
+                    mix: Some(mix.clone()),
+                    base_mix: Some(mix),
                     ..Default::default()
                 }),
-                health: Some(Health::Normal(1.0)),
+                health: Some(Health::Normal(*shield_amount)),
                 saveable: Some(()),
                 ..Default::default()
             });

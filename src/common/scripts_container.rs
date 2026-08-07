@@ -82,6 +82,16 @@ pub fn parse_entity(entities: &impl AnyEntities, value: OutputWrapperRef) -> Res
     Ok(entity)
 }
 
+pub fn parse_color_palette(value: OutputWrapperRef) -> Result<ColorPalette, lisp::Error>
+{
+    let name = parse_symbol_or_string(value)?;
+
+    ColorPalette::from_str(&name).map_err(|_|
+    {
+        lisp::Error::Custom(format!("unknown color {name}"))
+    })
+}
+
 fn parse_position_with<T>(
     value: OutputWrapperRef,
     f: impl Fn(&OutputWrapperRef) -> Result<T, lisp::Error>

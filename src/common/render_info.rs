@@ -794,6 +794,7 @@ pub struct RenderInfo
     pub visibility_check: bool,
     pub above_world: bool,
     pub mix: Option<MixColor>,
+    pub base_mix: Option<MixColor>,
     pub aspect: Aspect,
     pub full_lit: bool,
     pub outlined: bool,
@@ -812,6 +813,7 @@ impl Default for RenderInfo
             visibility_check: true,
             above_world: false,
             mix: None,
+            base_mix: None,
             aspect: Aspect::Fill,
             full_lit: false,
             outlined: false,
@@ -949,6 +951,7 @@ pub struct ClientRenderInfo
     pub visibility_check: bool,
     pub above_world: bool,
     pub mix: Option<MixColor>,
+    pub base_mix: Option<MixColor>,
     pub aspect: Aspect,
     pub full_lit: bool,
     pub outlined: bool,
@@ -982,6 +985,7 @@ impl ServerToClient<ClientRenderInfo> for RenderInfo
             visibility_check: self.visibility_check,
             above_world: self.above_world,
             mix: self.mix,
+            base_mix: self.base_mix,
             aspect: self.aspect,
             full_lit: self.full_lit,
             outlined: self.outlined,
@@ -1041,6 +1045,11 @@ impl ClientRenderInfo
     pub fn set_z_level(&mut self, z_level: ZLevel)
     {
         self.z_level = z_level;
+    }
+
+    pub fn reset_mix(&mut self)
+    {
+        self.mix = self.base_mix.clone();
     }
 
     pub fn texture(&self) -> Option<&Arc<Mutex<Texture>>>

@@ -182,6 +182,8 @@ fn heldlike_item_entity(
         }
     });
 
+    let mix = MixColor{palette, ..Default::default()};
+
     EntityInfo{
         render: Some(RenderInfo{
             object: Some(RenderObject{
@@ -192,7 +194,8 @@ fn heldlike_item_entity(
             z_level: if held { ZLevel::Held } else { if flip { ZLevel::HandHigh } else { ZLevel::HandLow } },
             visible: !held,
             shadow_visible: is_player,
-            mix: Some(MixColor{palette, ..Default::default()}),
+            mix: Some(mix.clone()),
+            base_mix: Some(mix),
             ..Default::default()
         }),
         parent: Some(Parent::new(character)),
@@ -588,6 +591,8 @@ impl Character
         {
             let texture = hair_sprite.sprite;
 
+            let mix = MixColor{palette, ..Default::default()};
+
             EntityInfo{
                 lazy_transform: Some(LazyTransformInfo{
                     deformation: CHARACTER_DEFORMATION,
@@ -607,7 +612,8 @@ impl Character
                     }.into()),
                     z_level: base_hair_z(*self.sprite_state.value(), is_player),
                     shadow_visible: is_player,
-                    mix: Some(MixColor{palette, ..Default::default()}),
+                    mix: Some(mix.clone()),
+                    base_mix: Some(mix),
                     ..Default::default()
                 }),
                 ..Default::default()
@@ -616,6 +622,8 @@ impl Character
 
         let pon = |texture: Sprite, position: Vector3<f32>|
         {
+            let mix = MixColor{palette, ..Default::default()};
+
             EntityInfo{
                 lazy_transform: Some(LazyTransformInfo{
                     connection: Connection::Spring(
@@ -661,7 +669,8 @@ impl Character
                     }.into()),
                     z_level: accessory_hair_z(*self.sprite_state.value(), is_player),
                     shadow_visible: is_player,
-                    mix: Some(MixColor{palette, ..Default::default()}),
+                    mix: Some(mix.clone()),
+                    base_mix: Some(mix),
                     ..Default::default()
                 }),
                 ..Default::default()
@@ -738,9 +747,10 @@ impl Character
 
         if palette.is_some()
         {
-            if let Some(mut mix) = entities.mix_color_target(entity)
+            if let Some(mut render) = entities.render_mut(entity)
             {
-                mix.get_or_insert_default().palette = palette;
+                render.mix.get_or_insert_default().palette = palette;
+                render.base_mix = render.mix.clone();
             }
         }
 

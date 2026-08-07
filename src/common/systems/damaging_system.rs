@@ -799,45 +799,39 @@ fn flash_damage_single(
     [r, g, b]: [f32; 3]
 )
 {
-    if let Some(mut mix_color) = entities.mix_color_target(entity)
+    let mut render = some_or_return!(entities.render_mut(entity));
+
     {
-        let flash_color = [r, g, b, 1.0];
-        let flash_amount = 0.8;
+        let has_mix = render.mix.is_some();
+        let has_base_mix = render.base_mix.is_some();
 
-        let mut previous_mix = MixColor::default();
-
-        if let Some(mix) = &mut *mix_color
+        if has_mix && !has_base_mix
         {
-            previous_mix = mix.clone();
-
-            mix.color = flash_color;
-            mix.amount = flash_amount;
-        } else
-        {
-            *mix_color = Some(MixColor{color: flash_color, amount: flash_amount, ..Default::default()});
+            return eprintln!("{entity:?} cannot be flashed since it does not have a base mix");
         }
-
-        entities.add_watcher(entity, Watcher{
-            kind: WatcherType::Lifetime(HIGHLIGHT_DURATION.into()),
-            action: Box::new(move |entities, entity|
-            {
-                if let Some(mut render) = entities.render_mut(entity)
-                {
-                    if let Some(mix) = render.mix.as_mut()
-                    {
-                        if mix.palette.is_some()
-                        {
-                            *mix = previous_mix;
-                        } else
-                        {
-                            render.mix.take();
-                        }
-                    }
-                }
-            }),
-            ..Default::default()
-        });
     }
+
+    let flash_color = [r, g, b, 1.0];
+    let flash_amount = 0.8;
+
+    if let Some(mix) = &mut render.mix
+    {
+        mix.color = flash_color;
+        mix.amount = flash_amount;
+        mix.only_alpha = false;
+    } else
+    {
+        render.mix = Some(MixColor{color: flash_color, amount: flash_amount, only_alpha: false, ..Default::default()});
+    }
+
+    entities.add_watcher(entity, Watcher{
+        kind: WatcherType::Lifetime(HIGHLIGHT_DURATION.into()),
+        action: Box::new(move |entities, entity|
+        {
+            some_or_return!(entities.render_mut(entity)).reset_mix();
+        }),
+        ..Default::default()
+    });
 }
 
 pub fn spawn_item(entities: &ClientEntities, textures: &CommonTextures, transform: &Transform, item: &Item)

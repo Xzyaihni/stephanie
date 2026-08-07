@@ -692,6 +692,29 @@ impl CommonTextures
             solid: assets.default_texture(DefaultTexture::Solid)
         }
     }
+
+    pub fn empty() -> Self
+    {
+        fn empty_texture() -> TextureId
+        {
+            TextureId::from(0)
+        }
+
+        fn empty_sprite() -> Sprite
+        {
+            Sprite{id: empty_texture(), scale: Vector2::zeros()}
+        }
+
+        Self{
+            dust: empty_sprite(),
+            blood: empty_sprite(),
+            health: empty_sprite(),
+            level_up: empty_sprite(),
+            muzzleflash: empty_sprite(),
+            shield: empty_sprite(),
+            solid: empty_texture()
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

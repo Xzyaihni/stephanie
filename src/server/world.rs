@@ -692,6 +692,8 @@ mod tests
     use crate::{
         server::connections_handler::PlayerInfo,
         common::{
+            CustomizationInfo,
+            CommonTextures,
             AnyEntities,
             MessagePasser,
             BufferSender,
@@ -701,6 +703,7 @@ mod tests
             CharactersInfo,
             CharacterId,
             Crafts,
+            ColorPalette,
             tilemap::TileLoot,
             message::MessageBuffer
         }
@@ -731,7 +734,10 @@ mod tests
                 message_buffer: MessageBuffer::new(),
                 message_passer: MessagePasser::new(stream),
                 entity: Some(entities.push_eager(false, EntityInfo{..Default::default()})),
-                name: "test_player".to_owned(),
+                customization: CustomizationInfo{
+                    palette: ColorPalette::Green,
+                    name: "test_player".to_owned()
+                },
                 host: true
             });
 
@@ -752,6 +758,7 @@ mod tests
                     furnitures_info: Arc::new(FurnituresInfo::empty()),
                     characters_info: Arc::new(CharactersInfo::new()),
                     crafts: Arc::new(Crafts::empty()),
+                    common_textures: Arc::new(CommonTextures::empty()),
                     player_character: CharacterId::from(0)
                 },
                 Rc::new(ServerScripts::default()),
