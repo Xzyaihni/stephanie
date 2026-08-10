@@ -183,6 +183,7 @@ impl GameServer
 
         let world = Rc::new(RefCell::new(Some(World::new(
             connection_handler.clone(),
+            entities.clone(),
             tilemap.clone(),
             data_infos.clone(),
             server_scripts.clone(),
@@ -233,6 +234,7 @@ impl GameServer
 
         *self.world.borrow_mut() = Some(World::new(
             self.connection_handler.clone(),
+            self.entities.clone(),
             self.tilemap.clone(),
             self.data_infos.clone(),
             self.server_scripts.clone(),
@@ -732,6 +734,7 @@ impl GameServer
             Message::SpawnEnemy{id, pos, params} =>
             {
                 enemy_creator::create(
+                    &self.entities,
                     &self.data_infos,
                     &self.server_scripts,
                     id,

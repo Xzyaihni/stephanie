@@ -8,6 +8,8 @@ use std::{
 
 use nalgebra::{vector, Vector3};
 
+use strum::IntoEnumIterator;
+
 use crate::{
     client::game_state::GameState,
     server::world::World as ServerWorld,
@@ -27,6 +29,7 @@ use crate::{
         TileMap,
         SpawnEnemyParam,
         ColorPalette,
+        player::StatId,
         damaging_system::on_destroy_tile,
         world::{TilePos, GlobalPos, ChunkLocal, Tile},
         entity::{ServerEntities, ClientEntities},
@@ -413,6 +416,38 @@ pub fn add_info_primitives(primitives: &mut Primitives, game_state: Rc<RefCell<W
 
                 let items_info = &game_state.data_infos.items_info;
                 inventory.push(items_info, Item::new(items_info, id));
+
+                Ok(().into())
+            })
+        }));
+    }
+
+    {
+        let game_state = game_state.clone();
+
+        primitives.add("add-experience", PrimitiveProcedureInfo::new_simple(3, Effect::Impure, move |mut args|
+        {
+            with_game_state(&game_state, |game_state|
+            {
+                let entities = game_state.entities();
+
+                let entity = parse_entity(entities, args.next_value().unwrap())?;
+
+                let stat_name = parse_symbol_or_string(args.next_value().unwrap())?;
+
+                let amount = args.next_value().unwrap().as_float()?;
+
+                let mut player = entities.player_mut(entity).ok_or_else(||
+                {
+                    lisp::Error::Custom("entity isnt a player".to_owned())
+                })?;
+
+                let stat = StatId::iter().find(|x| x.name() == stat_name).ok_or_else(||
+                {
+                    lisp::Error::Custom(format!("{stat_name} isnt a real stat"))
+                })?;
+
+                player.add_experience(stat, amount as f64);
 
                 Ok(().into())
             })

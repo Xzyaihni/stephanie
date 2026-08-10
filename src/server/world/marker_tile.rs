@@ -1,4 +1,7 @@
-use std::f32;
+use std::{
+    f32,
+    cell::RefCell
+};
 
 use nalgebra::Vector3;
 
@@ -49,6 +52,7 @@ impl MarkerTile
 {
     pub fn create(
         self,
+        entities: &RefCell<ServerEntities>,
         CreateInfos{
             infos: data_infos @ DataInfos{
                 enemies_info,
@@ -82,6 +86,7 @@ impl MarkerTile
                 };
 
                 enemy_creator::create(
+                    entities,
                     &data_infos,
                     server_scripts,
                     id,

@@ -77,33 +77,39 @@ fn damage_common_health(
 {
     if let Some(mut health) = entities.health_mut(entity)
     {
-        let is_killed = {
-            let is_killed = |health: &mut f32|
+        fn with_health(entities: &ClientEntities, entity: Entity, damage: f32, health: &mut Health) -> Option<bool>
+        {
+            match health
             {
-                *health -= damage;
+                Health::Normal(ref mut x) =>
+                {
+                    *x -= damage;
 
-                *health <= 0.0
-            };
-
-            match *health
-            {
-                Health::Normal(ref mut x) => is_killed(x),
+                    Some(*x <= 0.0)
+                },
+                Health::Shielded{ref mut health, shield} =>
+                {
+                    if entities.health_mut(*shield).and_then(|mut shield_health|
+                    {
+                        with_health(entities, entity, damage, &mut *shield_health)
+                    }).unwrap_or(true)
+                    {
+                        health.as_mut().and_then(|x| with_health(entities, entity, damage, x))
+                    } else
+                    {
+                        Some(false)
+                    }
+                },
                 Health::InheritSibling =>
                 {
-                    let try_is_killed = || -> Option<bool>
-                    {
-                        let sibling = entities.sibling_first(entity)?;
-                        match *entities.health_mut(sibling)?
-                        {
-                            Health::Normal(ref mut x) => Some(is_killed(x)),
-                            Health::InheritSibling => None
-                        }
-                    };
+                    let sibling = entities.sibling_first(entity)?;
 
-                    try_is_killed().unwrap_or(true)
+                    with_health(entities, entity, damage, &mut *entities.health_mut(sibling)?)
                 }
             }
-        };
+        }
+
+        let is_killed = some_or_value!(with_health(entities, entity, damage, &mut *health), false);
 
         drop(health);
 
@@ -165,16 +171,17 @@ pub fn fall_damage(
 
     let mut screenshook = false;
 
-    if let Some(mut anatomy) = entities.anatomy_mut(entity)
-    {
-        anatomy.fall_damage(damage);
-    }
-
-    damage_common_health(entities, textures, scripts, |amount|
+    if !damage_common_health(entities, textures, scripts, |amount|
     {
         screenshook = true;
         screenshake_near(amount)
-    }, entity, damage);
+    }, entity, damage)
+    {
+        if let Some(mut anatomy) = entities.anatomy_mut(entity)
+        {
+            anatomy.fall_damage(damage);
+        }
+    }
 
     if !screenshook
     {
@@ -1132,18 +1139,19 @@ pub fn damage_entity(
 
     let mut screenshook = false;
 
-    damage_common_health(entities, textures, scripts, |amount|
+    if !damage_common_health(entities, textures, scripts, |amount|
     {
         screenshook = true;
         if let Some(mut player) = entities.player_mut_no_change(other_entity)
         {
             player.screenshake.set(amount);
         }
-    }, entity, damage.data.as_flat());
-
-    if let Some(mut anatomy) = entities.anatomy_mut(entity)
+    }, entity, damage.data.as_flat())
     {
-        anatomy.damage(damage);
+        if let Some(mut anatomy) = entities.anatomy_mut(entity)
+        {
+            anatomy.damage(damage);
+        }
     }
 
     if !screenshook

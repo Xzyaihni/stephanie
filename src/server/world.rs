@@ -155,6 +155,7 @@ pub struct World
     world_generator: Rc<RefCell<WorldGenerator<WorldChunkSaver>>>,
     chunk_saver: ChunkSaver,
     pub entities_saver: EntitiesSaver,
+    server_entities: Rc<RefCell<ServerEntities>>,
     data_infos: DataInfos,
     server_scripts: Rc<ServerScripts>,
     overmaps: OvermapsType,
@@ -167,6 +168,7 @@ impl World
 {
     pub fn new(
         message_handler: Arc<Mutex<ConnectionsHandler>>,
+        server_entities: Rc<RefCell<ServerEntities>>,
         tilemap: Rc<TileMap>,
         data_infos: DataInfos,
         server_scripts: Rc<ServerScripts>,
@@ -202,6 +204,7 @@ impl World
             world_generator,
             chunk_saver,
             entities_saver,
+            server_entities,
             data_infos,
             server_scripts,
             overmaps,
@@ -513,7 +516,7 @@ impl World
                         infos: &self.data_infos
                     };
 
-                    marker.create(create_infos, &self.server_scripts, chunk_pos, |info|
+                    marker.create(&self.server_entities, create_infos, &self.server_scripts, chunk_pos, |info|
                     {
                         let entity = container.push_eager(false, info.clone());
                         chunk_entities.push((entity, info));

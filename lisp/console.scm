@@ -151,3 +151,11 @@
 (define (givegun)
     (give-x-item 'glock 1)
     (give-x-item 'bullet 20))
+
+(define (givexp)
+    (add-experience (player-entity) 'melee 1000.0)
+    (add-experience (player-entity) 'bash 1000.0)
+    (add-experience (player-entity) 'poke 1000.0)
+    (add-experience (player-entity) 'throw 1000.0)
+    (add-experience (player-entity) 'ranged 1000.0)
+    (add-experience (player-entity) 'crafting 1000.0))

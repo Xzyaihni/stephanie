@@ -1,4 +1,7 @@
-use std::f32;
+use std::{
+    f32,
+    cell::RefCell
+};
 
 use nalgebra::Vector3;
 
@@ -28,6 +31,7 @@ use crate::common::{
     Health,
     Parent,
     ColorPalette,
+    entity::ServerEntities,
     inventory::BASE_INVENTORY_LIMIT,
     scripts_container::{parse_symbol_or_string, parse_entity, parse_color_palette},
     lazy_transform::*
@@ -91,6 +95,7 @@ impl SpawnEnemyParam
 }
 
 pub fn create(
+    entities_cell: &RefCell<ServerEntities>,
     infos: &DataInfos,
     scripts: &ServerScripts,
     id: EnemyId,
@@ -192,11 +197,29 @@ pub fn create(
     {
         if let SpawnEnemyParam::Shield{target: shield_target, palette: shield_palette, amount: shield_amount} = param
         {
+            {
+                let mut entities = entities_cell.borrow_mut();
+                let entities = &mut *entities;
+
+                if let Some(Health::Shielded{shield, ..}) = entities.health_mut(*shield_target).as_deref_mut()
+                {
+                    if let Some(Health::Normal(health)) = entities.health_mut(*shield).as_deref_mut()
+                    {
+                        *health += shield_amount;
+                    } else
+                    {
+                        eprintln!("{shield:?} is a malformed shield");
+                    }
+
+                    return true;
+                }; // <-- WHY does this semicolon fix the compiler being wrong about lifetimes?? what the hell???
+            }
+
             let mix = MixColor{color: [0.0; 4], amount: 0.6, palette: Some(*shield_palette), only_alpha: true, ..Default::default()};
 
             let shield_sprite = infos.common_textures.shield;
 
-            create_entity(EntityInfo{
+            let shield_entity = create_entity(EntityInfo{
                 lazy_transform: Some(LazyTransformInfo{
                     inherit_scale: false,
                     transform: Transform{
@@ -219,6 +242,17 @@ pub fn create(
                 saveable: Some(()),
                 ..Default::default()
             });
+
+            let mut entities = entities_cell.borrow_mut();
+
+            let previous_health = entities.health(*shield_target).as_deref().cloned();
+
+            // the trait set functions are lazy, this needs to be eager
+            ServerEntities::set_health(
+                &mut *entities,
+                *shield_target,
+                Some(Health::Shielded{health: previous_health.map(Box::new), shield: shield_entity})
+            );
 
             true
         } else
