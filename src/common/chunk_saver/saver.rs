@@ -1,5 +1,5 @@
 use std::{
-    io,
+    io::{self, BufReader, BufWriter},
     path::PathBuf,
     fs::{self, File},
     fmt::{self, Display}
@@ -97,7 +97,7 @@ pub fn compressed_saver<T: Serialize>(value: T) -> impl FnOnce(File) -> Result<(
 {
     move |file|
     {
-        let mut lzma_writer = LzmaWriter::new_compressor(file, LZMA_PRESET)?;
+        let mut lzma_writer = LzmaWriter::new_compressor(BufWriter::new(file), LZMA_PRESET)?;
 
         serde_bare::to_writer(&mut lzma_writer, &value)?;
 
@@ -166,7 +166,7 @@ impl Display for LoadError
 
 pub fn load_compressed<T: DeserializeOwned>(file: File) -> Result<T, LoadError>
 {
-    let lzma_reader = LzmaReader::new_decompressor(file)?;
+    let lzma_reader = LzmaReader::new_decompressor(BufReader::new(file))?;
 
     Ok(serde_bare::from_reader(lzma_reader)?)
 }
