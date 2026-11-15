@@ -485,7 +485,7 @@ impl ChunkRule
             x
         } else
         {
-            eprintln!("rule `{}` must have a neighbors field", &rule.name);
+            eprintln!("rule `{}` must have a neighbors field", rule.name);
 
             return None;
         };
@@ -570,7 +570,7 @@ impl ChunkRule
                         Ok(program) => Some(ChunkWeight::Lisp(Box::new(program))),
                         Err(err) =>
                         {
-                            eprintln!("in `{}` error evaluating program: {err}", &rule.name);
+                            eprintln!("in `{}` error evaluating program: {err}", rule.name);
 
                             None
                         }
@@ -1230,12 +1230,12 @@ impl ChunkRules
                 {
                     if !has_override
                     {
-                        return eprintln!("{} with no override cant come after rotation overriden rules", &rule.name);
+                        return eprintln!("{} with no override cant come after rotation overriden rules", rule.name);
                     }
 
                     if current.symmetry != rule.symmetry
                     {
-                        return eprintln!("{} has a rotation override with an unrotated symmetry", &rule.name);
+                        return eprintln!("{} has a rotation override with an unrotated symmetry", rule.name);
                     }
 
                     current.combine(rule);
@@ -1271,7 +1271,7 @@ impl ChunkRules
             (id, weight)
         }).collect();
 
-        all_ids.sort_by(|a, b| a.0.0.cmp(&b.0.0));
+        all_ids.sort_by_key(|x| x.0.0);
 
         let mut this = Self{
             rules: this_rules,

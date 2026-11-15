@@ -265,7 +265,7 @@ impl TileMap
         {
             if tiles[index].textures.as_ref().map(|x| !x.is_empty()).unwrap_or(false) && tiles[index].connecting.is_some()
             {
-                eprintln!("{} has textures and connecting, removing textures", &tiles[index].name);
+                eprintln!("{} has textures and connecting, removing textures", tiles[index].name);
 
                 tiles[index].textures = None;
             }

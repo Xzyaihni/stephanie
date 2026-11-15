@@ -644,7 +644,7 @@ impl YanyaApp for ChunkPreviewer
         {
             if self.current_tags.modified_check()
             {
-                eprintln!("hot reloading chunk `{}`", &self.current_tags.name.0.text);
+                eprintln!("hot reloading chunk `{}`", self.current_tags.name.0.text);
                 self.regenerate = true;
             }
 
@@ -1198,7 +1198,7 @@ impl YanyaApp for ChunkPreviewer
                             chunk_objects.push(tiles_factory.build_slice(slice_info));
                         }
                     },
-                    Err(err) => eprintln!("{err} in ({})", &self.preview_tags.name.0.text)
+                    Err(err) => eprintln!("{err} in ({})", self.preview_tags.name.0.text)
                 }
             };
 

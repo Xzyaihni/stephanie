@@ -201,8 +201,8 @@ fn debug_overmap_with<S: fmt::Debug, T: fmt::Display>(
 
     format!(
         "{:#?}\n{:#?}{world_chunks}\n{world_plane}",
-        &overmap.world_generator,
-        &overmap.indexer
+        overmap.world_generator,
+        overmap.indexer
     )
 }
 
@@ -262,7 +262,7 @@ impl<S: SaveLoad<WorldChunksBlock>> ServerOvermap<S>
         assert_eq!(CHUNK_SIZE % WORLD_CHUNK_SIZE.y, 0);
         assert_eq!(CHUNK_SIZE % WORLD_CHUNK_SIZE.z, 0);
 
-        debug_assert!(size.x % 2 != 0 && size.y % 2 != 0, "size must not be even: {size}");
+        debug_assert!(!size.x.is_multiple_of(2) && !size.y.is_multiple_of(2), "size must not be even: {size}");
 
         let size = (Pos3::new(CHUNK_RATIO.x, CHUNK_RATIO.y, 1) * size).map(|x| if x % 2 == 0 { x + 1 } else { x });
 
@@ -858,7 +858,7 @@ mod tests
                         let local_pos = LocalPos::new(Pos3::new(x, y, z), size);
                         let global_pos = overmap.to_global(local_pos);
 
-                        let current = overmap.with_ref(|overmap| overmap.get(global_pos).map(|x| x.clone()));
+                        let current = overmap.with_ref(|overmap| overmap.get(global_pos).cloned());
 
                         if let Some(Some(current)) = current
                         {

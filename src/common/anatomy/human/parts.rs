@@ -5,7 +5,7 @@ use std::{
 
 use serde::{Serialize, Deserialize};
 
-use strum::{EnumCount, FromRepr, IntoStaticStr};
+use strum::IntoStaticStr;
 
 use crate::common::{
     from_upper_camel,
@@ -133,15 +133,6 @@ impl Organ for FrontalLobe
     {
         &0.05
     }
-}
-
-#[derive(Debug, Clone, Copy, FromRepr, EnumCount, Serialize, Deserialize)]
-pub enum LobeId
-{
-    Frontal,
-    Parietal,
-    Temporal,
-    Occipital
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

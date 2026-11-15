@@ -559,40 +559,6 @@ impl<T: Debug> Debug for ChunksContainer<T>
     }
 }
 
-#[cfg(test)]
-mod tests
-{
-    use super::*;
-
-    #[test]
-    fn flat_slice_z()
-    {
-        let size = Pos3{
-            x: fastrand::usize(10..20),
-            y: fastrand::usize(10..20),
-            z: fastrand::usize(10..20)
-        };
-
-        let mut value = 0;
-        let container = ChunksContainer::new_with(size, |_| { value += 1; value });
-
-        let random_z = fastrand::usize(0..size.z);
-
-        let manual_flat_slice = container.iter().filter(|(pos, _value)|
-        {
-            pos.pos.z == random_z
-        });
-
-        let flat_slice_iter = container.flat_slice_iter(random_z);
-
-        flat_slice_iter.zip(manual_flat_slice).for_each(|(a, b)|
-        {
-            assert_eq!(a.0.pos.with_z(random_z), b.0.pos);
-            assert_eq!(a.1, b.1);
-        });
-    }
-}
-
 pub fn debug_3d_slices(
     f: &mut fmt::Formatter,
     size: Pos3<usize>,
@@ -652,4 +618,38 @@ pub fn debug_3d_slices(
     }
 
     s.finish()
+}
+
+#[cfg(test)]
+mod tests
+{
+    use super::*;
+
+    #[test]
+    fn flat_slice_z()
+    {
+        let size = Pos3{
+            x: fastrand::usize(10..20),
+            y: fastrand::usize(10..20),
+            z: fastrand::usize(10..20)
+        };
+
+        let mut value = 0;
+        let container = ChunksContainer::new_with(size, |_| { value += 1; value });
+
+        let random_z = fastrand::usize(0..size.z);
+
+        let manual_flat_slice = container.iter().filter(|(pos, _value)|
+        {
+            pos.pos.z == random_z
+        });
+
+        let flat_slice_iter = container.flat_slice_iter(random_z);
+
+        flat_slice_iter.zip(manual_flat_slice).for_each(|(a, b)|
+        {
+            assert_eq!(a.0.pos.with_z(random_z), b.0.pos);
+            assert_eq!(a.1, b.1);
+        });
+    }
 }

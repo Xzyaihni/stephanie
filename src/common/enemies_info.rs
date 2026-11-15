@@ -179,7 +179,7 @@ impl EnemyInfo
                     },
                     Err(err) =>
                     {
-                        eprintln!("error parsing on_use for enemy `{}`: {err}", &raw.name);
+                        eprintln!("error parsing on_use for enemy `{}`: {err}", raw.name);
 
                         None
                     }

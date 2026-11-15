@@ -1301,7 +1301,7 @@ impl PossibleStates
             {
                 if DebugConfig::is_enabled(DebugTool::RedundantWorldChecks)
                 {
-                    debug_assert!(other.states.is_sorted_by_key(|x| x.id), "the states must be sorted: {:?}", &other.states);
+                    debug_assert!(other.states.is_sorted_by_key(|x| x.id), "the states must be sorted: {:?}", other.states);
                 }
 
                 this_neighbors.iter().any(|this_neighbor| other.states.binary_search_by_key(this_neighbor, |x| x.id).is_ok())

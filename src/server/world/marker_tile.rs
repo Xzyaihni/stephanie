@@ -87,7 +87,7 @@ impl MarkerTile
 
                 enemy_creator::create(
                     entities,
-                    &data_infos,
+                    data_infos,
                     server_scripts,
                     id,
                     position,

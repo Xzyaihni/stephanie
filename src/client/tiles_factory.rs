@@ -295,7 +295,7 @@ impl ChunkModelBuilder
                         {
                             let f = |other_tile: Option<Tile>| -> usize
                             {
-                                other_tile.map(|other_tile| (Some(tile.id()) == other_tile.id())).unwrap_or(false) as usize
+                                other_tile.map(|other_tile| Some(tile.id()) == other_tile.id()).unwrap_or(false) as usize
                             };
 
                             let is_up = f(tile_neighbors.up);

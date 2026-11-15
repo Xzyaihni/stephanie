@@ -1462,7 +1462,7 @@ impl<Id: Debug> Debug for CachedTreeValue<Id>
             ""
         };
 
-        write!(f, "{flags}{:?} is child {}", &self.id, self.child_index)
+        write!(f, "{flags}{:?} is child {}", self.id, self.child_index)
     }
 }
 
@@ -1482,7 +1482,7 @@ impl<Id: Debug> Debug for CachedTree<Id>
             "".to_owned()
         } else
         {
-            format!(", children: {:#?}", &self.children)
+            format!(", children: {:#?}", self.children)
         };
 
         write!(f, "{maybe_value}{maybe_children}")

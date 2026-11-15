@@ -234,7 +234,7 @@ pub fn create(
                         kind: RenderObjectKind::TextureId{id: shield_sprite.id}
                     }),
                     z_level: ZLevel::Shield,
-                    mix: Some(mix.clone()),
+                    mix: Some(mix),
                     base_mix: Some(mix),
                     ..Default::default()
                 }),

@@ -1104,69 +1104,54 @@ impl<'a> PlayerContainer<'a>
             x.floating()
         }).unwrap_or(false);
 
-        if state.is_up()
+        if state.is_up() && self.info.queued_action
         {
             match control
             {
                 Control::MainAction =>
                 {
-                    if self.info.queued_action
+                    self.info.queued_action = false;
+
+                    match select_main_action(self)
                     {
-                        self.info.queued_action = false;
-
-                        match select_main_action(self)
+                        MainAction::Use => (),
+                        MainAction::Bash => self.character_action(CharacterAction::Bash{state: true}),
+                        MainAction::Poke => self.character_action(CharacterAction::Poke{state: true}),
+                        MainAction::Shoot =>
                         {
-                            MainAction::Use => (),
-                            MainAction::Bash => self.character_action(CharacterAction::Bash{state: true}),
-                            MainAction::Poke => self.character_action(CharacterAction::Poke{state: true}),
-                            MainAction::Shoot =>
-                            {
-                                let target = some_or_return!(self.ranged_target());
+                            let target = some_or_return!(self.ranged_target());
 
-                                self.character_action(CharacterAction::Ranged{state: true, target})
-                            }
+                            self.character_action(CharacterAction::Ranged{state: true, target})
                         }
                     }
                 },
                 Control::Bash =>
                 {
-                    if self.info.queued_action
-                    {
-                        self.info.queued_action = false;
+                    self.info.queued_action = false;
 
-                        self.character_action(CharacterAction::Bash{state: true});
-                    }
+                    self.character_action(CharacterAction::Bash{state: true});
                 },
                 Control::Poke =>
                 {
-                    if self.info.queued_action
-                    {
-                        self.info.queued_action = false;
+                    self.info.queued_action = false;
 
-                        self.character_action(CharacterAction::Poke{state: true});
-                    }
+                    self.character_action(CharacterAction::Poke{state: true});
                 },
                 Control::Shoot =>
                 {
-                    if self.info.queued_action
-                    {
-                        self.info.queued_action = false;
+                    self.info.queued_action = false;
 
-                        let target = some_or_return!(self.ranged_target());
+                    let target = some_or_return!(self.ranged_target());
 
-                        self.character_action(CharacterAction::Ranged{state: true, target});
-                    }
+                    self.character_action(CharacterAction::Ranged{state: true, target});
                 },
                 Control::Throw =>
                 {
-                    if self.info.queued_action
-                    {
-                        self.info.queued_action = false;
+                    self.info.queued_action = false;
 
-                        let target = some_or_return!(self.ranged_target());
+                    let target = some_or_return!(self.ranged_target());
 
-                        self.character_action(CharacterAction::Throw{state: true, target});
-                    }
+                    self.character_action(CharacterAction::Throw{state: true, target});
                 },
                 _ => ()
             }

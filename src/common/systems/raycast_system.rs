@@ -110,12 +110,7 @@ pub fn raycast(
                 };
             }
 
-            if (result.distance > max_distance) && !info.ignore_end
-            {
-                return true;
-            }
-
-            false
+            (result.distance > max_distance) && !info.ignore_end
         }).map(|(_, pos, result)| RaycastHit{id: RaycastHitId::Tile(pos), result});
 
         hits.extend(world_hits);

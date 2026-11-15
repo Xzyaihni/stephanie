@@ -194,7 +194,7 @@ fn heldlike_item_entity(
             z_level: if held { ZLevel::Held } else { if flip { ZLevel::HandHigh } else { ZLevel::HandLow } },
             visible: !held,
             shadow_visible: is_player,
-            mix: Some(mix.clone()),
+            mix: Some(mix),
             base_mix: Some(mix),
             ..Default::default()
         }),
@@ -612,7 +612,7 @@ impl Character
                     }.into()),
                     z_level: base_hair_z(*self.sprite_state.value(), is_player),
                     shadow_visible: is_player,
-                    mix: Some(mix.clone()),
+                    mix: Some(mix),
                     base_mix: Some(mix),
                     ..Default::default()
                 }),
@@ -669,7 +669,7 @@ impl Character
                     }.into()),
                     z_level: accessory_hair_z(*self.sprite_state.value(), is_player),
                     shadow_visible: is_player,
-                    mix: Some(mix.clone()),
+                    mix: Some(mix),
                     base_mix: Some(mix),
                     ..Default::default()
                 }),
@@ -750,7 +750,7 @@ impl Character
             if let Some(mut render) = entities.render_mut(entity)
             {
                 render.mix.get_or_insert_default().palette = palette;
-                render.base_mix = render.mix.clone();
+                render.base_mix = render.mix;
             }
         }
 

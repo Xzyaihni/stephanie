@@ -731,12 +731,12 @@ mod tests
         {
             let passer = Arc::new(Mutex::new(ConnectionsHandler::new(3)));
 
-            let mut entities = ServerEntities::new(None);
+            let entities = Rc::new(RefCell::new(ServerEntities::new(None)));
 
             let player = passer.lock().connect(PlayerInfo{
                 message_buffer: MessageBuffer::new(),
                 message_passer: MessagePasser::new(stream),
-                entity: Some(entities.push_eager(false, EntityInfo{..Default::default()})),
+                entity: Some(entities.borrow_mut().push_eager(false, EntityInfo{..Default::default()})),
                 customization: CustomizationInfo{
                     palette: ColorPalette::Green,
                     name: "test_player".to_owned()
@@ -754,6 +754,7 @@ mod tests
 
             let mut world = World::new(
                 passer.clone(),
+                entities.clone(),
                 Rc::new(tilemap.tilemap),
                 DataInfos{
                     items_info: Arc::new(ItemsInfo::empty()),
@@ -768,13 +769,13 @@ mod tests
                 "default".to_owned()
             ).unwrap();
 
-            world.add_player(&mut entities, player, Pos3::new(0.0, 0.0, 0.0));
+            world.add_player(&mut entities.borrow_mut(), player, Pos3::new(0.0, 0.0, 0.0));
 
-            f(&mut entities, &mut world, player);
+            f(&mut entities.borrow_mut(), &mut world, player);
 
             passer.lock().send_buffered().unwrap();
 
-            world.remove_player(&mut entities, player);
+            world.remove_player(&mut entities.borrow_mut(), player);
 
             passer.lock().remove_connection(player).unwrap();
             passer.lock().send_buffered().unwrap();

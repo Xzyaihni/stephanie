@@ -263,7 +263,7 @@ impl Debug for PrimitiveProcedureInfo
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
     {
-        write!(f, "<procedure with {} args>", &self.args_count)
+        write!(f, "<procedure with {} args>", self.args_count)
     }
 }
 
@@ -3099,6 +3099,7 @@ impl InterReprPos
                         _ => proceed.into_compiled()
                     };
 
+                    #[allow(clippy::unnecessary_unwrap)]
                     prepare_return.combine(compound_part_basic).combine(CompiledPart::from_commands(vec![
                         Command::Label(procedure_return).into(),
                         Command::Move{target: target.expect("checked in branch"), source: Register::Value}.into()

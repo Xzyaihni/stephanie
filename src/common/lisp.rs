@@ -3241,7 +3241,7 @@ mod tests
             0
         ";
 
-        run_tests_with(&code, |lisp|
+        run_tests_with(code, |lisp|
         {
             let value = lisp.run().unwrap_or_else(|err|
             {

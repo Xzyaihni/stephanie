@@ -1038,15 +1038,16 @@ impl Eq for Node {}
 
 impl PartialOrd for Node
 {
-    // clippy bug
-    #[allow(clippy::non_canonical_partial_ord_impl)]
     fn partial_cmp(&self, other: &Self) -> Option<Ordering>
     {
-        other.cost.partial_cmp(&self.cost)
+        Some(self.cmp(other))
     }
 }
 
 impl Ord for Node
 {
-    fn cmp(&self, other: &Self) -> Ordering { self.partial_cmp(other).unwrap_or(Ordering::Equal) }
+    fn cmp(&self, other: &Self) -> Ordering
+    {
+        other.cost.partial_cmp(&self.cost).unwrap_or(Ordering::Equal)
+    }
 }

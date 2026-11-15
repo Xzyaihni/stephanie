@@ -745,7 +745,7 @@ impl VisualOvermap
 
                 if DebugConfig::is_enabled(DebugTool::PrintGeneratedChunks)
                 {
-                    eprintln!("generated: {:?}", &generated.position);
+                    eprintln!("generated: {:?}", generated.position);
                 }
 
                 sender.send(generated).unwrap();

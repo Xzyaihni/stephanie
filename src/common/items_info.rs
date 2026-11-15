@@ -358,7 +358,7 @@ impl ItemInfo
                 },
                 Err(err) =>
                 {
-                    eprintln!("error parsing on_use for item `{}`: {err}", &raw.name);
+                    eprintln!("error parsing on_use for item `{}`: {err}", raw.name);
 
                     None
                 }

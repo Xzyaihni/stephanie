@@ -1,6 +1,5 @@
 use std::{
     mem,
-    f32,
     fmt::{self, Display},
     collections::HashMap,
     hash::{Hash, Hasher},
@@ -1457,7 +1456,7 @@ impl WindowKind
 
                     let ui_craft_id = |part, index|
                     {
-                        id(CraftPanelPart::CraftItem(index as u32, part))
+                        id(CraftPanelPart::CraftItem(index, part))
                     };
 
                     let update_craft_item = {
@@ -3318,7 +3317,7 @@ impl Ui
                             anchor,
                             kind: RotationAnimationKind::Wiggle(WiggleInfo{
                                 speed: 4.5,
-                                amount: f32::consts::PI * 0.055,
+                                amount: std::f32::consts::PI * 0.055,
                                 animation: ValueAnimation::EaseIn(1.1)
                             }.into())
                         }),

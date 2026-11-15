@@ -1049,7 +1049,7 @@ impl ClientRenderInfo
 
     pub fn reset_mix(&mut self)
     {
-        self.mix = self.base_mix.clone();
+        self.mix = self.base_mix;
     }
 
     pub fn texture(&self) -> Option<&Arc<Mutex<Texture>>>

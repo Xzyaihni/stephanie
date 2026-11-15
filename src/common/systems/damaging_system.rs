@@ -91,7 +91,7 @@ fn damage_common_health(
                 {
                     if entities.health_mut(*shield).and_then(|mut shield_health|
                     {
-                        with_health(entities, entity, damage, &mut *shield_health)
+                        with_health(entities, entity, damage, &mut shield_health)
                     }).unwrap_or(true)
                     {
                         health.as_mut().and_then(|x| with_health(entities, entity, damage, x))
@@ -109,7 +109,7 @@ fn damage_common_health(
             }
         }
 
-        let is_killed = some_or_value!(with_health(entities, entity, damage, &mut *health), false);
+        let is_killed = some_or_value!(with_health(entities, entity, damage, &mut health), false);
 
         drop(health);
 
@@ -344,7 +344,7 @@ fn damager<'a, 'b>(
                 let knockback_strength = match result.damage.data
                 {
                     DamageType::Sharp{sharpness, ..} => 1.0 - sharpness,
-                    DamageType::Bullet(_) => if result.damage_exit.is_some() { 0.5 } else { 1.0 },
+                    DamageType::Bullet(_) if result.damage_exit.is_some() => 0.5,
                     _ => 1.0
                 };
 

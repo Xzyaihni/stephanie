@@ -528,7 +528,7 @@ impl MainMenu
             }
         }).collect::<Vec<_>>();
 
-        bindings.sort_by(|a, b| a.control.cmp(&b.control));
+        bindings.sort_by_key(|x| x.control);
 
         let controls = ControlsController::new(current_bindings);
 
@@ -1484,7 +1484,7 @@ impl MainMenu
             add_padding_vertical(panel, UiSize::Rest(0.1).into());
 
             let color_id = id(WorldCreatePartId::ColorsPanelColor(index, ColorIconPart::Color));
-            panel.update(color_id.clone(), UiElement{
+            panel.update(color_id, UiElement{
                 texture: UiTexture::Custom("ui/palette_color.png".into()),
                 mix: Some(MixColorLch{palette: Some(color), ..Default::default()}),
                 width: UiSize::CopyElement(UiDirection::Vertical, 1.0, color_id).into(),

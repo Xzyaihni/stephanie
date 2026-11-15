@@ -97,12 +97,7 @@ pub fn sees(
     let hit_obstacle_tile = {
         raycast_world(world, start, direction, |_tile, _pos, result|
         {
-            if result.distance > max_distance
-            {
-                return true
-            }
-
-            false
+            result.distance > max_distance
         }).any(|(tile, _, _)|
         {
             !tile.transparent
