@@ -25,12 +25,14 @@ serde_with = "3.12.0"
 strip = true
 
 [profile.dev]
+strip = true
 debug = false
 opt-level = 1
 
 [profile.dev-debug]
 inherits = "dev"
-debug = true
+strip = false
+debug = 1
 
 [profile.release-symbols]
 inherits = "release"
