@@ -681,7 +681,7 @@ impl UiReceiver
         self.events.push(event);
     }
 
-    pub fn consume(&mut self) -> impl Iterator<Item=UiEvent>
+    pub fn consume(&mut self) -> impl Iterator<Item=UiEvent> + use<>
     {
         mem::take(&mut self.events).into_iter()
     }

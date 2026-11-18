@@ -1508,7 +1508,7 @@ impl Entropies
         self.0.size()
     }
 
-    pub fn positions(&self) -> impl Iterator<Item=LocalPos<Pos2<usize>>>
+    pub fn positions(&self) -> impl Iterator<Item=LocalPos<Pos2<usize>>> + use<>
     {
         self.0.positions()
     }

@@ -81,13 +81,13 @@ fn damage_common_health(
         {
             match health
             {
-                Health::Normal(ref mut x) =>
+                Health::Normal(x) =>
                 {
                     *x -= damage;
 
                     Some(*x <= 0.0)
                 },
-                Health::Shielded{ref mut health, shield} =>
+                Health::Shielded{health, shield} =>
                 {
                     if entities.health_mut(*shield).and_then(|mut shield_health|
                     {

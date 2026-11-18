@@ -102,12 +102,12 @@ impl<T> Pos2<T>
 
 impl Pos2<usize>
 {
-    pub fn positions(self) -> impl Iterator<Item=LocalPos<Self>>
+    pub fn positions(self) -> impl Iterator<Item=LocalPos<Self>> + use<>
     {
         self.positions_2d()
     }
 
-    pub fn positions_2d(self) -> impl Iterator<Item=LocalPos<Self>>
+    pub fn positions_2d(self) -> impl Iterator<Item=LocalPos<Self>> + use<>
     {
         (0..self.y).flat_map(move |y|
         {
@@ -296,7 +296,7 @@ impl SizeTensor for Pos3<usize>
 
 impl Pos3<usize>
 {
-    pub fn positions(self) -> impl Iterator<Item=Pos3<usize>>
+    pub fn positions(self) -> impl Iterator<Item=Pos3<usize>> + use<>
     {
         (0..self.z).flat_map(move |z|
         {
@@ -307,12 +307,12 @@ impl Pos3<usize>
         })
     }
 
-    pub fn positions_2d(self) -> impl Iterator<Item=LocalPos>
+    pub fn positions_2d(self) -> impl Iterator<Item=LocalPos> + use<>
     {
         Pos2::from(self).positions_2d().map(|x| x.with_z(0, 1))
     }
 
-    pub fn positions_axis(&self, axis: Axis, fixed: usize) -> impl Iterator<Item=Pos3<usize>>
+    pub fn positions_axis(&self, axis: Axis, fixed: usize) -> impl Iterator<Item=Pos3<usize>> + use<>
     {
         let (size_one, size_two) = match axis
         {

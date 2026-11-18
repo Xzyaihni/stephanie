@@ -162,14 +162,14 @@ macro_rules! implement_common
                 (a, b)
             }
 
-            pub fn positions(&self) -> impl Iterator<Item=LocalPos<$tensor_t<usize>>>
+            pub fn positions(&self) -> impl Iterator<Item=LocalPos<$tensor_t<usize>>> + use<T>
             {
                 let indexer = self.indexer.clone();
 
                 indexer.positions()
             }
 
-            pub fn positions_2d(&self) -> impl Iterator<Item=LocalPos<$tensor_t<usize>>>
+            pub fn positions_2d(&self) -> impl Iterator<Item=LocalPos<$tensor_t<usize>>> + use<T>
             {
                 self.indexer.size().clone().positions_2d()
             }
@@ -248,7 +248,7 @@ where
         LocalPos::new(T::from_rectangle(size, index), size)
     }
 
-    fn positions(self) -> impl Iterator<Item=LocalPos<T>>
+    fn positions(self) -> impl Iterator<Item=LocalPos<T>> + use<Self, T>
     where
         Self: Sized
     {
@@ -344,7 +344,7 @@ impl<T> ChunksContainer<T>
         )
     }
 
-    pub fn iter_axis(&self, axis: Axis, fixed: usize) -> impl Iterator<Item=(Pos3<usize>, &T)>
+    pub fn iter_axis<'a>(&'a self, axis: Axis, fixed: usize) -> impl Iterator<Item=(Pos3<usize>, &'a T)> + use<'a, T>
     {
         self.indexer.size().clone().positions_axis(axis, fixed).map(|pos| (pos, &self[pos]))
     }

@@ -137,7 +137,7 @@ impl TilePos
         self.position() + Pos3::repeat(TILE_SIZE * 0.5)
     }
 
-    pub fn tiles_between(&self, other: Self) -> impl Iterator<Item=TilePos>
+    pub fn tiles_between(&self, other: Self) -> impl Iterator<Item=TilePos> + use<>
     {
         let start = self.min_componentwise(other);
         let end = self.max_componentwise(other);

@@ -55,7 +55,7 @@ impl<T> From<Lifetime> for TimedInterpolation<T>
 pub fn timed_interpolate<T: Lerpable + Clone>(
     current: &mut T,
     target: T,
-    TimedInterpolation{lifetime, ref mut start}: &mut TimedInterpolation<T>,
+    TimedInterpolation{lifetime, start}: &mut TimedInterpolation<T>,
     animation: ValueAnimation,
     dt: f32
 )

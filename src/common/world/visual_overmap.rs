@@ -135,7 +135,7 @@ impl VisibilityChecker
         &self,
         chunks: &ChunksContainer<VisualOvermapChunk>,
         pos: LocalPos
-    ) -> impl DoubleEndedIterator<Item=LocalPos>
+    ) -> impl DoubleEndedIterator<Item=LocalPos> + use<>
     {
         let top = self.top_z() + 1;
         let positions = pos.with_z_range(0..top);

@@ -2176,7 +2176,7 @@ impl<'a> PlayerContainer<'a>
             .unwrap_or(true)
     }
 
-    fn ranged_target_function(&self) -> impl Fn(&ClientEntities) -> Option<Vector3<f32>>
+    fn ranged_target_function(&self) -> impl Fn(&ClientEntities) -> Option<Vector3<f32>> + use<>
     {
         let mouse_entity = self.info.mouse_entity;
         let player_entity = self.info.entity;

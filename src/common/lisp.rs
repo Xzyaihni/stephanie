@@ -1169,7 +1169,7 @@ impl LispMemory
     pub fn with_saved_registers<R>(
         &mut self,
         registers: R
-    ) -> impl FnOnce(&mut LispMemory) -> Result<(), Error>
+    ) -> impl FnOnce(&mut LispMemory) -> Result<(), Error> + use<R>
     where
         R: IntoIterator<Item=Register> + Clone,
         R::IntoIter: DoubleEndedIterator
