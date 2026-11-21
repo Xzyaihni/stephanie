@@ -931,10 +931,17 @@ impl Animation
 {
     pub fn with_old(self, old: &Self) -> Self
     {
+        fn with_old<T>(this: Option<T>, old: &Option<T>, f: impl FnOnce(T, &T) -> T) -> Option<T>
+        {
+            if old.is_none() { return this; }
+
+            this.zip(old.as_ref()).map(|(x, old)| f(x, old))
+        }
+
         Self{
-            scaling: self.scaling.zip(old.scaling.as_ref()).map(|(x, old)| x.with_old(old)),
-            position: self.position.zip(old.position.as_ref()).map(|(x, old)| x.with_old(old)),
-            rotation: self.rotation.zip(old.rotation.as_ref()).map(|(x, old)| x.with_old(old)),
+            scaling: with_old(self.scaling, &old.scaling, ScalingAnimation::with_old),
+            position: with_old(self.position, &old.position, PositionAnimation::with_old),
+            rotation: with_old(self.rotation, &old.rotation, RotationAnimation::with_old),
             ..self
         }
     }

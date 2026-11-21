@@ -40,6 +40,7 @@ use crate::{
         }
     },
     common::{
+        clamped_lerp,
         with_error,
         sanitized_name,
         from_upper_camel,
@@ -180,6 +181,7 @@ enum WorldCreatePartId
     ColorsPanel,
     ColorsPanelRow(usize),
     ColorsPanelColor(usize),
+    ColorsPanelColorHover(usize, u32),
     Buttons,
     Confirm(ButtonPartId),
     Back(ButtonPartId)
@@ -1421,6 +1423,16 @@ impl MainMenu
             ..Default::default()
         });
 
+        struct HoveredButtonInfo<'a>
+        {
+            button: TreeInserter<'a, MainMenuId>,
+            button_id: MainMenuId,
+            color: ColorPalette,
+            index: usize
+        }
+
+        let mut hovered_button = None;
+
         let mut palette_panel = None;
         ColorPalette::sorted_iter().enumerate().for_each(|(index, color)|
         {
@@ -1443,27 +1455,78 @@ impl MainMenu
 
             let palette_panel = palette_panel.unwrap();
 
-            if (index % per_row) == 0
+            let is_first_in_row = (index % per_row) == 0;
+
+            let is_last = (index + 1) == ColorPalette::COUNT;
+            let is_last_in_row = ((index % per_row) + 1) == per_row || is_last;
+
+            if is_first_in_row
             {
                 add_padding_horizontal(palette_panel, UiSize::Pixels(border_pixels).into());
             }
 
-            let color_button = palette_panel.update(id(WorldCreatePartId::ColorsPanelColor(index)), UiElement{
-                texture: UiTexture::Custom("ui/palette_color.png".into()),
-                mix: Some(MixColorLch{palette: Some(color), ..Default::default()}),
+            let color_button_id = id(WorldCreatePartId::ColorsPanelColor(index));
+            let color_button = palette_panel.update(color_button_id, UiElement{
                 width: UiSize::Rest(1.0).into(),
                 height: UiSize::Rest(1.0).into(),
                 ..Default::default()
             });
 
-            if color_button.is_mouse_inside() && ui_info.controls.take_click_down()
+            let is_hovered = color_button.is_mouse_inside();
+
+            if is_hovered
+            {
+                hovered_button = Some(HoveredButtonInfo{
+                    button: color_button,
+                    button_id: color_button_id,
+                    color,
+                    index
+                });
+            } else
+            {
+                let _visible_button_part = color_button.update(id(WorldCreatePartId::ColorsPanelColorHover(index, 0)), UiElement{
+                    texture: UiTexture::Custom("ui/palette_color.png".into()),
+                    mix: Some(MixColorLch{palette: Some(color), ..Default::default()}),
+                    width: UiSize::CopyElement(UiDirection::Horizontal, 1.0, color_button_id).into(),
+                    height: UiSize::CopyElement(UiDirection::Vertical, 1.0, color_button_id).into(),
+                    position: UiPosition::Offset(color_button_id, vector![0.0, 0.0]),
+                    ..Default::default()
+                });
+            }
+
+            if ui_info.info.palette == color && !is_hovered
+            {
+                let mut side = 2;
+
+                let mut create_hover = |texture|
+                {
+                    color_button.update(id(WorldCreatePartId::ColorsPanelColorHover(index, side)), UiElement{
+                        texture: UiTexture::Sliced(texture),
+                        mix: Some(MixColorLch::color(WHITE_COLOR)),
+                        width: UiSize::CopyElement(UiDirection::Horizontal, 1.0, color_button_id).into(),
+                        height: UiSize::CopyElement(UiDirection::Vertical, 1.0, color_button_id).into(),
+                        position: UiPosition::Inherit,
+                        ..Default::default()
+                    });
+
+                    side += 1;
+                };
+
+                let is_first_row = (index / per_row) == 0;
+                let is_last_row = (index / per_row) == ((ColorPalette::COUNT - 1) / per_row);
+
+                if !is_first_in_row { create_hover(ui_info.sliced_textures["square_left"]); }
+                if !is_last_in_row { create_hover(ui_info.sliced_textures["square_right"]); }
+                if !is_first_row { create_hover(ui_info.sliced_textures["square_up"]); }
+                if !is_last_row { create_hover(ui_info.sliced_textures["square_down"]); }
+            }
+
+            if is_hovered && ui_info.controls.take_click_down()
             {
                 ui_info.info.palette = color;
             }
 
-            let is_last = (index + 1) == ColorPalette::COUNT;
-
-            if ((index % per_row) + 1) == per_row || is_last
+            if is_last_in_row
             {
                 add_padding_horizontal(palette_panel, UiSize::Pixels(border_pixels).into());
             }
@@ -1473,6 +1536,42 @@ impl MainMenu
                 add_padding_vertical(outer_panel, UiSize::Pixels(border_pixels).into());
             }
         });
+
+        if let Some(HoveredButtonInfo{button, button_id, color, index}) = hovered_button
+        {
+            let button_scale = 1.4;
+
+            let aspect = button.try_width().zip(button.try_height()).map(|(w, h)| h / w).unwrap_or_default();
+
+            let visible_button_part = menu.update(id(WorldCreatePartId::ColorsPanelColorHover(index, 0)), UiElement{
+                texture: UiTexture::Custom("ui/palette_color.png".into()),
+                mix: Some(MixColorLch{palette: Some(color), ..Default::default()}),
+                width: UiSize::CopyElement(UiDirection::Horizontal, button_scale, button_id).into(),
+                height: UiSize::CopyElement(UiDirection::Vertical, button_scale, button_id).into(),
+                position: UiPosition::Offset(button_id, vector![0.0, 0.0]),
+                animation: Animation{
+                    rotation: Some(RotationAnimation{
+                        anchor: Default::default(),
+                        kind: RotationAnimationKind::Wiggle(WiggleInfo{
+                            speed: 7.0,
+                            amount: std::f32::consts::PI * clamped_lerp(0.0, 0.05, aspect),
+                            animation: ValueAnimation::EaseIn(1.1)
+                        }.into())
+                    }),
+                    ..Default::default()
+                },
+                ..Default::default()
+            });
+
+            visible_button_part.update(id(WorldCreatePartId::ColorsPanelColorHover(index, 1)), UiElement{
+                texture: UiTexture::Sliced(ui_info.sliced_textures["square"]),
+                mix: Some(MixColorLch::color(WHITE_COLOR)),
+                width: UiSize::Rest(1.0).into(),
+                height: UiSize::Rest(1.0).into(),
+                position: UiPosition::Inherit,
+                ..Default::default()
+            });
+        }
 
         add_padding_vertical(panel, 0.015.into());
 

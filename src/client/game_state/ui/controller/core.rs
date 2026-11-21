@@ -89,11 +89,18 @@ pub struct UiShaders
     pub ui_fill: ShaderId
 }
 
-#[derive(Debug)]
 pub struct TreeInserter<'a, Id>
 {
     elements: &'a RefCell<Vec<TreeElement<Id>>>,
     index: usize
+}
+
+impl<Id: Idable> Debug for TreeInserter<'_, Id>
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result
+    {
+        Debug::fmt(&self.tree_element(), f)
+    }
 }
 
 impl<Id> Copy for TreeInserter<'_, Id> {}
@@ -301,7 +308,9 @@ struct Fractions
     deferred_scale: Vector2<f32>,
     position: Vector2<f32>,
     position_inherit: Vector2<f32>,
-    deferred_position: Vector2<f32>
+    deferred_position: Vector2<f32>,
+    rotation: f32,
+    rotation_inherit: f32
 }
 
 impl Default for Fractions
@@ -315,7 +324,9 @@ impl Default for Fractions
             deferred_scale: Vector2::zeros(),
             position: Vector2::zeros(),
             position_inherit: Vector2::zeros(),
-            deferred_position: Vector2::zeros()
+            deferred_position: Vector2::zeros(),
+            rotation: 0.0,
+            rotation_inherit: 0.0
         }
     }
 }
@@ -334,6 +345,7 @@ struct UiElementCached
     scale: Vector2<f32>,
     parental_position: Vector2<f32>,
     position: Vector2<f32>,
+    parental_rotation: f32,
     rotation: f32,
     inherit_animation: bool,
     mix: Option<MixColorLch>,
@@ -368,6 +380,7 @@ impl UiElementCached
             Vector2::new(width, height)
         };
 
+        let parental_rotation = 0.0;
         let rotation = 0.0;
 
         let parental_position = parental_position_of(parent_deferred, element);
@@ -396,9 +409,10 @@ impl UiElementCached
         let mut this = Self{
             fractions: Fractions::default(),
             scale,
-            position,
-            rotation,
             parental_position,
+            position,
+            parental_rotation,
+            rotation,
             inherit_animation: element.inherit_animation,
             mix,
             last_scissor,
@@ -476,7 +490,7 @@ impl UiElementCached
             scaled_offset.component_mul(&parent_scale)
         };
 
-        self.fractions.position = parent_fraction.position_inherit + scaling_offset;
+        self.fractions.position = if self.inherit_animation { parent_fraction.position_inherit } else { Vector2::zeros() } + scaling_offset;
 
         self.fractions.deferred_position = deferred_position;
 
@@ -491,6 +505,8 @@ impl UiElementCached
             self.fractions.deferred_scale = target_scale;
         }
 
+        self.fractions.rotation = if self.inherit_animation { parent_fraction.rotation_inherit } else { 0.0 };
+
         {
             let target_position = deferred.position.unwrap() - self.parental_position;
 
@@ -500,8 +516,17 @@ impl UiElementCached
         }
 
         {
+            let target_rotation = 0.0 - self.parental_rotation;
+
+            let fraction = self.rotation - target_rotation;
+
+            self.fractions.rotation_inherit = fraction + parent_fraction.rotation_inherit;
+        }
+
+        {
             let scale = self.current_scale();
             let position = self.current_position();
+            let rotation = self.current_rotation();
 
             if let Some(object) = self.object.as_mut()
             {
@@ -509,7 +534,7 @@ impl UiElementCached
                 {
                     transform.scale = Vector3::new(scale.x, scale.y, 1.0);
                     transform.position = Vector3::new(position.x, position.y, 0.0);
-                    transform.rotation = self.rotation;
+                    transform.rotation = rotation;
                 })
             }
         }
@@ -523,6 +548,11 @@ impl UiElementCached
     fn current_scale(&self) -> Vector2<f32>
     {
         self.scale.component_mul(&self.fractions.scale)
+    }
+
+    fn current_rotation(&self) -> f32
+    {
+        self.rotation + self.fractions.rotation + self.parental_rotation
     }
 
     fn scissor(&self) -> UiScissor
@@ -539,6 +569,7 @@ impl UiElementCached
         target_mix: Option<MixColorLch>,
         alpha_inherit: f32,
         is_closing: bool,
+        has_mix_target: bool,
         dt: f32
     )
     {
@@ -585,6 +616,18 @@ impl UiElementCached
                 target
             };
         }
+
+        let this_alpha = if has_mix_target
+        {
+            self.mix.map(|x| x.color.a).unwrap_or(1.0)
+        } else
+        {
+            1.0
+        };
+
+        let inherit_alpha = if self.inherit_animation { alpha_inherit } else { 1.0 };
+
+        self.fractions.alpha = inherit_alpha * this_alpha;
     }
 
     fn update_always<Id>(
@@ -649,21 +692,14 @@ impl UiElementCached
             self.position = target_position;
         }
 
-        self.update_mix(old_element, old_element.mix, parent_fraction.alpha, false, dt);
-
-        {
-            let this_alpha = if old_element.animation.mix.as_ref().map(|x| x.start_mix.is_some()).unwrap_or(false)
-            {
-                self.mix.map(|x| x.color.a).unwrap_or(1.0)
-            } else
-            {
-                1.0
-            };
-
-            let inherit_alpha = if self.inherit_animation { parent_fraction.alpha } else { 1.0 };
-
-            self.fractions.alpha = inherit_alpha * this_alpha;
-        }
+        self.update_mix(
+            old_element,
+            old_element.mix,
+            parent_fraction.alpha,
+            false,
+            old_element.animation.mix.as_ref().map(|x| x.start_mix.is_some()).unwrap_or(false),
+            dt
+        );
 
         self.last_scissor = scissor;
         self.update_always(
@@ -761,14 +797,6 @@ impl UiElementCached
             self.position = target_position;
         }
 
-        if !is_scaling_close && !is_position_close && !is_mix_close
-        {
-            if close_soon
-            {
-                return false;
-            }
-        }
-
         let target_mix = if let Some(x) = element.animation.mix.as_ref().and_then(|x| x.close_mix)
         {
             element.mix.map(|mix| MixColorLch{color: x, ..mix})
@@ -777,21 +805,14 @@ impl UiElementCached
             element.mix
         };
 
-        self.update_mix(element, target_mix, parent_fraction.alpha, true, dt);
-
-        {
-            let this_alpha = if element.animation.mix.as_ref().map(|x| x.close_mix.is_some()).unwrap_or(false)
-            {
-                self.mix.map(|x| x.color.a).unwrap_or(1.0)
-            } else
-            {
-                1.0
-            };
-
-            let inherit_alpha = if self.inherit_animation { parent_fraction.alpha } else { 1.0 };
-
-            self.fractions.alpha = inherit_alpha * this_alpha;
-        }
+        self.update_mix(
+            element,
+            target_mix,
+            parent_fraction.alpha,
+            true,
+            element.animation.mix.as_ref().map(|x| x.close_mix.is_some()).unwrap_or(false),
+            dt
+        );
 
         self.update_always(
             parent_fraction,
@@ -801,6 +822,14 @@ impl UiElementCached
             screen_size,
             dt
         );
+
+        if !is_scaling_close && !is_position_close && !is_mix_close
+        {
+            if close_soon
+            {
+                return false;
+            }
+        }
 
         if self.fractions.scale.min() < MINIMUM_SCALE
         {

@@ -1050,11 +1050,9 @@ impl YanyaApp for ChunkPreviewer
             }
 
             if let Some(StatesTooltip{mouse_position, ..}) = self.states_tooltip.as_ref()
+                && mouse_position.metric_distance(&self.controller.mouse_position()) > 0.1
             {
-                if mouse_position.metric_distance(&self.controller.mouse_position()) > 0.1
-                {
-                    self.states_tooltip = None;
-                }
+                self.states_tooltip = None;
             }
 
             if controls.is_click_down() && !controls.is_click_taken()
