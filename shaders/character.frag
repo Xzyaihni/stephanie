@@ -18,7 +18,6 @@ layout(push_constant) uniform CharacterShaderInfoRaw{
     vec2 eyes_offset;
     float other_mix;
     int flags;
-    int palette;
     float animation;
     float outlined;
 } info;
@@ -27,6 +26,7 @@ const vec3 BACKGROUND_COLOR = vec3(0.831, 0.941, 0.988);
 
 const float LINE_WIDTH = 0.5;
 
+#include "without_palette.glsl"
 #include "with_mix.glsl"
 
 

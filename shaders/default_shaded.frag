@@ -13,7 +13,6 @@ layout(push_constant) uniform OutlineInfo{
     float animation;
     float outlined;
     int flags;
-    int palette;
 } info;
 
 layout(constant_id = 0) const float DARKEN = 0.0;
@@ -21,8 +20,9 @@ layout(constant_id = 1) const float BLEND_RED = 0.0;
 layout(constant_id = 2) const float BLEND_GREEN = 0.0;
 layout(constant_id = 3) const float BLEND_BLUE = 0.0;
 
-const vec3 background_color = vec3(0.831, 0.941, 0.988);
+const vec3 BACKGROUND_COLOR = vec3(0.831, 0.941, 0.988);
 
+#include "without_palette.glsl"
 #include "with_mix.glsl"
 
 
@@ -31,7 +31,7 @@ void main()
     vec4 color = texture(tex, tex_coords);
     color = with_mix(color);
 
-    vec3 blended_color = mix(color.xyz, background_color, depth);
+    vec3 blended_color = mix(color.xyz, BACKGROUND_COLOR, depth);
     vec3 darkened_color = mix(blended_color, vec3(BLEND_RED, BLEND_GREEN, BLEND_BLUE), DARKEN);
 
     f_color = vec4(darkened_color, color.w);

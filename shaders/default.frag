@@ -13,13 +13,13 @@ layout(push_constant) uniform OutlineInfo{
     float animation;
     float outlined;
     int flags;
-    int palette;
 } info;
 
 const vec3 BACKGROUND_COLOR = vec3(0.831, 0.941, 0.988);
 
 const float LINE_WIDTH = 0.5;
 
+#include "without_palette.glsl"
 #include "with_mix.glsl"
 
 
