@@ -11,6 +11,10 @@ layout(set = 2, binding = 0) uniform sampler2D eyes_normal_tex;
 
 layout(set = 3, binding = 0) uniform sampler2D tex;
 
+layout(set = 0, binding = 1) buffer Palette{
+    float palette[];
+};
+
 layout(push_constant) uniform CharacterShaderInfoRaw{
     vec4 other_color;
     vec2 aspect;
@@ -26,7 +30,7 @@ const vec3 BACKGROUND_COLOR = vec3(0.831, 0.941, 0.988);
 
 const float LINE_WIDTH = 0.5;
 
-#include "without_palette.glsl"
+#include "with_palette.glsl"
 #include "with_mix.glsl"
 
 
@@ -44,9 +48,9 @@ void main()
 {
     vec4 color = texture(tex, tex_coords);
 
-    int draw_eyes = (info.flags >> 2) & 1;
-    int left_closed = (info.flags >> 3) & 1;
-    int right_closed = (info.flags >> 4) & 1;
+    int draw_eyes = (info.flags >> 3) & 1;
+    int left_closed = (info.flags >> 4) & 1;
+    int right_closed = (info.flags >> 5) & 1;
 
     vec2 face_coords = tex_coords / info.aspect;
 

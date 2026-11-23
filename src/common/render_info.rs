@@ -97,13 +97,15 @@ impl CharacterShaderInfoRaw
 {
     pub fn new(outline: OutlinedInfo, info: CharacterShaderInfo) -> Self
     {
+        debug_assert!(is_flags_amount(outline.flags, 3), "colors have too many flags, i messed up!!");
+
         Self{
             other_color: outline.other_color,
             aspect: info.aspect,
             face_offset: info.face_offset,
             eyes_offset: info.eyes_offset,
             other_mix: outline.other_mix,
-            flags: (to_flags([info.draw_eyes, info.left_closed, info.right_closed]) << 2) | outline.flags,
+            flags: (to_flags([info.draw_eyes, info.left_closed, info.right_closed]) << 3) | outline.flags,
             outlined: outline.outlined,
             animation: outline.animation
         }
@@ -293,7 +295,7 @@ impl UiElementFill
 
         let color = RawMixColor::from(color);
 
-        debug_assert!(is_flags_amount(color.flags, 2), "uh oh colors shouldnt have more than 2 flags");
+        debug_assert!(is_flags_amount(color.flags, 2), "colors have too many flags, i messed up!!");
 
         FillInfo{
             other_color: color.other_color,

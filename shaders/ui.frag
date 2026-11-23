@@ -6,8 +6,6 @@ layout(location = 0) out vec4 f_color;
 
 layout(set = 0, binding = 0) uniform sampler2D tex;
 
-//layout(set = 0, binding = 1) uniform uhh palette;
-
 layout(push_constant) uniform OutlineInfo{
     vec4 other_color;
     float other_mix;
