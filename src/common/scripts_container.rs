@@ -85,16 +85,6 @@ pub fn parse_entity(entities: &impl AnyEntities, value: OutputWrapperRef) -> Res
     Ok(entity)
 }
 
-pub fn parse_color_palette(value: OutputWrapperRef) -> Result<ColorPalette, lisp::Error>
-{
-    let name = parse_symbol_or_string(value)?;
-
-    ColorPalette::from_str(&name).map_err(|_|
-    {
-        lisp::Error::Custom(format!("unknown color {name}"))
-    })
-}
-
 fn parse_position_with<T>(
     value: OutputWrapperRef,
     f: impl Fn(&OutputWrapperRef) -> Result<T, lisp::Error>
@@ -465,7 +455,7 @@ pub fn add_info_primitives(primitives: &mut Primitives, game_state: Rc<RefCell<W
 
                 let entity = parse_entity(entities, args.next_value().unwrap())?;
 
-                let palette: ColorPalette = parse_enum(args.next_value().unwrap())?;
+                let palette = ColorPalette(args.next_value().unwrap().as_integer()? as u32);
 
                 let mut render = entities.render_mut(entity).ok_or_else(||
                 {

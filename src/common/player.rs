@@ -258,7 +258,7 @@ impl Default for Player
             screenshake: Screenshake::default(),
             kills: 0,
             stats: [StatLevel::default(); StatId::COUNT],
-            palette: ColorPalette::Pink,
+            palette: ColorPalette::default(),
             leveled_up: Vec::new()
         }
     }

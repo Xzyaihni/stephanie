@@ -738,7 +738,7 @@ mod tests
                 message_passer: MessagePasser::new(stream),
                 entity: Some(entities.borrow_mut().push_eager(false, EntityInfo{..Default::default()})),
                 customization: CustomizationInfo{
-                    palette: ColorPalette::Green,
+                    palette: ColorPalette(1),
                     name: "test_player".to_owned()
                 },
                 host: true

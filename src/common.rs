@@ -96,7 +96,8 @@ pub use occluding_plane::{
     OccludingCaster
 };
 
-pub use render_info::{ColorPalette, RenderInfo};
+pub use render_info::RenderInfo;
+pub use palettes::ColorPalette;
 
 pub use saveable::Saveable;
 
@@ -132,6 +133,7 @@ pub mod utility;
 pub mod animation_common;
 
 pub mod colors;
+pub mod palettes;
 
 pub mod sides;
 pub mod lisp;

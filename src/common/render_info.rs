@@ -5,7 +5,7 @@ use std::{
     borrow::Cow
 };
 
-use strum::{EnumString, EnumIter, EnumCount, IntoEnumIterator, FromRepr};
+use strum::FromRepr;
 
 use parking_lot::{Mutex, RwLock};
 
@@ -39,6 +39,7 @@ use crate::{
         with_z,
         rotate_point,
         colors::{srgb_to_linear, Lcha},
+        ColorPalette,
         ServerToClient,
         world::{TileRotation, PosDirection, DirectionsGroup}
     }
@@ -88,7 +89,6 @@ pub struct CharacterShaderInfoRaw
     eyes_offset: [f32; 2],
     other_mix: f32,
     flags: u32,
-    palette: u32,
     animation: f32,
     outlined: f32
 }
@@ -104,7 +104,6 @@ impl CharacterShaderInfoRaw
             eyes_offset: info.eyes_offset,
             other_mix: outline.other_mix,
             flags: (to_flags([info.draw_eyes, info.left_closed, info.right_closed]) << 2) | outline.flags,
-            palette: outline.palette,
             outlined: outline.outlined,
             animation: outline.animation
         }
@@ -119,69 +118,7 @@ pub struct OutlinedInfo
     other_mix: f32,
     animation: f32,
     outlined: f32,
-    flags: u32,
-    palette: u32
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, EnumString, EnumIter, EnumCount, Serialize, Deserialize)]
-#[strum(ascii_case_insensitive)]
-#[repr(u8)]
-pub enum ColorPalette
-{
-    Pink = 0,
-    Aqua,
-    Green,
-    Red,
-    Blue,
-    Rose,
-    LightRed,
-    Purple,
-    Yellow,
-    Orange,
-    Blonde,
-    LightBrown,
-    Brown,
-    DarkBrown,
-    Black,
-    Gray,
-    White
-}
-
-impl ColorPalette
-{
-    pub fn random() -> Self
-    {
-        let len = Self::iter().count();
-
-        Self::iter().nth(fastrand::usize(0..len)).unwrap()
-    }
-
-    pub fn sorted_iter() -> impl Iterator<Item=Self>
-    {
-        let sorted = [
-            Self::Red,
-            Self::LightRed,
-            Self::Rose,
-            Self::Pink,
-            Self::Purple,
-            Self::Blue,
-            Self::Aqua,
-            Self::Green,
-            Self::Yellow,
-            Self::Orange,
-            Self::Blonde,
-            Self::LightBrown,
-            Self::Brown,
-            Self::DarkBrown,
-            Self::Black,
-            Self::Gray,
-            Self::White
-        ];
-
-        debug_assert!(Self::COUNT == sorted.len());
-
-        sorted.into_iter()
-    }
+    flags: u32
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -244,7 +181,6 @@ struct RawMixColor
 {
     other_color: [f32; 4],
     other_mix: f32,
-    palette: u32,
     flags: u32
 }
 
@@ -265,16 +201,14 @@ impl From<Option<MixColor>> for RawMixColor
             Self{
                 other_color: [new_r, new_g, new_b, a],
                 other_mix: color.amount,
-                flags: flags(color.only_alpha, color.keep_transparency),
-                palette: color.palette.map(|x| x as u8 + 1).unwrap_or(0) as u32
+                flags: flags(color.only_alpha, color.keep_transparency)
             }
         } else
         {
             Self{
                 other_color: [0.0; 4],
                 other_mix: 0.0,
-                flags: flags(false, true),
-                palette: 0
+                flags: flags(false, true)
             }
         }
     }
@@ -295,8 +229,7 @@ impl OutlinedInfo
             other_mix: other_color.other_mix,
             animation,
             outlined: if outlined { 1.0 } else { 0.0 },
-            flags: other_color.flags,
-            palette: other_color.palette
+            flags: other_color.flags
         }
     }
 }
@@ -307,8 +240,7 @@ pub struct UiOutlinedInfo
 {
     other_color: [f32; 4],
     other_mix: f32,
-    flags: u32,
-    palette: u32
+    flags: u32
 }
 
 impl UiOutlinedInfo
@@ -322,8 +254,7 @@ impl UiOutlinedInfo
         Self{
             other_color: other_color.other_color,
             other_mix: other_color.other_mix,
-            flags: other_color.flags,
-            palette: other_color.palette
+            flags: other_color.flags
         }
     }
 }

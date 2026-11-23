@@ -2,7 +2,7 @@ use std::{
     f32,
     str::FromStr,
     net::SocketAddr,
-    fs::{self, ReadDir},
+    fs::{self, ReadDir, File},
     borrow::Cow,
     path::PathBuf,
     rc::Rc,
@@ -11,7 +11,7 @@ use std::{
 
 use nalgebra::{vector, Vector2, Matrix4};
 
-use strum::{EnumCount, IntoEnumIterator};
+use strum::IntoEnumIterator;
 
 use vulkano::buffer::BufferContents;
 
@@ -50,6 +50,8 @@ use crate::{
         some_or_return,
         some_or_value,
         render_info::*,
+        palettes::Palette,
+        ColorPalette,
         Stateful,
         EntityInfo,
         world::WorldSave,
@@ -359,6 +361,7 @@ struct UiInfo<'a, 'b, 'c, 'd, 'e, 'f, 'g>
     bindings: &'e mut UiList<Binding>,
     settings_config: &'g mut Stateful<GameSettings>,
     sliced_textures: &'a HashMap<String, SlicedTexture>,
+    palettes: &'a [Palette],
     fonts: &'a FontsContainer,
     info: &'c mut MenuClientInfo,
     world_check_names: &'a Vec<String>,
@@ -373,6 +376,7 @@ pub struct MainMenu
     pub info: MenuClientInfo,
     shaders: ProgramShaders,
     sliced_textures: Rc<HashMap<String, SlicedTexture>>,
+    palettes: Vec<Palette>,
     fonts: Rc<FontsContainer>,
     screen_object: SolidObject,
     controller: Controller<MainMenuId>,
@@ -413,12 +417,24 @@ impl MainMenu
         sliced_textures: Rc<HashMap<String, SlicedTexture>>
     ) -> Self
     {
+        let palettes = {
+            let file = File::open("info/palettes.json").unwrap_or_else(|err|
+            {
+                panic!("error opening palettes file: {err}")
+            });
+
+            serde_json::from_reader(file).unwrap_or_else(|err|
+            {
+                panic!("error reading palettes file: {err}")
+            })
+        };
+
         let controller = Controller::new(partial_info);
 
         let info = MenuClientInfo{
             address: TextboxInfo::new(String::new()),
             name: NameInfo::new(TextboxInfo::new_with_limit("stephanie".to_owned(), 30)),
-            palette: ColorPalette::random(),
+            palette: ColorPalette::default(),
             online_mode: OnlineMode::Off,
             debug: cfg!(debug_assertions)
         };
@@ -531,6 +547,7 @@ impl MainMenu
         let mut this = Self{
             shaders,
             sliced_textures,
+            palettes,
             fonts: partial_info.builder_wrapper.fonts().clone(),
             screen_object: client::create_screen_object(partial_info),
             controller,
@@ -782,6 +799,15 @@ impl MainMenu
         add_padding_vertical(parent, UiSize::Absolute(BUTTON_SIZE * 0.75).into())
     }
 
+    fn reset_world_select(
+        palettes_count: usize,
+        info: &mut MenuClientInfo
+    )
+    {
+        info.name.info.text = "stephanie".to_owned();
+        info.palette = ColorPalette(fastrand::u32(..palettes_count as u32));
+    }
+
     fn update_main(
         ui_info: UiInfo,
         menu: TreeInserter<MainMenuId>
@@ -864,6 +890,8 @@ impl MainMenu
         if Self::update_main_button(ui_info.controls, buttons_panel, |part| id(MainPartId::Start(part)), "start")
         {
             state = MenuState::WorldSelect;
+
+            Self::reset_world_select(ui_info.palettes.len(), ui_info.info);
         }
 
         button_pad();
@@ -1410,6 +1438,8 @@ impl MainMenu
 
         add_padding_vertical(panel, 0.008.into());
 
+        let hair_colors_count = ui_info.palettes.len();
+
         let per_row = 5;
 
         let row_height = 0.03;
@@ -1427,15 +1457,17 @@ impl MainMenu
         {
             button: TreeInserter<'a, MainMenuId>,
             button_id: MainMenuId,
-            color: ColorPalette,
+            color: Lcha,
             index: usize
         }
 
         let mut hovered_button = None;
 
         let mut palette_panel = None;
-        ColorPalette::sorted_iter().enumerate().for_each(|(index, color)|
+        (0..hair_colors_count).for_each(|index|
         {
+            let color = ColorPalette(index as u32);
+
             if index == 0
             {
                 add_padding_vertical(outer_panel, UiSize::Pixels(border_pixels).into());
@@ -1457,7 +1489,7 @@ impl MainMenu
 
             let is_first_in_row = (index % per_row) == 0;
 
-            let is_last = (index + 1) == ColorPalette::COUNT;
+            let is_last = (index + 1) == hair_colors_count;
             let is_last_in_row = ((index % per_row) + 1) == per_row || is_last;
 
             if is_first_in_row
@@ -1474,19 +1506,22 @@ impl MainMenu
 
             let is_hovered = color_button.is_mouse_inside();
 
+            let [r, g, b] = ui_info.palettes[color.0 as usize].closest_get(4);
+            let color_lcha = Lcha::from([r, g, b, 1.0]);
+
             if is_hovered
             {
                 hovered_button = Some(HoveredButtonInfo{
                     button: color_button,
                     button_id: color_button_id,
-                    color,
+                    color: color_lcha,
                     index
                 });
             } else
             {
                 let _visible_button_part = color_button.update(id(WorldCreatePartId::ColorsPanelColorHover(index, 0)), UiElement{
-                    texture: UiTexture::Custom("ui/palette_color.png".into()),
-                    mix: Some(MixColorLch{palette: Some(color), ..Default::default()}),
+                    texture: UiTexture::Solid,
+                    mix: Some(MixColorLch::color(color_lcha)),
                     width: UiSize::CopyElement(UiDirection::Horizontal, 1.0, color_button_id).into(),
                     height: UiSize::CopyElement(UiDirection::Vertical, 1.0, color_button_id).into(),
                     position: UiPosition::Offset(color_button_id, vector![0.0, 0.0]),
@@ -1513,7 +1548,7 @@ impl MainMenu
                 };
 
                 let is_first_row = (index / per_row) == 0;
-                let is_last_row = (index / per_row) == ((ColorPalette::COUNT - 1) / per_row);
+                let is_last_row = (index / per_row) == ((hair_colors_count - 1) / per_row);
 
                 if !is_first_in_row { create_hover(ui_info.sliced_textures["square_left"]); }
                 if !is_last_in_row { create_hover(ui_info.sliced_textures["square_right"]); }
@@ -1544,8 +1579,8 @@ impl MainMenu
             let aspect = button.try_width().zip(button.try_height()).map(|(w, h)| h / w).unwrap_or_default();
 
             let visible_button_part = menu.update(id(WorldCreatePartId::ColorsPanelColorHover(index, 0)), UiElement{
-                texture: UiTexture::Custom("ui/palette_color.png".into()),
-                mix: Some(MixColorLch{palette: Some(color), ..Default::default()}),
+                texture: UiTexture::Solid,
+                mix: Some(MixColorLch::color(color)),
                 width: UiSize::CopyElement(UiDirection::Horizontal, button_scale, button_id).into(),
                 height: UiSize::CopyElement(UiDirection::Vertical, button_scale, button_id).into(),
                 position: UiPosition::Offset(button_id, vector![0.0, 0.0]),
@@ -1962,6 +1997,7 @@ impl MainMenu
                 bindings: &mut self.bindings,
                 settings_config: &mut self.settings_config,
                 sliced_textures: &self.sliced_textures,
+                palettes: &self.palettes,
                 fonts: &self.fonts,
                 info: &mut self.info,
                 world_check_names: &self.world_check_names,

@@ -119,7 +119,7 @@
         },
         "body": "../player",
         "face": "../player",
-        "palette": "Pink",
+        "palette": 3,
         "lying_face_offset": [-7, 0],
         "behavior": "Flee",
         "on_contents": "'(heal_pills)"

@@ -256,6 +256,16 @@ impl From<Lcha> for [f32; 4]
     }
 }
 
+impl From<[f32; 4]> for Lcha
+{
+    fn from([r, g, b, a]: [f32; 4]) -> Self
+    {
+        let Lch{l, c, h} = Lch::from(Lab::from(Rgb([r, g, b])));
+
+        Lcha{l, c, h, a}
+    }
+}
+
 impl EaseOut for Lcha
 {
     fn ease_out(&self, target: Self, decay: f32, dt: f32) -> Self
@@ -327,6 +337,18 @@ impl From<Lch> for Lab
             l: value.l,
             a: value.c * value.h.cos(),
             b: value.c * value.h.sin()
+        }
+    }
+}
+
+impl From<Lab> for Lch
+{
+    fn from(Lab{l, a, b}: Lab) -> Self
+    {
+        Self{
+            l,
+            c: (a * a + b * b).sqrt(),
+            h: b.atan2(a)
         }
     }
 }
@@ -438,9 +460,29 @@ mod tests
 {
     use super::*;
 
+    fn close_enough_with_epsilon(a: f32, b: f32, epsilon: f32)
+    {
+        assert!((a - b).abs() < epsilon, "a: {}, b: {}", a, b);
+    }
+
     fn close_enough(a: f32, b: f32)
     {
-        assert!((a - b).abs() < 0.001, "a: {}, b: {}", a, b);
+        close_enough_with_epsilon(a, b, 0.001)
+    }
+
+    #[test]
+    fn round_trip_rgb_lch()
+    {
+        for _ in 0..100
+        {
+            let rgba = [fastrand::f32(), fastrand::f32(), fastrand::f32(), fastrand::f32()];
+
+            let lcha = Lcha::from(rgba);
+
+            let rgba_new: [f32; 4] = lcha.into();
+
+            rgba.into_iter().zip(rgba_new).for_each(|(a, b)| close_enough_with_epsilon(a, b, 0.01));
+        }
     }
 
     #[test]

@@ -33,7 +33,7 @@ use crate::common::{
     ColorPalette,
     entity::ServerEntities,
     inventory::BASE_INVENTORY_LIMIT,
-    scripts_container::{parse_symbol_or_string, parse_entity, parse_color_palette},
+    scripts_container::{parse_symbol_or_string, parse_entity},
     lazy_transform::*
 };
 
@@ -82,7 +82,7 @@ impl SpawnEnemyParam
                 let mut shield_params = cdr.as_pairs_list()?.into_iter();
 
                 let target = parse_entity(entities, get_next(shield_params.next())?)?;
-                let palette = parse_color_palette(get_next(shield_params.next())?)?;
+                let palette = ColorPalette(get_next(shield_params.next())?.as_integer()? as u32);
                 let amount = get_next(shield_params.next())?.as_float()?;
 
                 Self::Shield{target, palette, amount}

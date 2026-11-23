@@ -14,7 +14,7 @@ layout(push_constant) uniform OutlineInfo{
     int flags;
 } info;
 
-#include "with_palette.glsl"
+#include "without_palette.glsl"
 #include "with_mix.glsl"
 
 
