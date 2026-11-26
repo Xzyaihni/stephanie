@@ -1,5 +1,5 @@
 use std::{
-    fs,
+    fs::{self, File},
     rc::{Weak, Rc},
     cell::RefCell,
     thread::{self, JoinHandle},
@@ -43,7 +43,7 @@ use yanyaengine::{
 use crate::{
     LONGEST_FRAME,
     debug_config::*,
-    main_menu::{OnlineMode, MainMenu, MenuAction},
+    main_menu::{OnlineMode, MainMenu, MenuAction, MainMenuInfo},
     server::{Server, ServerInfo},
     client::{
         Client,
@@ -485,9 +485,22 @@ impl YanyaApp for App
             Rc::new(textures)
         };
 
+        let palettes = {
+            let file = File::open("info/palettes.json").unwrap_or_else(|err|
+            {
+                panic!("error opening palettes file: {err}")
+            });
+
+            serde_json::from_reader(file).unwrap_or_else(|err|
+            {
+                panic!("error reading palettes file: {err}")
+            })
+        };
+
         let init_info = ClientInitInfo{
             app_info,
             sliced_textures,
+            palettes,
             tilemap: tilemap.clone(),
             data_infos: data_infos.clone(),
             scripts,
@@ -499,7 +512,10 @@ impl YanyaApp for App
         let scene = Scene::Menu(Box::new(MainMenu::new(
             &partial_info.object_info,
             init_info.app_info.shaders.clone(),
-            init_info.sliced_textures.clone()
+            MainMenuInfo{
+                sliced_textures: init_info.sliced_textures.clone(),
+                palettes: init_info.palettes.clone()
+            }
         )));
 
         let client = Client::new(partial_info, init_info).unwrap();

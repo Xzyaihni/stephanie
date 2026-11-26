@@ -38,6 +38,7 @@ use crate::{
         DataInfos,
         MessagePasser,
         CustomizationInfo,
+        palettes::Palette,
         items_info::ScriptsContainer,
         tilemap::TileMapWithTextures
     }
@@ -78,6 +79,7 @@ pub struct ClientInitInfo
 {
     pub app_info: AppInfo,
     pub sliced_textures: Rc<HashMap<String, SlicedTexture>>,
+    pub palettes: Vec<Palette>,
     pub tilemap: TileMapWithTextures,
     pub data_infos: DataInfos,
     pub scripts: ScriptsContainer,
@@ -184,6 +186,7 @@ impl Client
         let info = GameStateInfo{
             shaders: client_init_info.app_info.shaders,
             sliced_textures: client_init_info.sliced_textures,
+            palettes: client_init_info.palettes,
             camera: camera.clone(),
             timestamp_query,
             data_infos: client_init_info.data_infos,

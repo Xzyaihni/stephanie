@@ -9,11 +9,11 @@ layout(set = 0, binding = 0) uniform sampler2D face_tex;
 layout(set = 1, binding = 0) uniform sampler2D eyes_closed_tex;
 layout(set = 2, binding = 0) uniform sampler2D eyes_normal_tex;
 
-layout(set = 3, binding = 0) uniform sampler2D tex;
-
-layout(set = 0, binding = 1) buffer Palette{
+layout(set = 3, binding = 0) buffer Palette{
     float palette[];
 };
+
+layout(set = 4, binding = 0) uniform sampler2D tex;
 
 layout(push_constant) uniform CharacterShaderInfoRaw{
     vec4 other_color;

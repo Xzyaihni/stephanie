@@ -1,6 +1,6 @@
 use vulkano::{
     descriptor_set::WriteDescriptorSet,
-    buffer::BufferContents
+    buffer::{BufferContents, subbuffer::Subbuffer}
 };
 
 use nalgebra::{vector, Vector2};
@@ -59,6 +59,7 @@ pub struct DrawingInfo<'a, 'b, 'c>
 {
     pub shaders: &'a ProgramShaders,
     pub info: &'b mut DrawInfo<'c>,
+    pub palettes: &'a [Subbuffer<[f32]>],
     pub timestamp_query: TimestampQuery,
     pub is_loading: bool,
     pub mouse_fraction: MouseInfo
@@ -86,6 +87,7 @@ pub fn draw(
     DrawingInfo{
         shaders,
         info,
+        palettes,
         timestamp_query,
         is_loading,
         mouse_fraction
@@ -266,6 +268,10 @@ pub fn draw(
                 {
                     let assets = info.object_info.assets.lock();
 
+                    let palette_index = render.mix.and_then(|mix| mix.palette).map(|x| x.0).unwrap_or(0);
+                    let palette_buffer = palettes[palette_index as usize].clone();
+                    let palette_descriptor_set = info.create_descriptor_set(3, [WriteDescriptorSet::buffer(0, palette_buffer)]);
+
                     let set_of = |id, set|
                     {
                         assets.texture(id).lock().descriptor_set(info, UniformLocation{set, binding: 0})
@@ -274,7 +280,8 @@ pub fn draw(
                     info.current_sets = vec![
                         set_of(shader_info.face, 0),
                         set_of(shader_info.eyes_closed, 1),
-                        set_of(shader_info.eyes_normal, 2)
+                        set_of(shader_info.eyes_normal, 2),
+                        palette_descriptor_set
                     ];
                 }
 

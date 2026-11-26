@@ -2,7 +2,7 @@ use std::{
     f32,
     str::FromStr,
     net::SocketAddr,
-    fs::{self, ReadDir, File},
+    fs::{self, ReadDir},
     borrow::Cow,
     path::PathBuf,
     rc::Rc,
@@ -409,26 +409,23 @@ impl Drop for MainMenu
     }
 }
 
+pub struct MainMenuInfo
+{
+    pub sliced_textures: Rc<HashMap<String, SlicedTexture>>,
+    pub palettes: Vec<Palette>
+}
+
 impl MainMenu
 {
     pub fn new(
         partial_info: &ObjectCreatePartialInfo,
         shaders: ProgramShaders,
-        sliced_textures: Rc<HashMap<String, SlicedTexture>>
+        MainMenuInfo{
+            sliced_textures,
+            palettes
+        }: MainMenuInfo
     ) -> Self
     {
-        let palettes = {
-            let file = File::open("info/palettes.json").unwrap_or_else(|err|
-            {
-                panic!("error opening palettes file: {err}")
-            });
-
-            serde_json::from_reader(file).unwrap_or_else(|err|
-            {
-                panic!("error reading palettes file: {err}")
-            })
-        };
-
         let controller = Controller::new(partial_info);
 
         let info = MenuClientInfo{

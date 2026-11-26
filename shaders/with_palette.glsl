@@ -10,7 +10,7 @@ vec3 palette_at(int index)
 
 vec4 with_palette(vec4 color)
 {
-    int colors_per_palette = palette.length();
+    int colors_per_palette = palette.length() / 3;
     int palette_step = 255 / (colors_per_palette - 1);
 
     float srgb_brightness = linear_to_srgb(color.r);

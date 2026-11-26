@@ -19,6 +19,18 @@ use nalgebra::{Vector2, Vector3, Matrix4};
 
 use serde::{Serialize, Deserialize};
 
+use vulkano::{
+    DeviceSize,
+    command_buffer::CopyBufferInfo,
+    buffer::{
+        BufferUsage,
+        BufferCreateInfo,
+        Buffer,
+        subbuffer::Subbuffer
+    },
+    memory::allocator::{AllocationCreateInfo, MemoryTypeFilter}
+};
+
 use yanyaengine::{
     Assets,
     ObjectFactory,
@@ -64,6 +76,7 @@ use crate::{
         OnChangeInfo,
         OnConnectInfo,
         CustomizationInfo,
+        palettes::Palette,
         scripts_container::ScriptIndex,
         items_info::ScriptsContainer,
         sender_loop::BufferSender,
@@ -601,6 +614,7 @@ pub struct GameStateInfo
 {
     pub shaders: ProgramShaders,
     pub sliced_textures: Rc<HashMap<String, SlicedTexture>>,
+    pub palettes: Vec<Palette>,
     pub camera: Arc<RwLock<Camera>>,
     pub timestamp_query: TimestampQuery,
     pub data_infos: DataInfos,
@@ -817,6 +831,7 @@ pub struct GameState
     ui_camera: Camera,
     timestamp_query: TimestampQuery,
     shaders: ProgramShaders,
+    palettes: Vec<Subbuffer<[f32]>>,
     host: bool,
     is_restart: bool,
     is_trusted: bool,
@@ -886,6 +901,52 @@ impl GameState
         let mut handler = ConnectionsHandler::new(message_passer);
 
         let tilemap = info.tiles_factory.tilemap().clone();
+
+        let palettes = {
+            let allocator = object_info.partial.builder_wrapper.resource_uploader().allocator.clone();
+
+            info.palettes.into_iter().map(|palette|
+            {
+                // 3 floats per color
+                let elements = palette.0.len() * 3;
+
+                let staging_buffer = Buffer::from_iter(
+                    allocator.clone(),
+                    BufferCreateInfo{
+                        usage: BufferUsage::TRANSFER_SRC,
+                        ..Default::default()
+                    },
+                    AllocationCreateInfo{
+                        memory_type_filter: MemoryTypeFilter::PREFER_HOST
+                            | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+                        ..Default::default()
+                    },
+                    palette.0.into_iter()
+                ).unwrap();
+
+                let buffer = Buffer::new_slice::<f32>(
+                    allocator.clone(),
+                    BufferCreateInfo{
+                        usage: BufferUsage::STORAGE_BUFFER | BufferUsage::TRANSFER_DST,
+                        ..Default::default()
+                    },
+                    AllocationCreateInfo{
+                        memory_type_filter: MemoryTypeFilter::PREFER_DEVICE,
+                        ..Default::default()
+                    },
+                    elements as DeviceSize
+                ).unwrap();
+
+                let resource_uploader = object_info.partial.builder_wrapper.resource_uploader_mut();
+
+                resource_uploader.builder.copy_buffer(CopyBufferInfo::buffers(staging_buffer, buffer.clone())).unwrap_or_else(|err|
+                {
+                    panic!("error uploading palettes buffer: {err}");
+                });
+
+                buffer
+            }).collect()
+        };
 
         let OnConnectInfo{player_entity, player_position, time} = Self::connect_to_server(
             &mut handler,
@@ -984,6 +1045,7 @@ impl GameState
             ui_camera,
             timestamp_query: info.timestamp_query,
             shaders: info.shaders,
+            palettes,
             world,
             scripts: info.scripts,
             on_create_queue: Rc::new(RefCell::new(Vec::new())),
@@ -1592,6 +1654,7 @@ impl GameState
         let info = render_system::DrawingInfo{
             shaders: &self.shaders,
             info,
+            palettes: &self.palettes,
             timestamp_query: self.timestamp_query.clone(),
             is_loading: self.is_loading,
             mouse_fraction: self.mouse_fraction

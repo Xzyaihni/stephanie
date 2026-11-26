@@ -190,9 +190,9 @@ impl From<Option<MixColor>> for RawMixColor
 {
     fn from(color: Option<MixColor>) -> Self
     {
-        fn flags(only_alpha: bool, keep_transparency: bool) -> u32
+        fn flags(only_alpha: bool, keep_transparency: bool, uses_palette: bool) -> u32
         {
-            to_flags([keep_transparency, only_alpha])
+            to_flags([keep_transparency, only_alpha, uses_palette])
         }
 
         if let Some(color) = color
@@ -203,14 +203,14 @@ impl From<Option<MixColor>> for RawMixColor
             Self{
                 other_color: [new_r, new_g, new_b, a],
                 other_mix: color.amount,
-                flags: flags(color.only_alpha, color.keep_transparency)
+                flags: flags(color.only_alpha, color.keep_transparency, color.palette.is_some())
             }
         } else
         {
             Self{
                 other_color: [0.0; 4],
                 other_mix: 0.0,
-                flags: flags(false, true)
+                flags: flags(false, true, false)
             }
         }
     }
