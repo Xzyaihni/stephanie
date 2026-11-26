@@ -1,11 +1,17 @@
+use std::{
+    sync::Arc,
+    cell::RefCell,
+    collections::HashMap
+};
+
 use vulkano::{
-    descriptor_set::WriteDescriptorSet,
+    descriptor_set::{DescriptorSet, WriteDescriptorSet},
     buffer::{BufferContents, subbuffer::Subbuffer}
 };
 
 use nalgebra::{vector, Vector2};
 
-use yanyaengine::{game_object::*, UniformLocation, SolidObject, Object};
+use yanyaengine::{game_object::*, ShaderId, SolidObject, Object};
 
 use crate::{
     debug_config::*,
@@ -18,6 +24,7 @@ use crate::{
         Side1d,
         Entity,
         AnyEntities,
+        palettes::ColorPalette,
         character::SpriteState,
         characters_info::FacialExpression,
         world::World,
@@ -42,6 +49,33 @@ pub struct MouseInfo
     pub alpha: f32
 }
 
+pub struct PalettesInfo
+{
+    pub descriptor_sets: HashMap<(ColorPalette, (ShaderId, usize)), Arc<DescriptorSet>>,
+    pub palettes_buffers: Vec<Subbuffer<[f32]>>
+}
+
+impl PalettesInfo
+{
+    fn palette_of(
+        &mut self,
+        info: &mut DrawInfo,
+        shader: ShaderId,
+        set: usize,
+        mix: Option<MixColor>
+    ) -> Arc<DescriptorSet>
+    {
+        let palette_index = mix.and_then(|mix| mix.palette).unwrap_or(ColorPalette(0));
+
+        self.descriptor_sets.entry((palette_index, (shader, set))).or_insert_with(||
+        {
+            let palette_buffer = self.palettes_buffers[palette_index.0 as usize].clone();
+
+            info.create_descriptor_set(set, [WriteDescriptorSet::buffer(0, palette_buffer)])
+        }).clone()
+    }
+}
+
 pub struct DrawEntities<'a>
 {
     pub solid: &'a SolidObject,
@@ -59,7 +93,7 @@ pub struct DrawingInfo<'a, 'b, 'c>
 {
     pub shaders: &'a ProgramShaders,
     pub info: &'b mut DrawInfo<'c>,
-    pub palettes: &'a [Subbuffer<[f32]>],
+    pub palettes: &'a RefCell<PalettesInfo>,
     pub timestamp_query: TimestampQuery,
     pub is_loading: bool,
     pub mouse_fraction: MouseInfo
@@ -120,6 +154,9 @@ pub fn draw(
         }
     }
 
+    let mut palettes = palettes.borrow_mut();
+    let palettes = &mut palettes;
+
     timing_start!(0);
 
     if !is_loading
@@ -159,6 +196,10 @@ pub fn draw(
                 if let SpriteState::Crawling = character.sprite_state()
                 {
                     try_bind(info, shaders.default);
+
+                    let palette_descriptor_set = palettes.palette_of(info, shaders.default, 0, render.mix);
+
+                    info.current_sets = vec![palette_descriptor_set];
 
                     render.draw(info, outline);
                     return;
@@ -265,16 +306,14 @@ pub fn draw(
                     }
                 });
 
+                let palette_descriptor_set = palettes.palette_of(info, shaders.character, 3, render.mix);
+
                 {
                     let assets = info.object_info.assets.lock();
 
-                    let palette_index = render.mix.and_then(|mix| mix.palette).map(|x| x.0).unwrap_or(0);
-                    let palette_buffer = palettes[palette_index as usize].clone();
-                    let palette_descriptor_set = info.create_descriptor_set(3, [WriteDescriptorSet::buffer(0, palette_buffer)]);
-
                     let set_of = |id, set|
                     {
-                        assets.texture(id).lock().descriptor_set(info, UniformLocation{set, binding: 0})
+                        assets.texture(id).lock().descriptor_set(info, set)
                     };
 
                     info.current_sets = vec![
@@ -293,10 +332,16 @@ pub fn draw(
             {
                 try_bind(info, shaders.default);
 
+                let palette_descriptor_set = palettes.palette_of(info, shaders.default, 0, render.mix);
+
+                info.current_sets = vec![palette_descriptor_set];
+
                 render.draw(info, outline);
             }
         });
     }
+
+    info.current_sets.clear();
 
     info.next_subpass();
 
@@ -333,12 +378,18 @@ pub fn draw(
         {
             let render = entities.render(entity).unwrap();
 
+            let palette_descriptor_set = palettes.palette_of(info, shaders.default_shaded, 0, render.mix);
+
+            info.current_sets = vec![palette_descriptor_set];
+
             render.draw(info, OutlinedInfo::new(
                 render.mix,
                 Default::default(),
                 animation
             ));
         });
+
+        info.current_sets.clear();
     }
 
     info.next_subpass();

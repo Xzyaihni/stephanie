@@ -25,8 +25,7 @@ use vulkano::{
     buffer::{
         BufferUsage,
         BufferCreateInfo,
-        Buffer,
-        subbuffer::Subbuffer
+        Buffer
     },
     memory::allocator::{AllocationCreateInfo, MemoryTypeFilter}
 };
@@ -90,7 +89,7 @@ use crate::{
             damaging_system,
             anatomy_system,
             player_system,
-            render_system::{self, MouseInfo},
+            render_system::{self, MouseInfo, PalettesInfo},
             collider_system::{self, ContactResolver}
         },
         entity::{
@@ -831,7 +830,7 @@ pub struct GameState
     ui_camera: Camera,
     timestamp_query: TimestampQuery,
     shaders: ProgramShaders,
-    palettes: Vec<Subbuffer<[f32]>>,
+    palettes: RefCell<PalettesInfo>,
     host: bool,
     is_restart: bool,
     is_trusted: bool,
@@ -905,7 +904,7 @@ impl GameState
         let palettes = {
             let allocator = object_info.partial.builder_wrapper.resource_uploader().allocator.clone();
 
-            info.palettes.into_iter().map(|palette|
+            let palettes_buffers = info.palettes.into_iter().map(|palette|
             {
                 // 3 floats per color
                 let elements = palette.0.len() * 3;
@@ -945,7 +944,12 @@ impl GameState
                 });
 
                 buffer
-            }).collect()
+            }).collect();
+
+            RefCell::new(PalettesInfo{
+                descriptor_sets: HashMap::new(),
+                palettes_buffers
+            })
         };
 
         let OnConnectInfo{player_entity, player_position, time} = Self::connect_to_server(

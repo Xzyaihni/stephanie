@@ -1,7 +1,7 @@
 use serde::{Serialize, Deserialize};
 
 
-#[derive(Debug, Default, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ColorPalette(pub u32);
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

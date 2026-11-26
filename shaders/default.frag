@@ -5,7 +5,11 @@ layout(location = 1) in float depth;
 
 layout(location = 0) out vec4 f_color;
 
-layout(set = 0, binding = 0) uniform sampler2D tex;
+layout(set = 0, binding = 0) buffer Palette{
+    float palette[];
+};
+
+layout(set = 1, binding = 0) uniform sampler2D tex;
 
 layout(push_constant) uniform OutlineInfo{
     vec4 other_color;
@@ -19,7 +23,7 @@ const vec3 BACKGROUND_COLOR = vec3(0.831, 0.941, 0.988);
 
 const float LINE_WIDTH = 0.5;
 
-#include "without_palette.glsl"
+#include "with_palette.glsl"
 #include "with_mix.glsl"
 
 
